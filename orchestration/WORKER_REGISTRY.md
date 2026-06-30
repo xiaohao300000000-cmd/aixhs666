@@ -4,7 +4,7 @@
 
 | Worker | 任务 | 状态 | 分支 | Worktree | 开始时间 | 报告 | 备注 |
 |---|---|---|---|---|---|---|---|
-| W1 | T04 PlatformAdapter 与 Mock | RUNNING | `task/T04-platform-adapter-mock` | `../worktrees/T04` | 2026-07-01 05:25 CST | `orchestration/reports/T04.md` | 独立执行对话：019f1a6e-0abf-7e62-a1e9-0e26211bed88 |
+| W1 | - | IDLE | - | - | - | - | T04 ACCEPT；独立执行对话：019f1a6e-0abf-7e62-a1e9-0e26211bed88 |
 | W2 | - | IDLE | - | - | - | - | 默认可用 |
 | W3 | - | DISABLED | - | - | - | - | 稳定后启用 |
 | W4 | - | DISABLED | - | - | - | - | 仅低冲突阶段启用 |

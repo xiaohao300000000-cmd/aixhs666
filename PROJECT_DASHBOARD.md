@@ -5,10 +5,10 @@
 ## 总体进度
 
 ```text
-已完成：3 / 22
-总体进度：14%
+已完成：4 / 22
+总体进度：18%
 
-[███░░░░░░░░░░░░░░░░░] 14%
+[████░░░░░░░░░░░░░░░░] 18%
 ```
 
 ## 当前状态
@@ -16,17 +16,17 @@
 | 项目 | 当前值 |
 |---|---|
 | 当前阶段 | 阶段 0：项目地基 |
-| 当前主任务 | T04 PlatformAdapter 与 Mock |
-| 执行会话 | W1 已分配 T04；W2 待机；W3/W4 关闭 |
+| 当前主任务 | T05 去重与发现关系 待派发 |
+| 执行会话 | W1 待机；W2 待机；W3/W4 关闭 |
 | 当前分支 | 主控：`main` |
 | 阻塞数量 | 0 |
-| 最后更新 | 2026-07-01 05:27 CST：T04 独立执行对话已启动，等待报告 |
+| 最后更新 | 2026-07-01 05:36 CST：T04 已验收合并，等待派发 T05 |
 
 ## 阶段进度
 
 | 阶段 | 范围 | 任务 | 已完成 | 进度 | 状态 |
 |---|---|---:|---:|---:|---|
-| 阶段 0 | 项目地基 | T01–T06 | 3/6 | 50% | T04 进行中 |
+| 阶段 0 | 项目地基 | T01–T06 | 4/6 | 67% | T05 待派发 |
 | 阶段 1 | 小红书采集 MVP | T07–T10 | 0/4 | 0% | 未开始 |
 | 阶段 2 | 动态采集与来源评分 | T11–T13 | 0/3 | 0% | 未开始 |
 | 阶段 3 | AI 新词发现 | T14–T16 | 0/3 | 0% | 未开始 |
@@ -41,7 +41,7 @@
 | T01 | 仓库骨架 | 0 | 无 | DONE | W1 | `task/T01-repository-scaffold` | ACCEPT：CI 通过 |
 | T02 | 核心数据模型 | 0 | T01 | DONE | W1 | `task/T02-core-data-models` | ACCEPT：CI 通过 |
 | T03 | 任务状态机 | 0 | T02 | DONE | W1 | `task/T03-task-state-machine` | ACCEPT：CI 通过 |
-| T04 | PlatformAdapter 与 Mock | 0 | T01 | IN_PROGRESS | W1 | `task/T04-platform-adapter-mock` | 等待报告 |
+| T04 | PlatformAdapter 与 Mock | 0 | T01 | DONE | W1 | `task/T04-platform-adapter-mock` | ACCEPT：CI 通过 |
 | T05 | 去重与发现关系 | 0 | T02,T04 | TODO | 未分配 | - | 待验收 |
 | T06 | 查询管理 API | 0 | T02,T03 | TODO | 未分配 | - | 待验收 |
 | T07 | 小红书搜索采集 | 1 | T04,T05,T06 | TODO | 未分配 | - | 待验收 |
@@ -121,13 +121,14 @@ gantt
 | 2026-07-01 | T01 仓库骨架 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T01.md` |
 | 2026-07-01 | T02 核心数据模型 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T02.md` |
 | 2026-07-01 | T03 任务状态机 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T03.md` |
+| 2026-07-01 | T04 PlatformAdapter 与 Mock | ACCEPT，GitHub CI 通过 | `orchestration/reports/T04.md` |
 
 ## 下一步
 
-1. 启动独立执行对话 W1 执行 `orchestration/briefs/T04.md`
-2. 等待 `orchestration/reports/T04.md`
-3. 主控验收 T04 PlatformAdapter、Mock 数据和入库映射测试
-4. T04 完成后继续派发 T05
+1. 创建 `orchestration/briefs/T05.md`
+2. 启动独立执行对话 W1 执行 T05
+3. 等待 `orchestration/reports/T05.md`
+4. 主控验收 T05 去重与发现关系后更新进度
 
 
 ## 并发管理
@@ -140,7 +141,7 @@ gantt
 | 硬上限 | 4 |
 | 待验收上限 | 2 |
 | 当前待验收 | 0 |
-| 当前文件锁 | 2 |
+| 当前文件锁 | 0 |
 
 详细状态见：
 
