@@ -88,7 +88,7 @@
 
 ## T04 PlatformAdapter 与 Mock 采集器
 
-状态：TODO
+状态：IN_PROGRESS
 
 依赖：T01
 

@@ -6,7 +6,7 @@
 
 ## 当前目标
 
-派发并验收 `T04 PlatformAdapter 与 Mock 采集器`，随后派发 T05。
+执行并验收 `T04 PlatformAdapter 与 Mock 采集器`，随后派发 T05。
 
 ## 已确认范围
 
@@ -17,10 +17,10 @@
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 创建 `orchestration/briefs/T04.md`
-2. 启动独立执行对话 W1 执行 T04
-3. 等待 `orchestration/reports/T04.md`
-4. 验收 T04 并推送 GitHub
+1. 启动独立执行对话 W1 执行 `orchestration/briefs/T04.md`
+2. 等待 `orchestration/reports/T04.md`
+3. 验收 T04 PlatformAdapter、Mock 数据和入库映射测试
+4. 合并 T04 并推送 GitHub
 5. T04 完成后继续派发 T05
 
 子会话不得直接修改本文件或把任务改为 DONE。
@@ -40,7 +40,7 @@
 - 项目将在新电脑上启动
 - 第一轮 T01 已完成
 - T01、T02、T03 已完成
-- 当前先单独派发 T04，继续避免采集接口与去重逻辑冲突
+- 当前已单独派发 T04，继续避免采集接口与去重逻辑冲突
 - T04 验收后继续 T05
 - 默认启用 W1、W2 两个 Worker
 - 稳定后可增加 W3
