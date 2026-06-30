@@ -6,7 +6,7 @@
 
 ## 当前目标
 
-继续派发并验收 `T03 任务状态机`。
+执行并验收 `T03 任务状态机`。
 
 ## 已确认范围
 
@@ -17,12 +17,11 @@
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 创建 `orchestration/briefs/T03.md`
-2. 启动独立执行对话 W1，分支 `task/T03-task-state-machine`
-3. 等待 `orchestration/reports/T03.md`
-4. 验收 T03 状态转换、重试和超时恢复测试
-5. 合并 T03 并推送 GitHub
-6. T03 完成后继续派发 T04，再派发 T05
+1. 启动独立执行对话 W1 执行 `orchestration/briefs/T03.md`
+2. 等待 `orchestration/reports/T03.md`
+3. 验收 T03 状态转换、重试和超时恢复测试
+4. 合并 T03 并推送 GitHub
+5. T03 完成后继续派发 T04，再派发 T05
 
 子会话不得直接修改本文件或把任务改为 DONE。
 

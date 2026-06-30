@@ -4,7 +4,7 @@
 
 | Worker | 任务 | 状态 | 分支 | Worktree | 开始时间 | 报告 | 备注 |
 |---|---|---|---|---|---|---|---|
-| W1 | - | IDLE | - | - | - | - | T02 ACCEPT：GitHub CI 通过 |
+| W1 | T03 任务状态机 | ASSIGNED | `task/T03-task-state-machine` | `../worktrees/T03` | 2026-07-01 05:09 CST | `orchestration/reports/T03.md` | 等待独立执行对话启动 |
 | W2 | - | IDLE | - | - | - | - | 默认可用 |
 | W3 | - | DISABLED | - | - | - | - | 稳定后启用 |
 | W4 | - | DISABLED | - | - | - | - | 仅低冲突阶段启用 |
