@@ -6,7 +6,7 @@
 
 ## 当前目标
 
-继续派发并验收 `T02 核心数据模型` 和 `T04 PlatformAdapter 与 Mock 采集器`。
+执行并验收 `T02 核心数据模型`。
 
 ## 已确认范围
 
@@ -17,12 +17,11 @@
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 创建 `orchestration/briefs/T02.md`，分支 `task/T02-core-data-models`
-2. 创建 `orchestration/briefs/T04.md`，分支 `task/T04-platform-adapter-mock`
-3. 分别启动独立执行对话 W1、W2
-4. 等待 `orchestration/reports/T02.md` 和 `orchestration/reports/T04.md`
-5. 验收、合并并推送每个任务
-6. T02/T04 均完成后继续 T03 和 T05
+1. 启动独立执行对话 W1 执行 `orchestration/briefs/T02.md`
+2. 等待 `orchestration/reports/T02.md`
+3. 验收 T02 的模型、迁移、索引和测试
+4. 合并 T02 并推送 GitHub
+5. T02 完成后继续派发 T03，再派发 T04/T05
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
@@ -33,14 +32,15 @@
 - 飞书字段尚未固定
 - 模型供应商尚未确定
 
-这些风险不影响阶段 0 的 T02/T04。
+这些风险不影响阶段 0 的 T02。
 
 
 ## 新电脑与并发计划
 
 - 项目将在新电脑上启动
 - 第一轮 T01 已完成
-- 下一轮主控优先并行派发 T02 和 T04
+- 当前先单独派发 T02，避免数据库迁移和模型文件冲突
+- T02 验收后继续 T03、T04、T05
 - 默认启用 W1、W2 两个 Worker
 - 稳定后可增加 W3
 - W4 仅在低冲突阶段启用
