@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-hawke-xhs"
+version = "0.1.0"
+description = "Stage 0 service scaffold for the AI Hawke XHS project."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.13,<2.0",
+    "fastapi>=0.115,<1.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "pydantic>=2.8,<3.0",
+    "sqlalchemy>=2.0,<3.0",
+    "uvicorn>=0.30,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.27,<1.0",
+    "pytest>=8.2,<9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "apps*",
+    "collectors*",
+    "scheduler*",
+    "storage*",
+    "intelligence*",
+    "integrations*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
