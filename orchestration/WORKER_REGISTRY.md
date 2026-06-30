@@ -4,7 +4,7 @@
 
 | Worker | 任务 | 状态 | 分支 | Worktree | 开始时间 | 报告 | 备注 |
 |---|---|---|---|---|---|---|---|
-| W1 | T01 仓库骨架 | RUNNING | `task/T01-repository-scaffold` | `../worktrees/T01` | 2026-07-01 04:14 CST | `orchestration/reports/T01.md` | 主控按用户要求直接执行 |
+| W1 | - | IDLE | - | - | - | - | T01 ACCEPT：GitHub CI 通过 |
 | W2 | - | IDLE | - | - | - | - | 默认可用 |
 | W3 | - | DISABLED | - | - | - | - | 稳定后启用 |
 | W4 | - | DISABLED | - | - | - | - | 仅低冲突阶段启用 |

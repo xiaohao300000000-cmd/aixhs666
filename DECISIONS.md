@@ -177,3 +177,30 @@
 - 执行对话不继承项目经理聊天上下文
 - 项目经理通过自包含任务包传递所有必要信息
 - 多任务并发意味着同时新开多个独立执行对话
+
+## D017 T01 项目骨架依赖基线
+
+状态：已确认
+
+用途：
+
+- FastAPI 和 Uvicorn 用于第一阶段 API 服务与 `/health`
+- SQLAlchemy 2.x、Alembic 和 psycopg 用于 PostgreSQL 数据访问与迁移
+- Pydantic 用于基础配置和后续数据对象
+- pytest 和 httpx 用于测试
+- GitHub Actions 用于远端迁移和测试验证
+
+许可证：
+
+- 上述 Python 依赖均为宽松开源许可证生态中的常用依赖，适合当前 MVP 使用；后续新增依赖仍需单独记录。
+
+替代方案：
+
+- Web 框架可选 Flask 或 Django，但 FastAPI 更适合类型标注和 API 原型。
+- PostgreSQL 驱动可选 asyncpg，但当前同步 SQLAlchemy + psycopg 更简单。
+- 测试框架可选 unittest，但 pytest 更适合项目阶段 0 的快速测试。
+
+原因：
+
+- 与 `docs/ARCHITECTURE.md` 已确认技术栈一致。
+- GitHub CI 已在 PostgreSQL service 下通过 Alembic 迁移和测试，补足本机缺 Docker 的验收缺口。

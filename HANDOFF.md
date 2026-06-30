@@ -2,11 +2,11 @@
 
 ## 当前阶段
 
-尚未开始编码。
+阶段 0 已开始，T01 仓库骨架已验收完成。
 
 ## 当前目标
 
-执行 `T01 仓库骨架`。
+继续派发并验收 `T02 核心数据模型` 和 `T04 PlatformAdapter 与 Mock 采集器`。
 
 ## 已确认范围
 
@@ -17,14 +17,14 @@
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 阅读 `docs/ORCHESTRATION.md`
-2. 根据模板创建 `orchestration/briefs/T01.md`
-3. 创建分支 `task/T01-repository-scaffold`
-4. 启动或指导启动 T01 执行子会话
-5. 等待 `orchestration/reports/T01.md`
-6. 验收通过后，由主控更新 T01 状态和项目看板
+1. 创建 `orchestration/briefs/T02.md`，分支 `task/T02-core-data-models`
+2. 创建 `orchestration/briefs/T04.md`，分支 `task/T04-platform-adapter-mock`
+3. 分别启动独立执行对话 W1、W2
+4. 等待 `orchestration/reports/T02.md` 和 `orchestration/reports/T04.md`
+5. 验收、合并并推送每个任务
+6. T02/T04 均完成后继续 T03 和 T05
 
-子会话不得直接修改本文件或把 T01 改为 DONE。
+子会话不得直接修改本文件或把任务改为 DONE。
 
 ## 当前已知风险
 
@@ -33,14 +33,14 @@
 - 飞书字段尚未固定
 - 模型供应商尚未确定
 
-这些风险不影响 T01。
+这些风险不影响阶段 0 的 T02/T04。
 
 
 ## 新电脑与并发计划
 
 - 项目将在新电脑上启动
-- 第一轮只执行 T01
-- T01 验收后，主控优先并行派发 T02 和 T04
+- 第一轮 T01 已完成
+- 下一轮主控优先并行派发 T02 和 T04
 - 默认启用 W1、W2 两个 Worker
 - 稳定后可增加 W3
 - W4 仅在低冲突阶段启用
