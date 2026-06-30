@@ -1,0 +1,76 @@
+{
+  "project": "AI 教育需求发现与获客效率系统",
+  "updated_at": "2026-06-30T13:39:40.424640",
+  "files": [
+    ".env.example",
+    ".gitignore",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CLAUDE_MASTER_PROMPT.md",
+    "CLAUDE_WORKER_PROMPT.md",
+    "CODEX_START_PROMPT.md",
+    "DECISIONS.md",
+    "HANDOFF.md",
+    "MASTER_CODEX_PROMPT.md",
+    "PROJECT_DASHBOARD.md",
+    "README.md",
+    "TASKS.md",
+    "WORKER_CODEX_PROMPT.md",
+    "docs/ACCEPTANCE_TESTS.md",
+    "docs/AGENT_HANDOFF.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CONCURRENCY_POLICY.md",
+    "docs/DATA_MODEL.md",
+    "docs/NEW_COMPUTER_SETUP.md",
+    "docs/ORCHESTRATION.md",
+    "docs/PRD.md",
+    "docs/QUERY_SEEDS.md",
+    "docs/ROADMAP.md",
+    "orchestration/FILE_LOCKS.md",
+    "orchestration/WORKER_REGISTRY.md",
+    "orchestration/briefs/.gitkeep",
+    "orchestration/packets/.gitkeep",
+    "orchestration/reports/.gitkeep",
+    "project_manifest.json",
+    "templates/SUBTASK_REPORT.md",
+    "templates/TASK_BRIEF.md",
+    "templates/TASK_PACKET.md"
+  ],
+  "orchestration": {
+    "mode": "master_with_dynamic_workers",
+    "default_workers": 2,
+    "recommended_max_workers": 3,
+    "hard_max_workers": 4,
+    "review_queue_limit": 2,
+    "worker_registry": "orchestration/WORKER_REGISTRY.md",
+    "file_locks": "orchestration/FILE_LOCKS.md"
+  },
+  "development_machine": "new_computer",
+  "setup_guide": "docs/NEW_COMPUTER_SETUP.md",
+  "progress_source_of_truth": [
+    "PROJECT_DASHBOARD.md",
+    "TASKS.md",
+    "HANDOFF.md"
+  ],
+  "supported_agents": {
+    "codex": {
+      "master": "MASTER_CODEX_PROMPT.md",
+      "worker": "WORKER_CODEX_PROMPT.md",
+      "rules": "AGENTS.md"
+    },
+    "claude_code": {
+      "memory": "CLAUDE.md",
+      "master": "CLAUDE_MASTER_PROMPT.md",
+      "worker": "CLAUDE_WORKER_PROMPT.md"
+    }
+  },
+  "handoff_guide": "docs/AGENT_HANDOFF.md",
+  "conversation_model": {
+    "project_manager_conversation": "persistent",
+    "worker_conversation": "new_independent_top_level_conversation_per_task",
+    "worker_is_derived_from_manager": false,
+    "shared_chat_context": false,
+    "task_context_source": "orchestration/packets/TXX.md"
+  },
+  "task_packet_template": "templates/TASK_PACKET.md"
+}
