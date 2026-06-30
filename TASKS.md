@@ -105,7 +105,7 @@
 
 ## T05 去重与发现关系
 
-状态：IN_PROGRESS
+状态：BLOCKED
 
 依赖：T02、T04
 
