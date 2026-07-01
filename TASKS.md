@@ -123,7 +123,7 @@
 
 ## T06 查询管理 API
 
-状态：IN_PROGRESS
+状态：DONE
 
 依赖：T02、T03
 

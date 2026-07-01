@@ -5,10 +5,10 @@
 ## 总体进度
 
 ```text
-已完成：5 / 22
-总体进度：23%
+已完成：6 / 22
+总体进度：27%
 
-[█████░░░░░░░░░░░░░░░] 23%
+[█████░░░░░░░░░░░░░░░] 27%
 ```
 
 ## 当前状态
@@ -16,18 +16,18 @@
 | 项目 | 当前值 |
 |---|---|
 | 当前阶段 | 阶段 0：项目地基 |
-| 当前主任务 | T06 查询管理 API 执行中 |
-| 执行会话 | W1 执行 T06；W2 待机；W3/W4 关闭 |
+| 当前主任务 | T07 小红书搜索采集 待派发 |
+| 执行会话 | W1 待机；W2 待机；W3/W4 关闭 |
 | 当前分支 | 主控：`main` |
 | 阻塞数量 | 0 |
-| 最后更新 | 2026-07-01 12:58 CST：T06 独立执行对话已启动，T07-T10 按依赖排队 |
+| 最后更新 | 2026-07-01 13:10 CST：T06 已验收合并，T07 待派发 |
 
 ## 阶段进度
 
 | 阶段 | 范围 | 任务 | 已完成 | 进度 | 状态 |
 |---|---|---:|---:|---:|---|
-| 阶段 0 | 项目地基 | T01–T06 | 5/6 | 83% | T06 执行中 |
-| 阶段 1 | 小红书采集 MVP | T07–T10 | 0/4 | 0% | 未开始 |
+| 阶段 0 | 项目地基 | T01–T06 | 6/6 | 100% | 已完成 |
+| 阶段 1 | 小红书采集 MVP | T07–T10 | 0/4 | 0% | T07 待派发 |
 | 阶段 2 | 动态采集与来源评分 | T11–T13 | 0/3 | 0% | 未开始 |
 | 阶段 3 | AI 新词发现 | T14–T16 | 0/3 | 0% | 未开始 |
 | 阶段 4 | 事件雷达与预警 | T17–T19 | 0/3 | 0% | 未开始 |
@@ -43,7 +43,7 @@
 | T03 | 任务状态机 | 0 | T02 | DONE | W1 | `task/T03-task-state-machine` | ACCEPT：CI 通过 |
 | T04 | PlatformAdapter 与 Mock | 0 | T01 | DONE | W1 | `task/T04-platform-adapter-mock` | ACCEPT：CI 通过 |
 | T05 | 去重与发现关系 | 0 | T02,T04 | DONE | W1 | `task/T05-dedup-discovery-relations` | ACCEPT：CI 通过 |
-| T06 | 查询管理 API | 0 | T02,T03 | IN_PROGRESS | W1 | `task/T06-query-management-api` | 等待执行报告 |
+| T06 | 查询管理 API | 0 | T02,T03 | DONE | W1 | `task/T06-query-management-api` | ACCEPT：CI 通过 |
 | T07 | 小红书搜索采集 | 1 | T04,T05,T06 | TODO | 未分配 | - | 待验收 |
 | T08 | 小红书详情采集 | 1 | T07 | TODO | 未分配 | - | 待验收 |
 | T09 | 小红书评论采集 | 1 | T08 | TODO | 未分配 | - | 待验收 |
@@ -123,13 +123,14 @@ gantt
 | 2026-07-01 | T03 任务状态机 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T03.md` |
 | 2026-07-01 | T04 PlatformAdapter 与 Mock | ACCEPT，GitHub CI 通过 | `orchestration/reports/T04.md` |
 | 2026-07-01 | T05 去重与发现关系 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T05.md` |
+| 2026-07-01 | T06 查询管理 API | ACCEPT，GitHub CI 通过 | `orchestration/reports/T06.md` |
 
 ## 下一步
 
-1. 等待 T06 独立执行对话提交 `orchestration/reports/T06.md`
-2. 主控验收 T06 代码差异和测试结果
-3. T06 ACCEPT 后合并并推送 GitHub
-4. 依赖满足后依次派发 T07、T08、T09、T10
+1. 创建 `orchestration/briefs/T07.md`
+2. 启动独立执行对话执行 T07
+3. T07 ACCEPT 后合并并推送 GitHub
+4. 依赖满足后依次派发 T08、T09、T10
 
 
 ## 并发管理
@@ -142,7 +143,7 @@ gantt
 | 硬上限 | 4 |
 | 待验收上限 | 2 |
 | 当前待验收 | 0 |
-| 当前文件锁 | 2 |
+| 当前文件锁 | 0 |
 
 详细状态见：
 
