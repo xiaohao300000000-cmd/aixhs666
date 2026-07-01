@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apps.worker.resume import start_partial_task
 from collectors import CollectedComment, CommentPage, PlatformAdapter
 from scheduler import TaskStatus, claim_next_task, complete_task, fail_task, mark_partial
 from storage import ingest_comment, save_json_snapshot
@@ -36,6 +37,30 @@ def run_next_comment_task(
         fail_task(session, task.id, error=f"unsupported task type: {task.task_type}")
         raise CommentCollectionError(f"unsupported task type: {task.task_type}")
 
+    return run_comment_task(
+        session,
+        task=task,
+        adapter=adapter,
+        snapshot_root=snapshot_root,
+        default_limit=default_limit,
+    )
+
+
+def resume_partial_comment_task(
+    session: Session,
+    *,
+    task_id: int,
+    adapter: PlatformAdapter,
+    worker_id: str,
+    snapshot_root: str | Path = "snapshots",
+    default_limit: int = DEFAULT_COMMENT_LIMIT,
+) -> CollectionTask:
+    task = start_partial_task(
+        session,
+        task_id=task_id,
+        worker_id=worker_id,
+        allowed_task_types=COMMENT_TASK_TYPES,
+    )
     return run_comment_task(
         session,
         task=task,

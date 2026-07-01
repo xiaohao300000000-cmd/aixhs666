@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from apps.worker.resume import start_partial_task
 from collectors import PlatformAdapter, SearchPage
 from scheduler import TaskStatus, claim_next_task, complete_task, fail_task, mark_partial
 from storage import ingest_search_results, save_json_snapshot
@@ -12,6 +13,7 @@ from storage.models import CollectionTask, Query
 
 
 DEFAULT_SEARCH_LIMIT = 20
+SEARCH_TASK_TYPES = frozenset({"search"})
 
 
 class SearchCollectionError(ValueError):
@@ -34,6 +36,30 @@ def run_next_search_task(
         fail_task(session, task.id, error=f"unsupported task type: {task.task_type}")
         raise SearchCollectionError(f"unsupported task type: {task.task_type}")
 
+    return run_search_task(
+        session,
+        task=task,
+        adapter=adapter,
+        snapshot_root=snapshot_root,
+        default_limit=default_limit,
+    )
+
+
+def resume_partial_search_task(
+    session: Session,
+    *,
+    task_id: int,
+    adapter: PlatformAdapter,
+    worker_id: str,
+    snapshot_root: str | Path = "snapshots",
+    default_limit: int = DEFAULT_SEARCH_LIMIT,
+) -> CollectionTask:
+    task = start_partial_task(
+        session,
+        task_id=task_id,
+        worker_id=worker_id,
+        allowed_task_types=SEARCH_TASK_TYPES,
+    )
     return run_search_task(
         session,
         task=task,
