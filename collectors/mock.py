@@ -171,6 +171,8 @@ def _build_contents(platform: str) -> dict[str, CollectedContent]:
             like_count=128,
             comment_count=2,
             collect_count=46,
+            tags=("AI", "admissions", "planning"),
+            image_urls=("https://mock.xhs.local/images/note-ai-001-cover.jpg",),
         ),
         CollectedContent(
             platform=platform,
@@ -185,6 +187,8 @@ def _build_contents(platform: str) -> dict[str, CollectedContent]:
             like_count=73,
             comment_count=0,
             collect_count=21,
+            tags=("school-visit", "regional-school"),
+            image_urls=("https://mock.xhs.local/images/note-ai-002-cover.jpg",),
         ),
     )
     return {content.platform_content_id: content for content in contents}
