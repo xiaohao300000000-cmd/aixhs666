@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import hashlib
-import re
-import unicodedata
+
+from intelligence.text_processing import normalize_text
 
 
-_WHITESPACE_RE = re.compile(r"\s+")
+def _normalize_text_for_hash_only(text: str | None) -> str:
+    return normalize_text(text).casefold()
 
 
 def normalize_text_for_hash(text: str | None) -> str:
-    normalized = unicodedata.normalize("NFKC", text or "")
-    return _WHITESPACE_RE.sub(" ", normalized).strip().casefold()
+    return _normalize_text_for_hash_only(text)
 
 
 def stable_text_hash(text: str | None) -> str:
