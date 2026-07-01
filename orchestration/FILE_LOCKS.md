@@ -4,10 +4,7 @@
 
 | 任务 | Worker | 锁定路径 | 模式 | 开始时间 | 释放条件 |
 |---|---|---|---|---|---|
-| T07 | W1 | `apps/worker/**` | WRITE | 2026-07-02 00:41 CST | T07 ACCEPT、REJECT 或 BLOCK 后释放 |
-| T07 | W1 | `collectors/**` | WRITE | 2026-07-02 00:41 CST | T07 ACCEPT、REJECT 或 BLOCK 后释放 |
-| T07 | W1 | `storage/snapshots.py`; `storage/__init__.py` | WRITE | 2026-07-02 00:41 CST | T07 ACCEPT、REJECT 或 BLOCK 后释放 |
-| T07 | W1 | `tests/test_xhs_search_collection.py`; `orchestration/reports/T07.md` | WRITE | 2026-07-02 00:41 CST | T07 ACCEPT、REJECT 或 BLOCK 后释放 |
+| - | - | - | - | - | 当前无文件锁 |
 
 模式：
 

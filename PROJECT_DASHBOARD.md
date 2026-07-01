@@ -5,30 +5,30 @@
 ## 总体进度
 
 ```text
-已完成：6 / 22
-总体进度：27%
+已完成：10 / 22
+总体进度：45%
 
-[█████░░░░░░░░░░░░░░░] 27%
+[█████████░░░░░░░░░░░] 45%
 ```
 
 ## 当前状态
 
 | 项目 | 当前值 |
 |---|---|
-| 当前阶段 | 阶段 0：项目地基 |
-| 当前主任务 | T07 小红书搜索采集 执行中 |
-| 执行会话 | W1 执行 T07；W2 待机；W3/W4 关闭 |
+| 当前阶段 | 阶段 2：动态采集与来源评分 |
+| 当前主任务 | T11 高价值内容池 待派发 |
+| 执行会话 | W1/W2 待机；W3/W4 关闭 |
 | 当前分支 | 主控：`main` |
 | 阻塞数量 | 0 |
-| 最后更新 | 2026-07-02 00:41 CST：T07 新独立执行对话已启动，T08-T10 简报已准备并按依赖排队 |
+| 最后更新 | 2026-07-02 02:05 CST：T07-T10 已本地验收并合并到主控待推送状态；下一步派发 T11-T16 |
 
 ## 阶段进度
 
 | 阶段 | 范围 | 任务 | 已完成 | 进度 | 状态 |
 |---|---|---:|---:|---:|---|
 | 阶段 0 | 项目地基 | T01–T06 | 6/6 | 100% | 已完成 |
-| 阶段 1 | 小红书采集 MVP | T07–T10 | 0/4 | 0% | T07 执行中 |
-| 阶段 2 | 动态采集与来源评分 | T11–T13 | 0/3 | 0% | 未开始 |
+| 阶段 1 | 小红书采集 MVP | T07–T10 | 4/4 | 100% | 已完成 |
+| 阶段 2 | 动态采集与来源评分 | T11–T13 | 0/3 | 0% | 待派发 T11 |
 | 阶段 3 | AI 新词发现 | T14–T16 | 0/3 | 0% | 未开始 |
 | 阶段 4 | 事件雷达与预警 | T17–T19 | 0/3 | 0% | 未开始 |
 | 阶段 5 | 看板与内容洞察 | T20–T21 | 0/2 | 0% | 未开始 |
@@ -44,10 +44,10 @@
 | T04 | PlatformAdapter 与 Mock | 0 | T01 | DONE | W1 | `task/T04-platform-adapter-mock` | ACCEPT：CI 通过 |
 | T05 | 去重与发现关系 | 0 | T02,T04 | DONE | W1 | `task/T05-dedup-discovery-relations` | ACCEPT：CI 通过 |
 | T06 | 查询管理 API | 0 | T02,T03 | DONE | W1 | `task/T06-query-management-api` | ACCEPT：CI 通过 |
-| T07 | 小红书搜索采集 | 1 | T04,T05,T06 | IN_PROGRESS | W1 | `task/T07-xhs-search-collection` | 等待执行报告 |
-| T08 | 小红书详情采集 | 1 | T07 | TODO | 未分配 | - | 待验收 |
-| T09 | 小红书评论采集 | 1 | T08 | TODO | 未分配 | - | 待验收 |
-| T10 | 断点续传与部分成功 | 1 | T03,T07,T09 | TODO | 未分配 | - | 待验收 |
+| T07 | 小红书搜索采集 | 1 | T04,T05,T06 | DONE | W1 | `task/T07-xhs-search-collection` | ACCEPT：`84b47e4`，40 passed |
+| T08 | 小红书详情采集 | 1 | T07 | DONE | W1 | `task/T08-xhs-detail-collection` | ACCEPT：`e1d33fb`，45 passed |
+| T09 | 小红书评论采集 | 1 | T08 | DONE | W1 | `task/T09-xhs-comment-collection` | ACCEPT：`a76cb0d`，52 passed |
+| T10 | 断点续传与部分成功 | 1 | T03,T07,T09 | DONE | W1 | `task/T10-resume-partial-success` | ACCEPT：`3940496`，56 passed |
 | T11 | 高价值内容池 | 2 | T09,T10 | TODO | 未分配 | - | 待验收 |
 | T12 | 评论区动态预算 | 2 | T09,T11 | TODO | 未分配 | - | 待验收 |
 | T13 | 查询与来源评分 | 2 | T06,T11 | TODO | 未分配 | - | 待验收 |
@@ -124,13 +124,17 @@ gantt
 | 2026-07-01 | T04 PlatformAdapter 与 Mock | ACCEPT，GitHub CI 通过 | `orchestration/reports/T04.md` |
 | 2026-07-01 | T05 去重与发现关系 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T05.md` |
 | 2026-07-01 | T06 查询管理 API | ACCEPT，GitHub CI 通过 | `orchestration/reports/T06.md` |
+| 2026-07-02 | T07 小红书搜索采集 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T07.md` |
+| 2026-07-02 | T08 小红书详情采集 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T08.md` |
+| 2026-07-02 | T09 小红书评论采集 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T09.md` |
+| 2026-07-02 | T10 断点续传与部分成功 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T10.md` |
 
 ## 下一步
 
-1. 等待 T07 新独立执行对话 `019f1e8c-d772-7991-bfbb-e7b13b2b0f20` 提交 `orchestration/reports/T07.md`
-2. 主控验收 T07 代码差异和测试结果
-3. T07 ACCEPT 后合并并推送 GitHub
-4. T08、T09、T10 简报已准备；依赖满足后逐个新开独立执行对话派发
+1. 推送 T07-T10 分支和更新后的 `main` 到 GitHub
+2. 为 T11-T16 创建任务简报
+3. 按依赖顺序新开独立执行对话派发 T11、T12、T13、T14、T15、T16
+4. 每个任务完成后验收、合并、更新看板并推送
 
 
 ## 并发管理
@@ -138,12 +142,12 @@ gantt
 | 指标 | 当前值 |
 |---|---|
 | 默认 Worker 数 | 2 |
-| 当前启用 | W1、W2 |
+| 当前启用 | W1、W2 待机 |
 | 建议上限 | 3 |
 | 硬上限 | 4 |
 | 待验收上限 | 2 |
 | 当前待验收 | 0 |
-| 当前文件锁 | 4 |
+| 当前文件锁 | 0 |
 
 详细状态见：
 

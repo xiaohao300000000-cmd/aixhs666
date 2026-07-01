@@ -50,6 +50,8 @@ class CollectedContent:
     like_count: int
     comment_count: int
     collect_count: int
+    tags: tuple[str, ...] = ()
+    image_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
