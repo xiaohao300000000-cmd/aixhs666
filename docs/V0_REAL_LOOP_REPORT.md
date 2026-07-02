@@ -219,7 +219,47 @@ Environment blocker:
 
 ## V04: Real Feishu Integration
 
-Status: not started.
+Status: code implemented; real Feishu delivery not verified.
+
+Implementation completed:
+
+- Added `integrations/feishu/client.py` with environment-based settings, webhook transport, dry-run mode, timeout handling, retry handling, and masked secret errors.
+- Added `integrations/feishu/webhook.py` for interactive-card webhook body construction, delivery helper, callback token validation, and isolated signature validation helper.
+- Added `integrations/feishu/callbacks.py` for phrase review and signal alert callbacks.
+- Supported phrase review actions: `approve`, `reject`, `convert_to_query`.
+- Callback handling records database events and treats repeated callback IDs as idempotent duplicates.
+- `convert_to_query` creates a new active seed query sourced from `feishu_phrase_review`.
+- Added Feishu environment variables to `.env.example`.
+
+Automated tests executed:
+
+```bash
+.venv/bin/python -m pytest tests/test_feishu_transport_callbacks.py tests/test_feishu_phrase_review.py tests/test_signal_freshness_alerts.py -q
+```
+
+Result:
+
+```text
+18 passed in 0.47s
+```
+
+Full regression:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+145 passed, 2 skipped, 1 warning in 0.90s
+```
+
+Not yet verified:
+
+- Real Feishu webhook delivery, because no live Feishu credentials are configured.
+- Real Feishu callback receipt through a public callback endpoint.
+- Feishu production signature compatibility against a live callback request.
 
 ## V05: Database Dashboard Metrics
 
