@@ -115,13 +115,7 @@ class XiaohongshuBrowser:
                 except PlaywrightTimeoutError:
                     pass
                 if wait_response_marker and not any(wait_response_marker in item["url"] for item in json_payloads):
-                    try:
-                        page.wait_for_response(
-                            lambda response: wait_response_marker in response.url,
-                            timeout=self.config.page_timeout_ms,
-                        )
-                    except PlaywrightTimeoutError:
-                        pass
+                    _wait_for_captured_response(page, json_payloads, wait_response_marker, timeout_ms=self.config.page_timeout_ms)
             except PlaywrightTimeoutError as exc:
                 screenshot = self._save_screenshot(page, artifact_name)
                 raise PageTimeoutError(f"Xiaohongshu page timed out: {url}; screenshot={screenshot}") from exc
@@ -239,6 +233,20 @@ def _empty_to_none(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _wait_for_captured_response(
+    page: Page,
+    json_payloads: list[dict[str, Any]],
+    marker: str,
+    *,
+    timeout_ms: int,
+) -> None:
+    remaining_ms = max(timeout_ms, 0)
+    while remaining_ms > 0 and not any(marker in item["url"] for item in json_payloads):
+        wait_ms = min(250, remaining_ms)
+        page.wait_for_timeout(wait_ms)
+        remaining_ms -= wait_ms
 
 
 def _merge_capture_text(html: str, json_payloads: list[dict[str, Any]]) -> str:
