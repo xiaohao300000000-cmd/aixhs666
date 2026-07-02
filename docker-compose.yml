@@ -30,5 +30,30 @@ services:
       postgres:
         condition: service_healthy
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["python", "-m", "apps.worker"]
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-education_demand}:${POSTGRES_PASSWORD:-change_me}@postgres:5432/${POSTGRES_DB:-education_demand}
+      WORKER_ID: ${WORKER_ID:-worker-1}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-5}
+      WORKER_TASK_TIMEOUT_MINUTES: ${WORKER_TASK_TIMEOUT_MINUTES:-20}
+      WORKER_SNAPSHOT_ROOT: ${WORKER_SNAPSHOT_ROOT:-.runtime/storage-snapshots}
+      WORKER_ADAPTER: ${WORKER_ADAPTER:-xiaohongshu}
+      XHS_BROWSER_PROFILE_DIR: ${XHS_BROWSER_PROFILE_DIR:-.runtime/xhs-profile}
+      XHS_HEADLESS: ${XHS_HEADLESS:-true}
+      XHS_SNAPSHOT_DIR: ${XHS_SNAPSHOT_DIR:-.runtime/snapshots}
+      XHS_SCREENSHOT_DIR: ${XHS_SCREENSHOT_DIR:-.runtime/screenshots}
+      XHS_PAGE_TIMEOUT_MS: ${XHS_PAGE_TIMEOUT_MS:-30000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - worker_runtime:/app/.runtime
+
 volumes:
   postgres_data:
+  worker_runtime:

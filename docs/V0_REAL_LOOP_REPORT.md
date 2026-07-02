@@ -88,7 +88,59 @@ Not yet verified:
 
 ## V02: Worker Runtime Entry
 
-Status: not started.
+Status: code complete; real long-running PostgreSQL worker validation pending.
+
+Implemented:
+
+- Added `python -m apps.worker` via `apps/worker/__main__.py`.
+- Replaced scaffold `apps/worker/main.py` with a runnable `WorkerRunner`.
+- Worker initializes database sessions, loads either real Xiaohongshu or mock adapter, claims tasks, dispatches by type, commits results, and catches single-task exceptions without exiting.
+- Supported task dispatch for `search`, `collect_content`, `content_detail`, `comments`, `collect_comments`, `comment_collection`, `profile`, `collect_profile`, and `profile_collection`.
+- Added partial task resume for search and comments using saved cursors.
+- Added retry task handling through existing scheduler states.
+- Added timed-out running task recovery before each claim.
+- Added SIGINT and SIGTERM graceful stop hooks.
+- Added CLI options: `--once`, `--worker-id`, `--poll-interval`, `--task-timeout-minutes`, `--platform`, and `--snapshot-root`.
+- Added Worker service to `docker-compose.yml` using the same PostgreSQL service as the API.
+- Updated container build to install Playwright Chromium dependencies for the worker image.
+
+Verification:
+
+```bash
+.venv/bin/python -m pytest tests/test_worker_runtime.py tests/test_xhs_detail_collection.py -q
+```
+
+Result:
+
+```text
+11 passed in 0.26s
+```
+
+```bash
+DATABASE_URL="sqlite+pysqlite:////tmp/aixhs-worker-entry.sqlite" WORKER_ADAPTER=mock .venv/bin/python -m apps.worker --once --worker-id entry-test
+```
+
+Result:
+
+```text
+exit code 0
+```
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+136 passed, 1 skipped, 1 warning in 0.69s
+```
+
+Not yet verified:
+
+- Long-running Worker against PostgreSQL.
+- Two-worker PostgreSQL concurrent claiming. This belongs to V03.
+- Real Xiaohongshu browser collection through Worker.
 
 ## V03: Database Concurrency And Idempotency
 

@@ -11,7 +11,7 @@ from storage import ingest_content, ingest_profile, save_json_snapshot
 from storage.models import CollectionTask
 
 
-DETAIL_TASK_TYPE = "collect_content"
+DETAIL_TASK_TYPES = frozenset({"collect_content", "content_detail"})
 
 
 class DetailCollectionError(ValueError):
@@ -29,7 +29,7 @@ def run_next_detail_task(
     if task is None:
         return None
 
-    if task.task_type != DETAIL_TASK_TYPE:
+    if task.task_type not in DETAIL_TASK_TYPES:
         fail_task(session, task.id, error=f"unsupported task type: {task.task_type}")
         raise DetailCollectionError(f"unsupported task type: {task.task_type}")
 
@@ -78,7 +78,7 @@ def run_detail_task(
 def _validate_task(task: CollectionTask, *, adapter: PlatformAdapter) -> None:
     if task.status != TaskStatus.RUNNING.value:
         raise DetailCollectionError(f"detail task must be running, got {task.status}")
-    if task.task_type != DETAIL_TASK_TYPE:
+    if task.task_type not in DETAIL_TASK_TYPES:
         raise DetailCollectionError(f"unsupported task type: {task.task_type}")
     if task.platform != adapter.platform:
         raise DetailCollectionError(f"task platform {task.platform} does not match adapter platform {adapter.platform}")

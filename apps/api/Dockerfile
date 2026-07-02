@@ -16,7 +16,8 @@ COPY intelligence ./intelligence
 COPY integrations ./integrations
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir .
+    && python -m pip install --no-cache-dir . \
+    && python -m playwright install --with-deps chromium
 
 EXPOSE 8000
 
