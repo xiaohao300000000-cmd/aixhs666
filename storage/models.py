@@ -150,6 +150,20 @@ class CollectionTask(TimestampMixin, Base):
     query: Mapped[Query | None] = relationship(back_populates="collection_tasks")
 
 
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="idle", server_default="idle")
+    current_task_id: Mapped[int | None] = mapped_column(ForeignKey("collection_tasks.id", ondelete="SET NULL"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    failed_task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
 class Snapshot(Base):
     __tablename__ = "snapshots"
 

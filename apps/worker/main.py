@@ -8,7 +8,7 @@ import socket
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -22,7 +22,7 @@ from apps.worker.search_collection import SEARCH_TASK_TYPES, run_search_task
 from collectors import MediaCrawlerXiaohongshuAdapter, MockPlatformAdapter, PlatformAdapter, XiaohongshuAdapter
 from scheduler import TaskStatus, claim_next_task, fail_task, recover_timed_out_tasks
 from storage.database import SessionLocal
-from storage.models import CollectionTask
+from storage.models import CollectionTask, WorkerHeartbeat
 
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,7 @@ class WorkerRunner:
 
     def run_once(self) -> CollectionTask | None:
         with self.session_factory() as session:
+            self._heartbeat(session, status="idle", current_task_id=None)
             self._recover_timed_out_tasks(session)
             task = claim_next_task(session, worker_id=self.config.worker_id)
             if task is None:
@@ -106,17 +107,60 @@ class WorkerRunner:
                 session.commit()
                 return None
             try:
+                self._heartbeat(session, status="running", current_task_id=task.id)
                 result = self._dispatch(session, task)
+                self._heartbeat(session, status="idle", current_task_id=None, completed_delta=1)
                 session.commit()
                 return result
-            except Exception:
+            except Exception as exc:
                 logger.exception("collection task %s failed", task.id)
+                self._heartbeat(
+                    session,
+                    status="error",
+                    current_task_id=None,
+                    failed_delta=1,
+                    last_error=str(exc),
+                )
                 try:
                     session.commit()
                 except Exception:
                     session.rollback()
                     raise
                 return task
+
+    def _heartbeat(
+        self,
+        session: Session,
+        *,
+        status: str,
+        current_task_id: int | None,
+        completed_delta: int = 0,
+        failed_delta: int = 0,
+        last_error: str | None = None,
+    ) -> None:
+        now = datetime.now(UTC)
+        heartbeat = session.get(WorkerHeartbeat, self.config.worker_id)
+        if heartbeat is None:
+            heartbeat = WorkerHeartbeat(
+                worker_id=self.config.worker_id,
+                started_at=now,
+                completed_task_count=0,
+                failed_task_count=0,
+            )
+            session.add(heartbeat)
+        heartbeat.status = status
+        heartbeat.current_task_id = current_task_id
+        heartbeat.last_heartbeat_at = now
+        heartbeat.completed_task_count = (heartbeat.completed_task_count or 0) + completed_delta
+        heartbeat.failed_task_count = (heartbeat.failed_task_count or 0) + failed_delta
+        if last_error is not None:
+            heartbeat.last_error = last_error
+        heartbeat.metadata_json = {
+            "adapter": type(self.adapter).__name__,
+            "snapshot_root": str(self.config.snapshot_root),
+            "task_timeout_minutes": self.config.task_timeout_minutes,
+        }
+        session.flush()
 
     def _recover_timed_out_tasks(self, session: Session) -> None:
         recovered = recover_timed_out_tasks(
