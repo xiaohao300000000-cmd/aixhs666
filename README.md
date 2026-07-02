@@ -165,7 +165,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 
 ## 8. V0 真实数据闭环状态
 
-当前 `feat/v0-real-data-loop` 分支已补齐真实闭环的代码主干：
+当前 `main` 已包含真实闭环的代码主干：
 
 - Playwright 小红书 adapter：`collectors/xiaohongshu/`
 - 可选 MediaCrawler 小红书 adapter：`collectors/mediacrawler/`
@@ -175,7 +175,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 - 飞书 webhook transport、dry-run、重试、回调幂等处理
 - 数据库驱动看板：`GET /dashboard/summary`
 
-本机已验证：
+本机已自动测试：
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -184,7 +184,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-152 passed, 2 skipped, 1 warning
+157 passed, 2 skipped, 1 warning
 ```
 
 可选 MediaCrawler 后端：
@@ -202,12 +202,18 @@ python3.12 -m venv third_party/MediaCrawler/.venv
 third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt
 ```
 
-真实闭环仍需在具备以下条件的环境中执行：
+2026-07-02 本机 PostgreSQL 已验证：
 
-- Docker 或可用 PostgreSQL
-- `DATABASE_URL`
-- `POSTGRES_TEST_DATABASE_URL`
-- 小红书持久化浏览器 profile 和手动登录态
-- 飞书 Webhook 或应用凭证
+- `alembic upgrade head` 成功，当前 revision：`0004_worker_heartbeats`
+- `python -m scripts.check_runtime` 成功
+- `POSTGRES_TEST_DATABASE_URL=... pytest -m postgres -q` 成功，结果：`1 passed`
+- `/ops` 和 `GET /dashboard/summary` 可读取真实 PostgreSQL
+
+真实闭环尚未通过：
+
+- Docker 未安装，本机使用 Homebrew PostgreSQL
+- MediaCrawler 运行时等待小红书二维码登录，未取得真实搜索结果
+- live PostgreSQL 数据库已有 5 个真实教育关键词 search 任务，但帖子、评论、用户仍为 0
+- 真实飞书凭证未配置，仅完成 dry-run 和 mocked HTTP 测试
 
 在真实闭环通过前，不应把项目状态写成 100% 完成，也不应继续开发第二平台。

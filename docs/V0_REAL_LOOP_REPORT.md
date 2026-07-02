@@ -4,7 +4,27 @@ Last updated: 2026-07-02
 
 ## Current True Status
 
-The repository now contains V0 real-loop code for Xiaohongshu collection, worker execution, database idempotency, Feishu transport/callback handling, and database-backed dashboard metrics. The real external closed loop is not fully validated because this machine does not have Docker/PostgreSQL running, Feishu credentials, or a configured Xiaohongshu live login profile.
+The repository now contains V0 real-loop code for Xiaohongshu collection, worker execution, database idempotency, Feishu transport/callback handling, database-backed dashboard metrics, PostgreSQL runtime diagnostics, Worker heartbeats, and a native `/ops` HTML console.
+
+Validated on 2026-07-02:
+
+- Homebrew PostgreSQL at `localhost:5432` is reachable.
+- `alembic upgrade head` succeeded through revision `0004_worker_heartbeats`.
+- `python -m scripts.check_runtime` passed.
+- `POSTGRES_TEST_DATABASE_URL=... pytest -m postgres -q` passed with `1 passed`.
+- `pytest -q` passed with `157 passed, 2 skipped`.
+- `/ops`, `/ops/api/tasks`, `/ops/api/system`, and `GET /dashboard/summary` read the live PostgreSQL database.
+
+Not validated:
+
+- Docker Compose, because `docker` is not installed.
+- Real Xiaohongshu data collection, because MediaCrawler waits for QR login/CDP Chrome and no usable logged-in session is available.
+- Real Feishu delivery/callback, because credentials are not configured.
+- Long-running Worker, dedupe with real content, interrupted real collection resume, and 100+ real result acceptance.
+
+Live result file: `orchestration/e2e/live_postgres_result.json`.
+
+Current live PostgreSQL counts: 5 queries, 5 search tasks, 0 contents, 0 comments, 0 public profiles, 0 discovery relations, 0 snapshots, 1 retry, 4 pending. This is not a completed real closed loop.
 
 ## P0 Baseline
 

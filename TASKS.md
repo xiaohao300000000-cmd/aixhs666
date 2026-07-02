@@ -8,6 +8,18 @@
 
 - DONE
 
+## V0 真实闭环验收状态
+
+| 项目 | 状态 |
+|---|---|
+| 代码完成 | DONE：真实 adapter、Worker、PostgreSQL 幂等/并发、飞书 transport/callback、数据库看板、运行诊断、HTML 控制台 |
+| 自动测试通过 | DONE：`pytest -q` 为 157 passed, 2 skipped |
+| SQLite 验证通过 | DONE：默认测试覆盖 |
+| PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
+| 真实小红书验证通过 | BLOCKED：MediaCrawler 等待二维码登录/CDP Chrome，未采到真实内容 |
+| 真实飞书验证通过 | BLOCKED：未配置真实 Feishu 凭证 |
+| 完整闭环通过 | BLOCKED：真实采集和真实飞书未完成 |
+
 ## 全局执行规则
 
 - 只有主控会话可以修改任务状态

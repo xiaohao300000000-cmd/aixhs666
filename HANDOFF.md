@@ -2,11 +2,11 @@
 
 ## 当前阶段
 
-V0 真实数据闭环修正正在 `feat/v0-real-data-loop` 分支进行。V01-V05 代码已完成并通过本地自动测试；V06 真实闭环验收因本机缺少 Docker/PostgreSQL、飞书凭证和小红书 live 登录配置而阻塞。
+V0 真实数据闭环修正已进入 `main`。代码侧继续补齐了 PostgreSQL 运行诊断、Worker 心跳和原生 HTML 运维控制台；真实 PostgreSQL migration、诊断和 PostgreSQL 并发测试已在本机执行通过。完整真实闭环仍因小红书登录态/MediaCrawler CDP 浏览器和飞书凭证阻塞。
 
 ## 当前目标
 
-当前目标是把 V0 真实数据闭环跑到外部真实验证。代码侧已具备真实小红书 adapter、Worker、数据库并发/幂等修复、飞书传输/回调和数据库看板。下一步必须在具备 Docker/PostgreSQL、Feishu 凭证、小红书登录态的环境中执行 V06。
+当前目标是把 V0 真实数据闭环跑到外部真实验证。代码侧已具备真实小红书 adapter、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断和 `/ops` 控制台。下一步必须提供可用的小红书登录态或 CDP Chrome，并配置 Feishu 凭证后继续执行 live 验收。
 
 ## 已确认范围
 
@@ -17,24 +17,23 @@ V0 真实数据闭环修正正在 `feat/v0-real-data-loop` 分支进行。V01-V0
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 安装/启动 Docker 或提供可用 PostgreSQL。
-2. 设置 `DATABASE_URL` 和 `POSTGRES_TEST_DATABASE_URL`。
-3. 配置小红书持久化浏览器 profile 并手动登录。
-4. 配置飞书 Webhook 或应用凭证。
-5. 执行 `docs/V0_REAL_LOOP_REPORT.md` 中 V06 未完成的真实闭环验收。
+1. 启动带 remote debugging 的 Chrome（默认 `localhost:9222`）或完成 MediaCrawler 可复用登录态。
+2. 重新执行 `WORKER_ADAPTER=mediacrawler python -m apps.worker --once`，跑完 5 个 search 任务并生成真实内容。
+3. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
+4. 复跑去重、并发 Worker、断点恢复和长期运行验收。
+5. 更新 `orchestration/e2e/live_postgres_result.json` 和 `docs/V0_REAL_LOOP_REPORT.md`。
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
 ## 当前已知风险
 
 - 真实小红书页面结构和登录态尚未验证
-- 本机无法执行 `docker compose up`
-- 本机 PostgreSQL `localhost:5432` 未运行
-- PostgreSQL 并发测试尚未真实执行
+- Docker 未安装，当前使用本机 Homebrew PostgreSQL
+- MediaCrawler 当前等待小红书二维码登录，未采到真实数据
 - 飞书真实发送和真实回调尚未验证
-- 数据库看板尚未读取 live PostgreSQL 采集数据
+- `pytest -m live` 因未启用 live 登录环境仍为 skipped
 
-这些风险直接影响 V06 真实闭环验收，不能把当前状态写成 100% 完成。
+这些风险直接影响 V0 完整真实闭环验收，不能把当前状态写成 100% 完成。
 
 
 ## 新电脑与并发计划
