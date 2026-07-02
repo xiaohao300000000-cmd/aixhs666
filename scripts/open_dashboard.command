@@ -4,7 +4,10 @@ set -e
 PROJECT_DIR="/Users/xiaohao30000/aixhs666"
 PORT="${AIXHS_DASHBOARD_PORT:-8017}"
 PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
+PYTHON312_BIN="${PYTHON312_BIN:-python3.12}"
 MEDIACRAWLER_PYTHON="$PROJECT_DIR/third_party/MediaCrawler/.venv/bin/python"
+MEDIACRAWLER_HOME="$PROJECT_DIR/third_party/MediaCrawler"
+MEDIACRAWLER_PROFILE_DIR="$MEDIACRAWLER_HOME/browser_data/cdp_aixhs_xhs_user_data_dir"
 LOG_DIR="$PROJECT_DIR/.runtime"
 LOG_FILE="$LOG_DIR/dashboard.log"
 
@@ -22,9 +25,25 @@ export DATABASE_URL="${DATABASE_URL:-postgresql+psycopg://education_demand:chang
 export WORKER_ADAPTER="${WORKER_ADAPTER:-mediacrawler}"
 export OPS_TOKEN="${OPS_TOKEN:-secret}"
 
-if [ "$WORKER_ADAPTER" = "mediacrawler" ] && [ ! -x "$MEDIACRAWLER_PYTHON" ]; then
-  echo "提示：未找到 MediaCrawler Python，页面仍会打开，但真实采集前需要安装依赖："
-  echo "$MEDIACRAWLER_PYTHON"
+if [ "$WORKER_ADAPTER" = "mediacrawler" ]; then
+  if [ ! -f "$MEDIACRAWLER_HOME/main.py" ]; then
+    echo "未找到 MediaCrawler 主程序：$MEDIACRAWLER_HOME/main.py"
+    read "?按回车退出..."
+    exit 1
+  fi
+
+  if [ ! -x "$MEDIACRAWLER_PYTHON" ]; then
+    echo "首次运行：正在为 MediaCrawler 创建运行环境..."
+    "$PYTHON312_BIN" -m venv "$MEDIACRAWLER_HOME/.venv"
+    echo "正在安装 MediaCrawler 依赖，首次可能需要几分钟..."
+    "$MEDIACRAWLER_HOME/.venv/bin/pip" install -r "$MEDIACRAWLER_HOME/requirements.txt"
+  fi
+
+  if [ ! -d "$MEDIACRAWLER_PROFILE_DIR" ]; then
+    echo "未检测到小红书持久登录态，将启动登录流程。"
+    echo "请在弹出的浏览器中扫码登录。登录完成后脚本会继续。"
+    "$PYTHON_BIN" -m scripts.mediacrawler_login
+  fi
 fi
 
 echo "正在检查数据库并执行迁移..."
@@ -72,12 +91,8 @@ echo ""
 echo "看板已打开。页面右上角 OPS_TOKEN 输入：$OPS_TOKEN"
 echo "当前采集模式：$WORKER_ADAPTER"
 echo "当前数据库：$DATABASE_URL"
-if [ "$WORKER_ADAPTER" = "mediacrawler" ] && [ ! -x "$MEDIACRAWLER_PYTHON" ]; then
-  echo "真实采集依赖未安装。安装命令："
-  echo "python3.12 -m venv third_party/MediaCrawler/.venv"
-  echo "third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt"
-  echo "python -m scripts.mediacrawler_login"
-fi
+echo "MediaCrawler 环境：$MEDIACRAWLER_PYTHON"
+echo "小红书登录态目录：$MEDIACRAWLER_PROFILE_DIR"
 echo "服务日志：$LOG_FILE"
 echo "关闭服务可执行：kill \$(cat $LOG_DIR/dashboard.pid)"
 echo ""
