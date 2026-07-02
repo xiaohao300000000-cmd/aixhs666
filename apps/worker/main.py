@@ -19,7 +19,7 @@ from apps.worker.detail_collection import DETAIL_TASK_TYPES, run_detail_task
 from apps.worker.profile_collection import PROFILE_TASK_TYPES, run_profile_task
 from apps.worker.resume import start_partial_task
 from apps.worker.search_collection import SEARCH_TASK_TYPES, run_search_task
-from collectors import MockPlatformAdapter, PlatformAdapter, XiaohongshuAdapter
+from collectors import MediaCrawlerXiaohongshuAdapter, MockPlatformAdapter, PlatformAdapter, XiaohongshuAdapter
 from scheduler import TaskStatus, claim_next_task, fail_task, recover_timed_out_tasks
 from storage.database import SessionLocal
 from storage.models import CollectionTask
@@ -184,6 +184,10 @@ def load_adapter(platform: str) -> PlatformAdapter:
         return MockPlatformAdapter(platform=platform)
     if platform != "xhs":
         raise ValueError(f"unsupported platform for real adapter: {platform}")
+    if adapter_name in {"mediacrawler", "media_crawler"}:
+        return MediaCrawlerXiaohongshuAdapter()
+    if adapter_name not in {"xiaohongshu", "xhs", "playwright"}:
+        raise ValueError(f"unsupported WORKER_ADAPTER: {adapter_name}")
     return XiaohongshuAdapter()
 
 

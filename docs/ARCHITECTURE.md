@@ -157,7 +157,11 @@ class PlatformAdapter(Protocol):
     async def check_updates(self, content_id: str, last_cursor: str | None = None): ...
 ```
 
-平台适配器只负责返回统一数据对象。
+平台适配器只负责返回统一数据对象。当前 V0 有三个实现路径：
+
+- `MockPlatformAdapter`：测试和离线流程使用。
+- `XiaohongshuAdapter`：默认真实小红书 Playwright 页面/公开响应采集路径。
+- `MediaCrawlerXiaohongshuAdapter`：可选后端，通过 `WORKER_ADAPTER=mediacrawler` 启用，运行本机 MediaCrawler clone 并把 JSONL 输出转换为统一数据对象。
 
 ## 5. 渐进式采集
 

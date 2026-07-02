@@ -168,6 +168,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 当前 `feat/v0-real-data-loop` 分支已补齐真实闭环的代码主干：
 
 - Playwright 小红书 adapter：`collectors/xiaohongshu/`
+- 可选 MediaCrawler 小红书 adapter：`collectors/mediacrawler/`
 - Worker 入口：`python -m apps.worker`
 - PostgreSQL 安全任务领取：`FOR UPDATE SKIP LOCKED`
 - `discovery_relations(query_id, content_id)` 唯一约束与 upsert
@@ -183,8 +184,16 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-147 passed, 2 skipped, 1 warning
+152 passed, 2 skipped, 1 warning
 ```
+
+可选 MediaCrawler 后端：
+
+```bash
+WORKER_ADAPTER=mediacrawler python -m apps.worker --once
+```
+
+该后端通过 `MEDIACRAWLER_HOME` 指向本机 MediaCrawler clone，运行其小红书 search 模式并读取 JSONL 输出。MediaCrawler 一次 search 会同时补详情和评论，适配层会缓存这些输出，后续 detail/comment 任务优先复用缓存。该路径依赖 MediaCrawler 自身登录态和实现方式，不替代默认 Playwright adapter。
 
 真实闭环仍需在具备以下条件的环境中执行：
 

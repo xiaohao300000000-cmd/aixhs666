@@ -406,6 +406,44 @@ Code fixes made from the live run:
 - Supported real `/api/sns/web/v2/search/notes` item wrappers where note ID is outside `note_card`.
 - Waited explicitly for the search notes response before snapshotting.
 
+Optional MediaCrawler backend added after live comparison:
+
+```bash
+WORKER_ADAPTER=mediacrawler python -m apps.worker --once
+```
+
+The adapter lives in `collectors/mediacrawler/` and runs a local MediaCrawler clone via `MEDIACRAWLER_HOME`.
+It reads MediaCrawler JSONL outputs and maps them into the existing `PlatformAdapter` objects.
+MediaCrawler search mode fetches search results, note details, and optional comments in one subprocess run, so the adapter caches the outputs for later detail/comment tasks.
+Sensitive `xsec_token` and cookie-like values are redacted from adapter logs, and normalized note URLs do not include `xsec_token`.
+
+Local comparison run on 2026-07-02:
+
+```text
+keyword: KET 没过怎么办
+MediaCrawler output: 20 notes, 60 first-level comments
+runtime: 136.66 seconds
+content completeness: all core fields present; tag_list present on 16/20 notes
+comment completeness: all core first-level comment fields present
+```
+
+Adapter integration smoke after wiring `collectors/mediacrawler/`:
+
+```text
+MEDIACRAWLER_GET_COMMENTS=false adapter.search("KET 没过怎么办", limit=20)
+result: 20 search items returned
+first item: 6a37587e00000000210080ee / 我的口语有救了‼️ / 87 comments
+```
+
+Cached conversion verification using the full MediaCrawler run:
+
+```text
+cached detail: 6a37587e00000000210080ee, body present, 9 tags, 1 image URL
+cached comments: 3 comments returned for first note
+```
+
+Important boundary: this backend depends on MediaCrawler's own implementation and local login state. It is optional and does not change the default `WORKER_ADAPTER=xiaohongshu` path.
+
 ```bash
 .venv/bin/python -m pytest -m postgres -q
 ```

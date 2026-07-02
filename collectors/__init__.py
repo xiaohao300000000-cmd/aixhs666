@@ -11,6 +11,7 @@ from collectors.base import (
     SearchPage,
 )
 from collectors.mock import MockPlatformAdapter
+from collectors.mediacrawler import MediaCrawlerConfig, MediaCrawlerXiaohongshuAdapter
 from collectors.xiaohongshu import XiaohongshuAdapter
 
 __all__ = [
@@ -19,6 +20,8 @@ __all__ = [
     "CollectedProfile",
     "CollectedSearchResult",
     "CommentPage",
+    "MediaCrawlerConfig",
+    "MediaCrawlerXiaohongshuAdapter",
     "MockPlatformAdapter",
     "PageCursor",
     "PlatformAdapter",
