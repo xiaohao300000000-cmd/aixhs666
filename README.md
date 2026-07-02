@@ -184,7 +184,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-157 passed, 2 skipped, 1 warning
+163 passed, 2 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -217,6 +217,32 @@ python -m scripts.mediacrawler_login
 python3.12 -m venv third_party/MediaCrawler/.venv
 third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt
 ```
+
+## 9. Agent 中立运行框架
+
+当前分支新增轻量 Pipeline Runner，把已有采集、入库、文本处理、需求事件、聚类/新词、查询评分和内容洞察接为一条框架主流程。框架不依赖 Codex、OpenClaw、Hermes 或任何具体大模型 API；任意 Agent 只要能调用 Shell 或 HTTP，就能读取状态、启动一轮流程、查看结果并恢复失败运行。
+
+核心入口：
+
+```bash
+python -m apps.cli --json status
+python -m apps.cli --json run-cycle --query-id 12 --collection-limit 20
+python -m apps.cli --json run-cycle --all-enabled --skip-analysis
+python -m apps.cli --json run-status 1
+python -m apps.cli --json retry-run 1
+python -m apps.cli --json insights --latest
+```
+
+REST 入口：
+
+- `GET /ops/api/runtime/status`
+- `POST /ops/api/pipeline/runs`
+- `GET /ops/api/pipeline/runs/{run_id}`
+- `POST /ops/api/pipeline/runs/{run_id}/retry`
+- `POST /ops/api/pipeline/runs/{run_id}/cancel`
+- `GET /ops/api/insights/latest`
+
+运行状态持久化在 `pipeline_runs`，包含 `status`、`request_data`、`progress_data`、`result_data`、`started_at`、`finished_at`、`error_message` 和可选 `idempotency_key`。详细接口见 `docs/AGENT_INTERFACE.md`，本次真实调用链审计与验证状态见 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md`。
 
 2026-07-02 本机 PostgreSQL 和小红书真实采集已验证：
 

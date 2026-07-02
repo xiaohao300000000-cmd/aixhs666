@@ -185,3 +185,22 @@ class CollectionEvent(Base):
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     event_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+    __table_args__ = (
+        Index("ix_pipeline_runs_status_started_at", "status", "started_at"),
+        UniqueConstraint("idempotency_key", name="uq_pipeline_runs_idempotency_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", server_default="pending")
+    requested_by: Mapped[str | None] = mapped_column(String(100))
+    request_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    progress_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    result_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))

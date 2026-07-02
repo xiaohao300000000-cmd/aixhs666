@@ -2,11 +2,11 @@
 
 ## 当前阶段
 
-V0 真实数据闭环修正已进入 `main`。主采集器已固定为 MediaCrawler，默认使用自启动 CDP 持久浏览器 profile，首次扫码后复用登录态。真实 PostgreSQL migration、诊断、PostgreSQL 并发测试和小红书 live 采集已在本机执行通过。完整生产闭环仍因真实飞书凭证和长期无人值守验证未完成而不能写成 100%。
+V15 Agent 中立运行框架已在 `feat/v15-agent-neutral-runtime` 接通。新增轻量 `PipelineRunner`、`pipeline_runs` 持久化、CLI 和 REST，使框架可以在不依赖 Codex 会话记忆的情况下完成一轮基础采集与分析。完整生产闭环仍因真实小红书 Pipeline Runner 小规模验证、真实飞书凭证和长期无人值守验证未完成而不能写成 100%。
 
 ## 当前目标
 
-当前目标是从“小规模试运行可用”推进到“完整生产闭环”。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断和 `/ops` 控制台。下一步必须配置 Feishu 凭证并执行真实发送/回调验收，然后做长时间运行观察。
+当前目标是从“模块可用”推进到“Agent 中立完整运行闭环”。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断、`/ops` 控制台，以及 Pipeline Runner。下一步必须在真实 MediaCrawler 依赖和登录态可用后执行一次小规模 `run-cycle` 验证，再配置 Feishu 凭证并执行真实发送/回调验收。
 
 ## 已确认范围
 
@@ -17,16 +17,18 @@ V0 真实数据闭环修正已进入 `main`。主采集器已固定为 MediaCraw
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
-2. 运行 Worker 4-8 小时，观察登录态、限流、内存和任务状态。
-3. 保持 `/ops` API 启动，使用控制台做人工重试/取消/恢复。
-4. 定期更新 `orchestration/e2e/live_postgres_result.json` 和 `docs/V0_REAL_LOOP_REPORT.md`。
+1. 安装/确认 `third_party/MediaCrawler/.venv` 和持久登录态。
+2. 使用 `python -m apps.cli --json run-cycle --query-id <id> --collection-limit 5` 执行真实小红书 Pipeline Runner 验证。
+3. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
+4. 运行 Worker 或 Pipeline 小规模长期观察，记录登录态、限流、内存和任务状态。
+5. 更新 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` 的真实验证结果。
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
 ## 当前已知风险
 
 - 真实小红书页面结构已验证一次，但后续仍可能变化
+- 当前最新副本未包含可用 `third_party/MediaCrawler/.venv`，真实 Pipeline Runner 验证未完成
 - Docker 未安装，当前使用本机 Homebrew PostgreSQL
 - 飞书真实发送和真实回调尚未验证
 - `pytest -m live` 因未启用 live 登录环境仍为 skipped

@@ -32,6 +32,7 @@ include = [
     "storage*",
     "intelligence*",
     "integrations*",
+    "services*",
 ]
 
 [tool.pytest.ini_options]

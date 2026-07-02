@@ -16,11 +16,11 @@
 | 项目 | 当前值 |
 |---|---|
 | 当前阶段 | V0 真实数据闭环修正 |
-| 当前主任务 | V0 小规模试运行：PostgreSQL/控制台/小红书 live 采集已验证，飞书真实凭证和长期运行待验证 |
+| 当前主任务 | V15 Agent 中立运行框架：Pipeline Runner/CLI/REST/运行状态已接通，真实 Pipeline 小规模验证、飞书真实凭证和长期运行待验证 |
 | 执行会话 | 主控单会话 |
-| 当前分支 | `main` |
-| 阻塞数量 | 2 |
-| 最后更新 | 2026-07-02：PostgreSQL migration/runtime check/postgres test 通过；`/ops` 控制台完成；MediaCrawler 持久登录态完成；live DB 已有 114 内容、309 评论、403 用户；Feishu 真实凭证未配置 |
+| 当前分支 | `feat/v15-agent-neutral-runtime` |
+| 阻塞数量 | 3 |
+| 最后更新 | 2026-07-03：新增 Agent 中立 Pipeline Runner、`pipeline_runs`、CLI、REST 和文档；`pytest -q` 163 passed, 2 skipped；真实 Pipeline Runner 小规模验证因当前副本未发现 MediaCrawler `.venv`/可见登录态未完成 |
 
 ## 阶段进度
 
@@ -115,11 +115,13 @@ gantt
 | V0-B1 | Docker 未安装，Compose 不可用；当前使用 Homebrew PostgreSQL | Docker 环境复现 | 用户/环境 | 已记录替代环境 |
 | V0-B2 | 未配置飞书凭证 | 真实飞书发送与回调验证 | 用户/环境 | 待配置 |
 | V0-B3 | 未完成 4-8 小时长期运行 | 稳定性验收 | 主控/环境 | 待执行 |
+| V15-B1 | 当前副本未发现 MediaCrawler `.venv` 和可见持久登录态 | 真实 Pipeline Runner 小规模验证 | 主控/环境 | 待安装/确认 |
 
 ## 最近完成
 
 | 日期 | 任务 | 结果 | 报告 |
 |---|---|---|---|
+| 2026-07-03 | V15 Agent 中立运行框架 | Pipeline Runner/CLI/REST/运行状态接通；自动测试通过；真实平台验证未完成 | `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` |
 | 2026-07-01 | T01 仓库骨架 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T01.md` |
 | 2026-07-01 | T02 核心数据模型 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T02.md` |
 | 2026-07-01 | T03 任务状态机 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T03.md` |

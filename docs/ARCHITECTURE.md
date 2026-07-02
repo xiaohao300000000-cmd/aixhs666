@@ -145,6 +145,25 @@
 
 负责消费任务并执行采集或分析。
 
+### services/pipeline_runner.py
+
+负责 Agent 中立的完整运行闭环。它不是独立 Coordinator 微服务，也不引入 Kafka、Celery、Temporal 或 Redis 队列；它只在现有模块之上提供一个轻量服务层：
+
+```text
+选择查询
+→ 创建/复用采集任务语义
+→ 执行搜索采集
+→ 详情、评论、用户入库
+→ 文本处理
+→ 需求事件链
+→ 聚类和新词发现
+→ 查询评分
+→ 内容洞察
+→ pipeline_runs 结构化结果
+```
+
+框架执行层负责确定性流程、状态持久化、幂等和结构化结果。AI 策略层只通过 CLI 或 REST 读取状态、选择查询、调整预算、批准候选查询和解释结果，不负责保存唯一状态或手动连接模块。
+
 ## 4. 平台适配器接口
 
 ```python
@@ -162,6 +181,8 @@ class PlatformAdapter(Protocol):
 - `MockPlatformAdapter`：测试和离线流程使用。
 - `XiaohongshuAdapter`：默认真实小红书 Playwright 页面/公开响应采集路径。
 - `MediaCrawlerXiaohongshuAdapter`：可选后端，通过 `WORKER_ADAPTER=mediacrawler` 启用，运行项目内 `third_party/MediaCrawler` 并把 JSONL 输出转换为统一数据对象。
+
+注意：MediaCrawler 的 search 模式会在一次平台访问中生成内容详情和评论 JSONL。Pipeline Runner 后续 detail/comment 阶段优先通过同一 adapter 缓存读取这些结果，不为了流程形式再次访问小红书。
 
 ## 5. 渐进式采集
 

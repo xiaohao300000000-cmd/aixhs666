@@ -9,9 +9,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query as QueryPar
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from apps.api.dashboard_metrics import build_database_dashboard_response
+from apps.worker.main import load_adapter
 from collectors.mediacrawler.adapter import MediaCrawlerConfig
 from collectors.xiaohongshu.browser import XiaohongshuBrowserConfig
 from scheduler import (
@@ -34,6 +35,7 @@ from storage.models import (
     Snapshot,
     WorkerHeartbeat,
 )
+from services.pipeline_runner import PipelineRunError, PipelineRunner
 
 router = APIRouter(prefix="/ops/api", tags=["ops"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -62,6 +64,16 @@ class QueryCreatePayload(BaseModel):
 
 class QueryPriorityPayload(BaseModel):
     priority: int
+
+
+class PipelineRunCreatePayload(BaseModel):
+    query_ids: list[int] = Field(default_factory=list)
+    all_enabled: bool = False
+    collection_limit: int = Field(default=20, ge=1, le=200)
+    skip_analysis: bool = False
+    dry_run: bool = False
+    requested_by: str = "rest"
+    idempotency_key: str | None = None
 
 
 def _utc_now() -> datetime:
@@ -113,6 +125,56 @@ def system_status(session: SessionDep) -> dict[str, Any]:
         "latest_failed_collection_at": latest_failure.isoformat() if latest_failure else None,
         "dashboard": dashboard,
     }
+
+
+@router.get("/runtime/status")
+def runtime_status(session: SessionDep) -> dict[str, Any]:
+    return _pipeline_runner(session).status()
+
+
+@router.post("/pipeline/runs")
+def create_pipeline_run(payload: PipelineRunCreatePayload, session: SessionDep, _: WriteAuth) -> dict[str, Any]:
+    try:
+        return _pipeline_runner(session).run_cycle(
+            query_ids=payload.query_ids or None,
+            all_enabled=payload.all_enabled,
+            collection_limit=payload.collection_limit,
+            skip_analysis=payload.skip_analysis,
+            dry_run=payload.dry_run,
+            requested_by=payload.requested_by,
+            idempotency_key=payload.idempotency_key,
+        )
+    except PipelineRunError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/pipeline/runs/{run_id}")
+def get_pipeline_run(run_id: int, session: SessionDep) -> dict[str, Any]:
+    try:
+        return _pipeline_runner(session).get_run(run_id)
+    except PipelineRunError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/pipeline/runs/{run_id}/retry")
+def retry_pipeline_run(run_id: int, session: SessionDep, _: WriteAuth) -> dict[str, Any]:
+    try:
+        return _pipeline_runner(session).retry_run(run_id, requested_by="rest-retry")
+    except PipelineRunError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/pipeline/runs/{run_id}/cancel")
+def cancel_pipeline_run(run_id: int, session: SessionDep, _: WriteAuth) -> dict[str, Any]:
+    try:
+        return _pipeline_runner(session).cancel_run(run_id)
+    except PipelineRunError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/insights/latest")
+def latest_pipeline_insights(session: SessionDep) -> dict[str, Any]:
+    return _pipeline_runner(session).latest_insights()
 
 
 @router.get("/workers")
@@ -596,3 +658,8 @@ def _mask_contact(value: str) -> str:
     if len(value) <= 4:
         return "*" * len(value)
     return f"{value[:2]}***{value[-2:]}"
+
+
+def _pipeline_runner(session: Session) -> PipelineRunner:
+    factory = sessionmaker(bind=session.get_bind(), autoflush=False, autocommit=False, expire_on_commit=False)
+    return PipelineRunner(session_factory=factory, adapter_factory=lambda: load_adapter("xhs"))
