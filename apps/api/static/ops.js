@@ -242,7 +242,7 @@ async function runPipeline(event) {
 async function ensureRunnableQuery() {
   const data = await getJson("/ops/api/queries");
   if ((data.items || []).some((item) => item.status === "active")) return;
-  await postJson("/ops/api/queries", { query_text: "admissions", priority: 100 });
+  await postJson("/ops/api/queries", { query_text: "KET PET 二刷", priority: 100 });
 }
 
 async function handleActionClick(event) {

@@ -4,6 +4,7 @@ set -e
 PROJECT_DIR="/Users/xiaohao30000/aixhs666"
 PORT="${AIXHS_DASHBOARD_PORT:-8017}"
 PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
+MEDIACRAWLER_PYTHON="$PROJECT_DIR/third_party/MediaCrawler/.venv/bin/python"
 LOG_DIR="$PROJECT_DIR/.runtime"
 LOG_FILE="$LOG_DIR/dashboard.log"
 
@@ -17,37 +18,37 @@ if [ ! -x "$PYTHON_BIN" ]; then
   exit 1
 fi
 
-export DATABASE_URL="${DATABASE_URL:-sqlite+pysqlite:////tmp/aixhs-dashboard.db}"
-export WORKER_ADAPTER="${WORKER_ADAPTER:-mock}"
+export DATABASE_URL="${DATABASE_URL:-postgresql+psycopg://education_demand:change_me@localhost:5432/education_demand}"
+export WORKER_ADAPTER="${WORKER_ADAPTER:-mediacrawler}"
 export OPS_TOKEN="${OPS_TOKEN:-secret}"
 
-"$PYTHON_BIN" - <<'PY'
-import storage.models  # noqa: F401
-from sqlalchemy import select, func
-from storage.database import Base, engine
-from storage.models import Query
-from sqlalchemy.orm import sessionmaker
+if [ "$WORKER_ADAPTER" = "mediacrawler" ] && [ ! -x "$MEDIACRAWLER_PYTHON" ]; then
+  echo "当前已切换为真实采集模式，但未找到 MediaCrawler Python："
+  echo "$MEDIACRAWLER_PYTHON"
+  echo ""
+  echo "请先安装真实采集依赖："
+  echo "python3.12 -m venv third_party/MediaCrawler/.venv"
+  echo "third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt"
+  echo "python -m scripts.mediacrawler_login"
+  echo ""
+  read "?按回车退出..."
+  exit 1
+fi
 
-Base.metadata.create_all(engine)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
-with SessionLocal() as session:
-    query_count = session.scalar(select(func.count(Query.id))) or 0
-    if query_count == 0:
-        session.add(
-            Query(
-                query_text="admissions",
-                platform="xhs",
-                query_type="seed",
-                status="active",
-                priority=100,
-                source="dashboard_demo",
-            )
-        )
-        session.commit()
-PY
+echo "正在检查真实数据库并执行迁移..."
+"$PYTHON_BIN" -m alembic upgrade head
+
+if [ -f "$LOG_DIR/dashboard.pid" ]; then
+  OLD_PID="$(cat "$LOG_DIR/dashboard.pid")"
+  if kill -0 "$OLD_PID" >/dev/null 2>&1; then
+    echo "正在停止旧的看板服务：$OLD_PID"
+    kill "$OLD_PID" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+fi
 
 if ! lsof -iTCP:"$PORT" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
-  echo "正在启动 AIXHS 看板服务：http://127.0.0.1:$PORT/ops"
+  echo "正在启动 AIXHS 真实看板服务：http://127.0.0.1:$PORT/ops"
   nohup "$PYTHON_BIN" -m uvicorn apps.api.main:app --host 127.0.0.1 --port "$PORT" > "$LOG_FILE" 2>&1 &
   echo $! > "$LOG_DIR/dashboard.pid"
   sleep 2
@@ -59,6 +60,8 @@ open "http://127.0.0.1:$PORT/ops"
 
 echo ""
 echo "看板已打开。页面右上角 OPS_TOKEN 输入：$OPS_TOKEN"
+echo "当前采集模式：$WORKER_ADAPTER"
+echo "当前数据库：$DATABASE_URL"
 echo "服务日志：$LOG_FILE"
 echo "关闭服务可执行：kill \$(cat $LOG_DIR/dashboard.pid)"
 echo ""
