@@ -30,6 +30,7 @@ class XiaohongshuBrowserConfig:
     screenshot_dir: Path
     page_timeout_ms: int
     manual_login_timeout_ms: int
+    proxy_server: str | None
 
     @classmethod
     def from_env(cls) -> "XiaohongshuBrowserConfig":
@@ -40,6 +41,7 @@ class XiaohongshuBrowserConfig:
             screenshot_dir=Path(os.getenv("XHS_SCREENSHOT_DIR", ".runtime/screenshots")),
             page_timeout_ms=int(os.getenv("XHS_PAGE_TIMEOUT_MS", "30000")),
             manual_login_timeout_ms=int(os.getenv("XHS_MANUAL_LOGIN_TIMEOUT_MS", "120000")),
+            proxy_server=_empty_to_none(os.getenv("XHS_PROXY_SERVER")),
         )
 
 
@@ -62,7 +64,12 @@ class XiaohongshuBrowser:
         if cursor:
             params["cursor"] = cursor
         url = f"{selectors.SEARCH_URL}?{urlencode(params)}"
-        return self._goto_and_capture(url, artifact_name=f"search-{_safe_name(query_text)}", scroll_limit=2)
+        return self._goto_and_capture(
+            url,
+            artifact_name=f"search-{_safe_name(query_text)}",
+            scroll_limit=2,
+            wait_response_marker="/api/sns/web/v2/search/notes",
+        )
 
     def fetch_content_page(self, platform_content_id: str) -> BrowserCapture:
         url = selectors.CONTENT_URL_TEMPLATE.format(platform_content_id=platform_content_id)
@@ -77,7 +84,14 @@ class XiaohongshuBrowser:
         url = selectors.PROFILE_URL_TEMPLATE.format(platform_user_id=platform_user_id)
         return self._goto_and_capture(url, artifact_name=f"profile-{_safe_name(platform_user_id)}", scroll_limit=1)
 
-    def _goto_and_capture(self, url: str, *, artifact_name: str, scroll_limit: int) -> BrowserCapture:
+    def _goto_and_capture(
+        self,
+        url: str,
+        *,
+        artifact_name: str,
+        scroll_limit: int,
+        wait_response_marker: str | None = None,
+    ) -> BrowserCapture:
         page = self._new_page()
         json_payloads: list[dict[str, Any]] = []
 
@@ -96,7 +110,18 @@ class XiaohongshuBrowser:
         try:
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=self.config.page_timeout_ms)
-                page.wait_for_load_state("networkidle", timeout=min(self.config.page_timeout_ms, 10000))
+                try:
+                    page.wait_for_load_state("networkidle", timeout=min(self.config.page_timeout_ms, 10000))
+                except PlaywrightTimeoutError:
+                    pass
+                if wait_response_marker and not any(wait_response_marker in item["url"] for item in json_payloads):
+                    try:
+                        page.wait_for_response(
+                            lambda response: wait_response_marker in response.url,
+                            timeout=self.config.page_timeout_ms,
+                        )
+                    except PlaywrightTimeoutError:
+                        pass
             except PlaywrightTimeoutError as exc:
                 screenshot = self._save_screenshot(page, artifact_name)
                 raise PageTimeoutError(f"Xiaohongshu page timed out: {url}; screenshot={screenshot}") from exc
@@ -144,6 +169,7 @@ class XiaohongshuBrowser:
             headless=self.config.headless,
             viewport={"width": 1440, "height": 1000},
             locale="zh-CN",
+            proxy={"server": self.config.proxy_server} if self.config.proxy_server else None,
         )
         return self._context
 
@@ -192,7 +218,12 @@ class XiaohongshuBrowser:
     def _save_screenshot(self, page: Page, artifact_name: str) -> Path:
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = self.config.screenshot_dir / f"{artifact_name}.png"
-        page.screenshot(path=str(screenshot_path), full_page=True)
+        try:
+            page.screenshot(path=str(screenshot_path), full_page=True, timeout=5000)
+        except Exception as exc:
+            fallback_path = self.config.screenshot_dir / f"{artifact_name}.screenshot-error.txt"
+            fallback_path.write_text(str(exc), encoding="utf-8")
+            return fallback_path
         return screenshot_path
 
 
@@ -201,6 +232,13 @@ def _env_bool(name: str, *, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _empty_to_none(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _merge_capture_text(html: str, json_payloads: list[dict[str, Any]]) -> str:

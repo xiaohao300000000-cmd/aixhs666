@@ -31,6 +31,7 @@ def test_browser_config_reads_runtime_environment(tmp_path: Path, monkeypatch: p
     monkeypatch.setenv("XHS_SNAPSHOT_DIR", str(tmp_path / "snapshots"))
     monkeypatch.setenv("XHS_SCREENSHOT_DIR", str(tmp_path / "screenshots"))
     monkeypatch.setenv("XHS_PAGE_TIMEOUT_MS", "12345")
+    monkeypatch.setenv("XHS_PROXY_SERVER", "http://127.0.0.1:7897")
 
     config = XiaohongshuBrowserConfig.from_env()
 
@@ -39,6 +40,7 @@ def test_browser_config_reads_runtime_environment(tmp_path: Path, monkeypatch: p
     assert config.snapshot_dir == tmp_path / "snapshots"
     assert config.screenshot_dir == tmp_path / "screenshots"
     assert config.page_timeout_ms == 12345
+    assert config.proxy_server == "http://127.0.0.1:7897"
 
 
 def test_login_page_raises_clear_error() -> None:
@@ -63,6 +65,53 @@ def test_search_result_maps_to_search_page() -> None:
     assert page.items[0].rank_position == 1
     assert page.cursor.has_more is True
     assert page.cursor.next_cursor == "cursor-next-1"
+
+
+def test_search_result_maps_real_web_v2_note_wrapper() -> None:
+    raw = """
+    {
+      "code": 0,
+      "data": {
+        "has_more": true,
+        "items": [
+          {
+            "id": "6a45d7c00000000017008ff4",
+            "model_type": "note",
+            "note_card": {
+              "display_title": "KTE没过，用这三个问题解决",
+              "interact_info": {
+                "liked_count": "12",
+                "comment_count": "3",
+                "collected_count": "4"
+              },
+              "image_list": [
+                {
+                  "info_list": [
+                    {"image_scene": "WB_DFT", "url": "https://sns-webpic-qc.xhscdn.com/example.jpg"}
+                  ]
+                }
+              ],
+              "user": {
+                "nickname": "说客英语学习中心",
+                "user_id": "63326493000000002303aa8d"
+              }
+            },
+            "xsec_token": "token"
+          }
+        ]
+      },
+      "success": true
+    }
+    """
+
+    page = parse_search_page("KET 没过怎么办", raw, source_url="https://www.xiaohongshu.com/search_result/")
+
+    assert page.items[0].platform_content_id == "6a45d7c00000000017008ff4"
+    assert page.items[0].platform_author_id == "63326493000000002303aa8d"
+    assert page.items[0].title == "KTE没过，用这三个问题解决"
+    assert page.items[0].like_count == 12
+    assert page.items[0].comment_count == 3
+    assert page.items[0].collect_count == 4
 
 
 def test_content_detail_maps_to_collected_content() -> None:

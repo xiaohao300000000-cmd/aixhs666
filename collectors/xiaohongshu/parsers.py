@@ -142,9 +142,9 @@ def _content_from_note(candidate: dict[str, Any], *, platform_content_id: str | 
         published_at=_parse_datetime(_first_value(note, ("time", "timestamp", "publish_time", "publishTime", "create_time"))),
         url=_first_str(note, ("url", "note_url", "noteUrl")) or f"{selectors.BASE_URL}/explore/{content_id}",
         region_text=_first_str(note, ("ip_location", "ipLocation", "location", "region")),
-        like_count=_count(_first_value(note, ("liked_count", "likedCount", "like_count", "likes"))),
-        comment_count=_count(_first_value(note, ("comment_count", "commentCount", "comments"))),
-        collect_count=_count(_first_value(note, ("collected_count", "collectedCount", "collect_count", "collects"))),
+        like_count=_count(_first_nested_value(note, ("liked_count", "likedCount", "like_count", "likes"))),
+        comment_count=_count(_first_nested_value(note, ("comment_count", "commentCount", "comments"))),
+        collect_count=_count(_first_nested_value(note, ("collected_count", "collectedCount", "collect_count", "collects"))),
         tags=tuple(_extract_tags(note)),
         image_urls=tuple(_extract_image_urls(note)),
     )
@@ -177,6 +177,14 @@ def _json_documents(raw_text: str) -> tuple[Any, ...]:
             documents.append(json.loads(stripped))
         except json.JSONDecodeError:
             pass
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if line == stripped or not line or line[0] not in {"{", "["}:
+            continue
+        try:
+            documents.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
 
     parser = _ScriptJSONParser()
     parser.feed(raw_text)
@@ -214,9 +222,9 @@ def _raw_json_candidates(text: str) -> Iterable[str]:
 def _note_candidates(documents: Iterable[Any]) -> Iterable[dict[str, Any]]:
     for item in _walk_dicts(documents):
         if "note_card" in item and isinstance(item["note_card"], dict):
-            yield item["note_card"]
+            yield item
         elif "noteCard" in item and isinstance(item["noteCard"], dict):
-            yield item["noteCard"]
+            yield item
         elif _content_id(item) and _looks_like_note(item):
             yield item
 
@@ -249,14 +257,36 @@ def _walk_dicts(value: Any) -> Iterable[dict[str, Any]]:
 
 def _unwrap_note(candidate: dict[str, Any]) -> dict[str, Any]:
     if "note_card" in candidate and isinstance(candidate["note_card"], dict):
-        return candidate["note_card"]
+        return _merge_note_wrapper(candidate, "note_card")
     if "noteCard" in candidate and isinstance(candidate["noteCard"], dict):
-        return candidate["noteCard"]
+        return _merge_note_wrapper(candidate, "noteCard")
     return candidate
 
 
+def _merge_note_wrapper(candidate: dict[str, Any], note_key: str) -> dict[str, Any]:
+    note = dict(candidate[note_key])
+    for key in ("id", "note_id", "noteId", "model_type", "xsec_token"):
+        value = candidate.get(key)
+        if value is not None:
+            note.setdefault(key, value)
+    if candidate.get("id") is not None:
+        note.setdefault("note_id", candidate["id"])
+    return note
+
+
 def _looks_like_note(item: dict[str, Any]) -> bool:
-    return any(key in item for key in ("title", "display_title", "desc", "liked_count", "imageList", "user"))
+    return any(
+        key in item
+        for key in (
+            "title",
+            "display_title",
+            "liked_count",
+            "imageList",
+            "image_list",
+            "interact_info",
+            "cover",
+        )
+    )
 
 
 def _content_id(candidate: dict[str, Any]) -> str | None:
@@ -277,6 +307,16 @@ def _first_value(data: dict[str, Any], keys: tuple[str, ...]) -> Any:
         value = data.get(key)
         if value is not None:
             return value
+    return None
+
+
+def _first_nested_value(data: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    value = _first_value(data, keys)
+    if value is not None:
+        return value
+    interact_info = data.get("interact_info")
+    if isinstance(interact_info, dict):
+        return _first_value(interact_info, keys)
     return None
 
 

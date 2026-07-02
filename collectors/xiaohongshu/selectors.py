@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 BASE_URL = "https://www.xiaohongshu.com"
-SEARCH_URL = f"{BASE_URL}/search_result"
+SEARCH_URL = f"{BASE_URL}/search_result/"
 CONTENT_URL_TEMPLATE = f"{BASE_URL}/explore/{{platform_content_id}}"
 PROFILE_URL_TEMPLATE = f"{BASE_URL}/user/profile/{{platform_user_id}}"
 

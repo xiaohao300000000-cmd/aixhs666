@@ -304,7 +304,7 @@ Not yet verified:
 
 ## V06: Real Closed-Loop Validation
 
-Status: blocked after local automated verification and one real Xiaohongshu navigation attempt.
+Status: partially verified. One real Xiaohongshu search run now succeeds after local Clash rule routing was changed; full PostgreSQL closed loop is still pending.
 
 Automated verification executed:
 
@@ -355,6 +355,56 @@ DoH resolved www.xiaohongshu.com to 43.159.95.157, but direct --resolve also fai
 ```
 
 Conclusion: the live browser reached the real Xiaohongshu URL path, but the current machine/network/proxy route closes the TLS connection before login or page parsing can begin. This is not evidence of successful live collection.
+
+Network routing fix applied on 2026-07-02:
+
+```text
+Clash Verge runtime mode changed from global to rule.
+Added DIRECT rules before other rules:
+- DOMAIN-SUFFIX,xiaohongshu.com,DIRECT
+- DOMAIN-SUFFIX,xiaohongshu.net,DIRECT
+- DOMAIN-SUFFIX,xhscdn.com,DIRECT
+- DOMAIN-SUFFIX,xhslink.com,DIRECT
+- DOMAIN-SUFFIX,rednote.com,DIRECT
+```
+
+After reload, `curl -I -L --max-time 20 https://www.xiaohongshu.com/` returned an HTTP response instead of TLS failure.
+
+Real Xiaohongshu search verification after routing fix:
+
+```bash
+RUN_XHS_LIVE=1 XHS_HEADLESS=false XHS_BROWSER_PROFILE_DIR=.runtime/xhs-profile XHS_SNAPSHOT_DIR=.runtime/snapshots XHS_SCREENSHOT_DIR=.runtime/screenshots XHS_MANUAL_LOGIN_TIMEOUT_MS=300000 .venv/bin/python -m pytest tests/test_xiaohongshu_adapter.py::test_live_xiaohongshu_search_requires_opt_in -q -s
+```
+
+Result:
+
+```text
+1 passed in 5.77s
+```
+
+Parsed live search sample:
+
+```text
+query: KET 没过怎么办
+items parsed: 5
+has_more: true
+sample ids:
+- 685b6d00000000001d00e06a
+- 69d5eba9000000002102c15c
+- 6975dffd000000000e03caa7
+- 65d94daa00000000070245d0
+- 6a45d7c00000000017008ff4
+```
+
+Code fixes made from the live run:
+
+- Added `XHS_PROXY_SERVER` for per-browser proxy configuration.
+- Changed search URL to `/search_result/` to avoid redirect instability.
+- Made `networkidle` best-effort because Xiaohongshu keeps SPA/background requests open.
+- Made screenshot capture best-effort so screenshot timeouts do not hide the original failure.
+- Parsed appended captured network JSON payloads.
+- Supported real `/api/sns/web/v2/search/notes` item wrappers where note ID is outside `note_card`.
+- Waited explicitly for the search notes response before snapshotting.
 
 ```bash
 .venv/bin/python -m pytest -m postgres -q
