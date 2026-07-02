@@ -41,8 +41,14 @@ if [ "$WORKER_ADAPTER" = "mediacrawler" ]; then
 
   if [ ! -d "$MEDIACRAWLER_PROFILE_DIR" ]; then
     echo "未检测到小红书持久登录态，将启动登录流程。"
-    echo "请在弹出的浏览器中扫码登录。登录完成后脚本会继续。"
-    "$PYTHON_BIN" -m scripts.mediacrawler_login
+    echo "请在弹出的浏览器中扫码登录。扫码完成并看到已登录页面后，回到这个窗口按回车继续。"
+    "$PYTHON_BIN" -m scripts.mediacrawler_login &
+    LOGIN_PID=$!
+    read "?扫码完成后按回车继续..."
+    pkill -P "$LOGIN_PID" >/dev/null 2>&1 || true
+    kill "$LOGIN_PID" >/dev/null 2>&1 || true
+    pkill -f "$MEDIACRAWLER_PROFILE_DIR" >/dev/null 2>&1 || true
+    sleep 2
   fi
 fi
 
