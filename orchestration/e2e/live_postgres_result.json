@@ -1,0 +1,28 @@
+{
+  "counts": {
+    "collection_events": 0,
+    "comment_tasks": 0,
+    "comments": 0,
+    "contents": 0,
+    "discovery_relations": 0,
+    "duplicate_comments": 0,
+    "duplicate_contents": 0,
+    "duplicate_discovery_relations": 0,
+    "duplicate_public_profiles": 0,
+    "public_profiles": 0,
+    "queries": 5,
+    "search_tasks": 5,
+    "snapshots": 0
+  },
+  "environment": "local_postgresql_homebrew",
+  "generated_at": "2026-07-02T14:40:19.364787+00:00",
+  "task_status": {
+    "cancelled": 0,
+    "completed": 0,
+    "failed": 0,
+    "partial": 0,
+    "pending": 4,
+    "retry": 1,
+    "running": 0
+  }
+}

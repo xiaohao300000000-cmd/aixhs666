@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from storage.models import Snapshot
+from storage.models import CollectionEvent, Snapshot
 
 
 DEFAULT_SNAPSHOT_ROOT = Path("snapshots")
@@ -46,6 +46,19 @@ def save_json_snapshot(
         content_hash=content_hash,
     )
     session.add(snapshot)
+    session.flush()
+    session.add(
+        CollectionEvent(
+            event_type="snapshot_saved",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            event_data={
+                "snapshot_id": snapshot.id,
+                "snapshot_type": snapshot_type,
+                "object_storage_path": str(snapshot_path),
+            },
+        )
+    )
     session.flush()
     return snapshot
 

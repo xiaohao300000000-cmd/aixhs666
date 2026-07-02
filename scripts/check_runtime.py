@@ -5,13 +5,13 @@ import os
 from pathlib import Path
 from typing import Any
 
+import storage.models  # noqa: F401
 from sqlalchemy import inspect, text
 
-from apps.worker.main import WorkerConfig
-from collectors.mediacrawler import MediaCrawlerConfig
+from collectors.mediacrawler.adapter import MediaCrawlerConfig
 from collectors.xiaohongshu.browser import XiaohongshuBrowserConfig
-from integrations.feishu.client import FeishuSettings, mask_secret
 from storage.database import create_database_engine
+from storage.settings import get_settings
 
 
 REQUIRED_TABLES = {
@@ -23,167 +23,115 @@ REQUIRED_TABLES = {
     "discovery_relations",
     "snapshots",
     "collection_events",
-}
-
-REQUIRED_UNIQUE_CONSTRAINTS = {
-    "contents": "uq_contents_platform_content_id",
-    "comments": "uq_comments_platform_comment_id",
-    "public_profiles": "uq_public_profiles_platform_user_id",
-    "discovery_relations": "uq_discovery_relations_query_id_content_id",
+    "worker_heartbeats",
 }
 
 
 def main() -> None:
-    database_url = os.getenv("DATABASE_URL")
-    result: dict[str, Any] = {
-        "postgresql": _check_postgresql(database_url),
-        "worker": _worker_config(),
-        "mediacrawler": _mediacrawler_config(),
-        "playwright": _playwright_config(),
-        "feishu": _feishu_config(),
-    }
-    result["ok"] = _overall_ok(result)
-    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-    raise SystemExit(0 if result["ok"] else 1)
+    report = build_report()
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, default=str))
+    if not report["ok"]:
+        raise SystemExit(1)
 
 
-def _check_postgresql(database_url: str | None) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "configured": bool(database_url),
-        "database_url": _mask_database_url(database_url),
-        "connected": False,
-        "dialect": None,
-        "current_revision": None,
-        "tables": {},
-        "unique_constraints": {},
-        "errors": [],
-    }
+def build_report() -> dict[str, Any]:
+    checks: dict[str, Any] = {}
+    ok = True
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
     try:
-        engine = create_database_engine(database_url)
-        payload["dialect"] = engine.dialect.name
         with engine.connect() as connection:
-            connection.execute(text("SELECT 1")).scalar_one()
-            payload["connected"] = True
-            try:
-                payload["current_revision"] = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            except Exception as exc:  # pragma: no cover - diagnostic branch
-                payload["errors"].append(f"alembic_version: {exc.__class__.__name__}")
+            connection.execute(text("select 1")).scalar_one()
             inspector = inspect(connection)
-            table_names = set(inspector.get_table_names())
-            payload["tables"] = {table: table in table_names for table in sorted(REQUIRED_TABLES)}
-            for table, constraint in REQUIRED_UNIQUE_CONSTRAINTS.items():
-                if table not in table_names:
-                    payload["unique_constraints"][table] = False
-                    continue
-                constraints = {item["name"] for item in inspector.get_unique_constraints(table)}
-                payload["unique_constraints"][table] = constraint in constraints
-        engine.dispose()
+            tables = set(inspector.get_table_names())
+            revision = connection.execute(text("select version_num from alembic_version")).scalar_one_or_none()
+            constraints = {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints("discovery_relations")
+                if constraint.get("name")
+            }
+        checks["postgresql"] = {"ok": True, "database_url": _mask_url(settings.database_url)}
+        checks["migration"] = {"ok": revision is not None, "revision": revision}
+        checks["tables"] = {"ok": REQUIRED_TABLES.issubset(tables), "missing": sorted(REQUIRED_TABLES - tables)}
+        checks["constraints"] = {
+            "ok": "uq_discovery_relations_query_id_content_id" in constraints,
+            "discovery_relation_unique": "uq_discovery_relations_query_id_content_id" in constraints,
+        }
     except Exception as exc:
-        payload["errors"].append(str(exc))
-    return payload
+        ok = False
+        checks["postgresql"] = {"ok": False, "error": str(exc), "database_url": _mask_url(settings.database_url)}
+    finally:
+        engine.dispose()
 
-
-def _worker_config() -> dict[str, Any]:
-    config = WorkerConfig.from_env()
-    return {
-        "worker_id": config.worker_id,
-        "poll_interval_seconds": config.poll_interval_seconds,
-        "task_timeout_minutes": config.task_timeout_minutes,
-        "snapshot_root": str(config.snapshot_root),
-        "snapshot_root_writable": _writable_dir(config.snapshot_root),
+    media_config = MediaCrawlerConfig.from_env()
+    xhs_config = XiaohongshuBrowserConfig.from_env()
+    checks["worker"] = {
+        "ok": True,
         "adapter": os.getenv("WORKER_ADAPTER", "xiaohongshu"),
-        "platform": os.getenv("WORKER_PLATFORM", "xhs"),
+        "worker_id": os.getenv("WORKER_ID"),
+        "snapshot_root": os.getenv("WORKER_SNAPSHOT_ROOT", ".runtime/storage-snapshots"),
     }
-
-
-def _mediacrawler_config() -> dict[str, Any]:
-    config = MediaCrawlerConfig.from_env()
-    return {
-        "home": str(config.home),
-        "home_exists": config.home.exists(),
-        "python_executable": str(config.python_executable),
-        "python_executable_exists": config.python_executable.exists(),
-        "output_root": str(config.output_root),
-        "output_root_writable": _writable_dir(config.output_root),
-        "log_dir": None if config.log_dir is None else str(config.log_dir),
-        "log_dir_writable": None if config.log_dir is None else _writable_dir(config.log_dir),
-        "login_type": config.login_type,
-        "headless": config.headless,
-        "get_comments": config.get_comments,
-        "max_comments_per_note": config.max_comments_per_note,
-        "proxy_configured": bool(config.proxy_server),
+    checks["mediacrawler"] = {
+        "ok": media_config.home.exists() and media_config.python_executable.exists(),
+        "home": str(media_config.home),
+        "python": str(media_config.python_executable),
+        "output_root": str(media_config.output_root),
+        "headless": media_config.headless,
     }
-
-
-def _playwright_config() -> dict[str, Any]:
-    config = XiaohongshuBrowserConfig.from_env()
-    return {
-        "profile_dir": str(config.profile_dir),
-        "profile_dir_writable": _writable_dir(config.profile_dir),
-        "headless": config.headless,
-        "snapshot_dir": str(config.snapshot_dir),
-        "snapshot_dir_writable": _writable_dir(config.snapshot_dir),
-        "screenshot_dir": str(config.screenshot_dir),
-        "screenshot_dir_writable": _writable_dir(config.screenshot_dir),
-        "page_timeout_ms": config.page_timeout_ms,
-        "manual_login_timeout_ms": config.manual_login_timeout_ms,
-        "proxy_configured": bool(config.proxy_server),
+    checks["playwright"] = {
+        "ok": xhs_config.profile_dir.exists(),
+        "profile_dir": str(xhs_config.profile_dir),
+        "snapshot_dir": str(xhs_config.snapshot_dir),
+        "screenshot_dir": str(xhs_config.screenshot_dir),
+        "headless": xhs_config.headless,
     }
-
-
-def _feishu_config() -> dict[str, Any]:
-    settings = FeishuSettings.from_env()
-    return {
-        "enabled": settings.enabled,
-        "webhook_configured": bool(settings.webhook_url),
-        "webhook_url": mask_secret(settings.webhook_url),
-        "app_id_configured": bool(settings.app_id),
-        "app_secret_configured": bool(settings.app_secret),
-        "verification_token_configured": bool(settings.verification_token),
-        "encrypt_key_configured": bool(settings.encrypt_key),
-        "timeout_seconds": settings.timeout_seconds,
-        "max_retries": settings.max_retries,
+    checks["feishu"] = {
+        "ok": True,
+        "status": "configured" if os.getenv("FEISHU_WEBHOOK_URL") or os.getenv("FEISHU_APP_ID") else "未配置",
+        "webhook_configured": bool(os.getenv("FEISHU_WEBHOOK_URL")),
+        "app_configured": bool(os.getenv("FEISHU_APP_ID")),
+        "dry_run": os.getenv("FEISHU_DRY_RUN", "true"),
     }
+    checks["directories"] = {
+        "ok": all(
+            _ensure_writable(path)
+            for path in (
+                Path(os.getenv("WORKER_SNAPSHOT_ROOT", ".runtime/storage-snapshots")),
+                media_config.output_root,
+                xhs_config.snapshot_dir,
+                xhs_config.screenshot_dir,
+            )
+        ),
+        "paths": [
+            str(Path(os.getenv("WORKER_SNAPSHOT_ROOT", ".runtime/storage-snapshots"))),
+            str(media_config.output_root),
+            str(xhs_config.snapshot_dir),
+            str(xhs_config.screenshot_dir),
+        ],
+    }
+    for value in checks.values():
+        ok = ok and bool(value.get("ok"))
+    return {"ok": ok, "checks": checks}
 
 
-def _writable_dir(path: Path) -> bool:
+def _ensure_writable(path: Path) -> bool:
     try:
         path.mkdir(parents=True, exist_ok=True)
-        probe = path / ".check_runtime_write_test"
+        probe = path / ".write-test"
         probe.write_text("ok", encoding="utf-8")
-        probe.unlink(missing_ok=True)
+        probe.unlink()
         return True
     except Exception:
         return False
 
 
-def _mask_database_url(value: str | None) -> str | None:
-    if not value:
-        return None
-    if "@" not in value:
-        return value
-    prefix, suffix = value.rsplit("@", 1)
-    if ":" not in prefix:
-        return value
-    scheme_user = prefix.rsplit(":", 1)[0]
-    return f"{scheme_user}:***@{suffix}"
-
-
-def _overall_ok(result: dict[str, Any]) -> bool:
-    pg = result["postgresql"]
-    return bool(
-        pg["connected"]
-        and pg["dialect"] == "postgresql"
-        and all(pg["tables"].values())
-        and all(pg["unique_constraints"].values())
-        and result["worker"]["snapshot_root_writable"]
-        and result["mediacrawler"]["home_exists"]
-        and result["mediacrawler"]["python_executable_exists"]
-        and result["mediacrawler"]["output_root_writable"]
-        and result["playwright"]["profile_dir_writable"]
-        and result["playwright"]["snapshot_dir_writable"]
-        and result["playwright"]["screenshot_dir_writable"]
-    )
+def _mask_url(url: str) -> str:
+    if "@" not in url or "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    credentials, host = rest.split("@", 1)
+    user = credentials.split(":", 1)[0]
+    return f"{scheme}://{user}:***@{host}"
 
 
 if __name__ == "__main__":
