@@ -20,7 +20,7 @@
 | 执行会话 | 主控单会话 |
 | 当前分支 | `main` |
 | 阻塞数量 | 3 |
-| 最后更新 | 2026-07-02：PostgreSQL migration/runtime check/postgres test 通过；`/ops` 控制台完成；MediaCrawler 等待二维码登录，真实内容未入库；Feishu 真实凭证未配置 |
+| 最后更新 | 2026-07-02：PostgreSQL migration/runtime check/postgres test 通过；`/ops` 控制台完成；MediaCrawler 固定为主采集器并使用持久登录态；仍需首次人工扫码；Feishu 真实凭证未配置 |
 
 ## 阶段进度
 
@@ -113,7 +113,7 @@ gantt
 | ID | 阻塞内容 | 影响任务 | 负责人 | 处理状态 |
 |---|---|---|---|---|
 | V0-B1 | Docker 未安装，Compose 不可用；当前使用 Homebrew PostgreSQL | Docker 环境复现 | 用户/环境 | 已记录替代环境 |
-| V0-B2 | MediaCrawler 等待二维码登录，CDP `localhost:9222` 不可用 | 真实搜索/详情/评论/主页采集 | 用户/环境 | 待手动登录或启动 CDP Chrome |
+| V0-B2 | MediaCrawler 持久 profile 尚未完成首次人工扫码 | 真实搜索/详情/评论/主页采集 | 用户/环境 | 执行 `python -m scripts.mediacrawler_login` |
 | V0-B3 | 未配置飞书凭证 | 真实飞书发送与回调验证 | 用户/环境 | 待配置 |
 
 ## 最近完成

@@ -67,16 +67,24 @@ def build_report() -> dict[str, Any]:
     xhs_config = XiaohongshuBrowserConfig.from_env()
     checks["worker"] = {
         "ok": True,
-        "adapter": os.getenv("WORKER_ADAPTER", "xiaohongshu"),
+        "adapter": os.getenv("WORKER_ADAPTER", "mediacrawler"),
         "worker_id": os.getenv("WORKER_ID"),
         "snapshot_root": os.getenv("WORKER_SNAPSHOT_ROOT", ".runtime/storage-snapshots"),
     }
+    mediacrawler_profile_dir = media_config.home / "browser_data" / (media_config.user_data_dir % "xhs")
     checks["mediacrawler"] = {
         "ok": media_config.home.exists() and media_config.python_executable.exists(),
         "home": str(media_config.home),
         "python": str(media_config.python_executable),
         "output_root": str(media_config.output_root),
         "headless": media_config.headless,
+        "enable_cdp_mode": media_config.enable_cdp_mode,
+        "cdp_connect_existing": media_config.cdp_connect_existing,
+        "cdp_debug_port": media_config.cdp_debug_port,
+        "auto_close_browser": media_config.auto_close_browser,
+        "save_login_state": media_config.save_login_state,
+        "persistent_profile_dir": str(mediacrawler_profile_dir),
+        "persistent_profile_exists": mediacrawler_profile_dir.exists(),
     }
     checks["playwright"] = {
         "ok": xhs_config.profile_dir.exists(),

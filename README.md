@@ -187,13 +187,29 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 157 passed, 2 skipped, 1 warning
 ```
 
-可选 MediaCrawler 后端：
+主采集后端固定为 MediaCrawler：
 
 ```bash
-WORKER_ADAPTER=mediacrawler python -m apps.worker --once
+python -m apps.worker --once
 ```
 
-该后端通过 `MEDIACRAWLER_HOME` 指向项目内 `third_party/MediaCrawler`，运行其小红书 search 模式并读取 JSONL 输出。MediaCrawler 一次 search 会同时补详情和评论，适配层会缓存这些输出，后续 detail/comment 任务优先复用缓存。该路径依赖 MediaCrawler 自身登录态和实现方式，不替代默认 Playwright adapter。
+默认 `WORKER_ADAPTER=mediacrawler`。该后端通过 `MEDIACRAWLER_HOME` 指向项目内 `third_party/MediaCrawler`，运行其小红书 search 模式并读取 JSONL 输出。MediaCrawler 一次 search 会同时补详情和评论，适配层会缓存这些输出，后续 detail/comment 任务优先复用缓存。
+
+登录态固化方式：
+
+- 默认 `MEDIACRAWLER_ENABLE_CDP_MODE=true`
+- 默认 `MEDIACRAWLER_CDP_CONNECT_EXISTING=false`
+- 默认 `MEDIACRAWLER_SAVE_LOGIN_STATE=true`
+- 默认 `MEDIACRAWLER_AUTO_CLOSE_BROWSER=false`
+- 默认持久 profile：`third_party/MediaCrawler/browser_data/aixhs_xhs_user_data_dir`
+
+首次登录时运行：
+
+```bash
+python -m scripts.mediacrawler_login
+```
+
+手动扫码一次后，后续 Worker 复用同一持久浏览器目录，不应每次重新扫码。仍可显式设置 `WORKER_ADAPTER=xiaohongshu` 使用项目自写 Playwright adapter 做 fallback/debug，但它不再是主采集路径。
 
 首次使用前安装 MediaCrawler 依赖：
 
@@ -212,7 +228,7 @@ third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requi
 真实闭环尚未通过：
 
 - Docker 未安装，本机使用 Homebrew PostgreSQL
-- MediaCrawler 运行时等待小红书二维码登录，未取得真实搜索结果
+- MediaCrawler 已固化为主采集器；登录态需要先用 `python -m scripts.mediacrawler_login` 完成一次人工扫码
 - live PostgreSQL 数据库已有 5 个真实教育关键词 search 任务，但帖子、评论、用户仍为 0
 - 真实飞书凭证未配置，仅完成 dry-run 和 mocked HTTP 测试
 

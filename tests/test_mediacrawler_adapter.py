@@ -96,6 +96,33 @@ def test_worker_can_load_mediacrawler_adapter(monkeypatch: Any) -> None:
     assert isinstance(adapter, MediaCrawlerXiaohongshuAdapter)
 
 
+def test_worker_defaults_to_mediacrawler_adapter(monkeypatch: Any) -> None:
+    monkeypatch.delenv("WORKER_ADAPTER", raising=False)
+
+    adapter = load_adapter("xhs")
+
+    assert isinstance(adapter, MediaCrawlerXiaohongshuAdapter)
+
+
+def test_mediacrawler_login_state_environment_is_passed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    captured_env: dict[str, str] = {}
+
+    def fake_runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        captured_env.update(kwargs["env"])
+        output_dir = Path(command[command.index("--save_data_path") + 1])
+        _write_sample_output(output_dir)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    MediaCrawlerXiaohongshuAdapter(config=config, runner=fake_runner).search("孩子英语跟不上", limit=20)
+
+    assert captured_env["MEDIACRAWLER_ENABLE_CDP_MODE"] == "true"
+    assert captured_env["MEDIACRAWLER_CDP_CONNECT_EXISTING"] == "false"
+    assert captured_env["MEDIACRAWLER_AUTO_CLOSE_BROWSER"] == "false"
+    assert captured_env["MEDIACRAWLER_SAVE_LOGIN_STATE"] == "true"
+    assert captured_env["MEDIACRAWLER_USER_DATA_DIR"] == "aixhs_%s_user_data_dir"
+
+
 def _config(
     tmp_path: Path,
     *,
@@ -122,6 +149,13 @@ def _config(
         assume_has_more=assume_has_more,
         proxy_server=proxy_server,
         log_dir=tmp_path / "logs",
+        enable_cdp_mode=True,
+        cdp_connect_existing=False,
+        cdp_debug_port=9222,
+        auto_close_browser=False,
+        save_login_state=True,
+        user_data_dir="aixhs_%s_user_data_dir",
+        custom_browser_path=None,
     )
 
 

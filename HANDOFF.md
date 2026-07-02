@@ -2,11 +2,11 @@
 
 ## 当前阶段
 
-V0 真实数据闭环修正已进入 `main`。代码侧继续补齐了 PostgreSQL 运行诊断、Worker 心跳和原生 HTML 运维控制台；真实 PostgreSQL migration、诊断和 PostgreSQL 并发测试已在本机执行通过。完整真实闭环仍因小红书登录态/MediaCrawler CDP 浏览器和飞书凭证阻塞。
+V0 真实数据闭环修正已进入 `main`。主采集器已固定为 MediaCrawler，默认使用自启动 CDP 持久浏览器 profile，首次扫码后复用登录态。代码侧继续补齐了 PostgreSQL 运行诊断、Worker 心跳和原生 HTML 运维控制台；真实 PostgreSQL migration、诊断和 PostgreSQL 并发测试已在本机执行通过。完整真实闭环仍因尚未完成一次小红书人工登录和飞书凭证阻塞。
 
 ## 当前目标
 
-当前目标是把 V0 真实数据闭环跑到外部真实验证。代码侧已具备真实小红书 adapter、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断和 `/ops` 控制台。下一步必须提供可用的小红书登录态或 CDP Chrome，并配置 Feishu 凭证后继续执行 live 验收。
+当前目标是把 V0 真实数据闭环跑到外部真实验证。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断和 `/ops` 控制台。下一步必须执行一次 `python -m scripts.mediacrawler_login` 完成人工扫码并固化登录态，再配置 Feishu 凭证后继续执行 live 验收。
 
 ## 已确认范围
 
@@ -17,8 +17,8 @@ V0 真实数据闭环修正已进入 `main`。代码侧继续补齐了 PostgreSQ
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 启动带 remote debugging 的 Chrome（默认 `localhost:9222`）或完成 MediaCrawler 可复用登录态。
-2. 重新执行 `WORKER_ADAPTER=mediacrawler python -m apps.worker --once`，跑完 5 个 search 任务并生成真实内容。
+1. 执行 `python -m scripts.mediacrawler_login`，在打开的浏览器中人工扫码一次。
+2. 重新执行 `python -m apps.worker --once`，跑完 5 个 search 任务并生成真实内容。
 3. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
 4. 复跑去重、并发 Worker、断点恢复和长期运行验收。
 5. 更新 `orchestration/e2e/live_postgres_result.json` 和 `docs/V0_REAL_LOOP_REPORT.md`。
@@ -29,7 +29,7 @@ V0 真实数据闭环修正已进入 `main`。代码侧继续补齐了 PostgreSQ
 
 - 真实小红书页面结构和登录态尚未验证
 - Docker 未安装，当前使用本机 Homebrew PostgreSQL
-- MediaCrawler 当前等待小红书二维码登录，未采到真实数据
+- MediaCrawler 持久登录态尚未完成首次人工扫码，未采到真实数据
 - 飞书真实发送和真实回调尚未验证
 - `pytest -m live` 因未启用 live 登录环境仍为 skipped
 

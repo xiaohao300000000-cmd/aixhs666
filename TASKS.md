@@ -16,7 +16,7 @@
 | 自动测试通过 | DONE：`pytest -q` 为 157 passed, 2 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
-| 真实小红书验证通过 | BLOCKED：MediaCrawler 等待二维码登录/CDP Chrome，未采到真实内容 |
+| 真实小红书验证通过 | BLOCKED：主采集器固定为 MediaCrawler；仍需执行 `python -m scripts.mediacrawler_login` 完成首次人工扫码 |
 | 真实飞书验证通过 | BLOCKED：未配置真实 Feishu 凭证 |
 | 完整闭环通过 | BLOCKED：真实采集和真实飞书未完成 |
 

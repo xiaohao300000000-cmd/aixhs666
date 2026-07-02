@@ -18,13 +18,21 @@ Validated on 2026-07-02:
 Not validated:
 
 - Docker Compose, because `docker` is not installed.
-- Real Xiaohongshu data collection, because MediaCrawler waits for QR login/CDP Chrome and no usable logged-in session is available.
+- Real Xiaohongshu data collection, because the MediaCrawler persistent login profile has not yet completed the first manual QR login.
 - Real Feishu delivery/callback, because credentials are not configured.
 - Long-running Worker, dedupe with real content, interrupted real collection resume, and 100+ real result acceptance.
 
 Live result file: `orchestration/e2e/live_postgres_result.json`.
 
 Current live PostgreSQL counts: 5 queries, 5 search tasks, 0 contents, 0 comments, 0 public profiles, 0 discovery relations, 0 snapshots, 1 retry, 4 pending. This is not a completed real closed loop.
+
+Collector policy update:
+
+- Main collector: MediaCrawler.
+- Default Worker adapter: `mediacrawler`.
+- Project Playwright adapter remains only for fallback/debug and is not the main collection path.
+- Persistent login command: `python -m scripts.mediacrawler_login`.
+- Persistent profile: `third_party/MediaCrawler/browser_data/aixhs_xhs_user_data_dir`.
 
 ## P0 Baseline
 

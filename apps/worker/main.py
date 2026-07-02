@@ -223,7 +223,7 @@ class WorkerRunner:
 
 
 def load_adapter(platform: str) -> PlatformAdapter:
-    adapter_name = os.getenv("WORKER_ADAPTER", "xiaohongshu").strip().casefold()
+    adapter_name = os.getenv("WORKER_ADAPTER", "mediacrawler").strip().casefold()
     if adapter_name == "mock":
         return MockPlatformAdapter(platform=platform)
     if platform != "xhs":

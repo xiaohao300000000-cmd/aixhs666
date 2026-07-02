@@ -19,5 +19,6 @@ build/
 *.log
 playwright/.auth/
 .runtime/
+third_party/MediaCrawler/browser_data/
 screenshots/
 artifacts/

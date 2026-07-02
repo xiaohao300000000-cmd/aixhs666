@@ -44,6 +44,13 @@ class MediaCrawlerConfig:
     assume_has_more: bool
     proxy_server: str | None
     log_dir: Path | None
+    enable_cdp_mode: bool
+    cdp_connect_existing: bool
+    cdp_debug_port: int
+    auto_close_browser: bool
+    save_login_state: bool
+    user_data_dir: str
+    custom_browser_path: str | None
 
     @classmethod
     def from_env(cls) -> "MediaCrawlerConfig":
@@ -67,6 +74,13 @@ class MediaCrawlerConfig:
             assume_has_more=_env_bool("MEDIACRAWLER_ASSUME_HAS_MORE", default=False),
             proxy_server=_empty_to_none(os.getenv("MEDIACRAWLER_PROXY_SERVER")),
             log_dir=Path(log_dir_raw).expanduser() if log_dir_raw else None,
+            enable_cdp_mode=_env_bool("MEDIACRAWLER_ENABLE_CDP_MODE", default=True),
+            cdp_connect_existing=_env_bool("MEDIACRAWLER_CDP_CONNECT_EXISTING", default=False),
+            cdp_debug_port=int(os.getenv("MEDIACRAWLER_CDP_DEBUG_PORT", "9222")),
+            auto_close_browser=_env_bool("MEDIACRAWLER_AUTO_CLOSE_BROWSER", default=False),
+            save_login_state=_env_bool("MEDIACRAWLER_SAVE_LOGIN_STATE", default=True),
+            user_data_dir=os.getenv("MEDIACRAWLER_USER_DATA_DIR", "aixhs_%s_user_data_dir"),
+            custom_browser_path=_empty_to_none(os.getenv("MEDIACRAWLER_CUSTOM_BROWSER_PATH")),
         )
 
 
@@ -216,6 +230,14 @@ class MediaCrawlerXiaohongshuAdapter:
 
         env = os.environ.copy()
         env.setdefault("PYTHONUTF8", "1")
+        env["MEDIACRAWLER_ENABLE_CDP_MODE"] = _bool_arg(self.config.enable_cdp_mode)
+        env["MEDIACRAWLER_CDP_CONNECT_EXISTING"] = _bool_arg(self.config.cdp_connect_existing)
+        env["MEDIACRAWLER_CDP_DEBUG_PORT"] = str(self.config.cdp_debug_port)
+        env["MEDIACRAWLER_AUTO_CLOSE_BROWSER"] = _bool_arg(self.config.auto_close_browser)
+        env["MEDIACRAWLER_SAVE_LOGIN_STATE"] = _bool_arg(self.config.save_login_state)
+        env["MEDIACRAWLER_USER_DATA_DIR"] = self.config.user_data_dir
+        if self.config.custom_browser_path:
+            env["MEDIACRAWLER_CUSTOM_BROWSER_PATH"] = self.config.custom_browser_path
         result = self._runner(
             command,
             cwd=self.config.home,

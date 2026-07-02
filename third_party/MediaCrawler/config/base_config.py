@@ -17,6 +17,23 @@
 # 详细许可条款请参阅项目根目录下的LICENSE文件。
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
+import os
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
 # Basic configuration
 PLATFORM = "xhs"  # Platform, xhs | dy | ks | bili | wb | tieba | zhihu
 
@@ -25,8 +42,8 @@ PLATFORM = "xhs"  # Platform, xhs | dy | ks | bili | wb | tieba | zhihu
 XHS_INTERNATIONAL = False
 
 KEYWORDS = "编程副业,编程兼职"  # Keyword search configuration, separated by English commas
-LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
-COOKIES = ""
+LOGIN_TYPE = os.getenv("MEDIACRAWLER_LOGIN_TYPE", "qrcode")  # qrcode or phone or cookie
+COOKIES = os.getenv("MEDIACRAWLER_COOKIES", "")
 CRAWLER_TYPE = (
     "search"  # Crawling type, search (keyword search) | detail (post details) | creator (creator homepage data)
 )
@@ -47,44 +64,44 @@ STATIC_PROXY_URL = ""
 # Setting False will open a browser
 # If Xiaohongshu keeps scanning the code to log in but fails, open the browser and manually pass the sliding verification code.
 # If Douyin keeps prompting failure, open the browser and see if mobile phone number verification appears after scanning the QR code to log in. If it does, manually go through it and try again.
-HEADLESS = False
+HEADLESS = _env_bool("MEDIACRAWLER_HEADLESS", False)
 
 # Whether to save login status
-SAVE_LOGIN_STATE = True
+SAVE_LOGIN_STATE = _env_bool("MEDIACRAWLER_SAVE_LOGIN_STATE", True)
 
 # ==================== CDP (Chrome DevTools Protocol) 配置 ====================
 # 是否启用 CDP 模式 - 使用用户本地的 Chrome/Edge 浏览器进行爬取，具有更好的反检测能力
 # 开启后，会自动检测并启动用户的 Chrome/Edge 浏览器，通过 CDP 协议进行控制
 # 该方式使用真实浏览器环境，包括用户的扩展、Cookie 和设置，大幅降低被风控检测的风险
-ENABLE_CDP_MODE = True
+ENABLE_CDP_MODE = _env_bool("MEDIACRAWLER_ENABLE_CDP_MODE", True)
 
 # CDP 调试端口，用于与浏览器通信
 # 如果端口被占用，系统会自动尝试下一个可用端口
-CDP_DEBUG_PORT = 9222
+CDP_DEBUG_PORT = _env_int("MEDIACRAWLER_CDP_DEBUG_PORT", 9222)
 
 # 自定义浏览器路径（可选）
 # 如果为空，系统会自动检测 Chrome/Edge 的安装路径
 # Windows 示例: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
 # macOS 示例: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-CUSTOM_BROWSER_PATH = ""
+CUSTOM_BROWSER_PATH = os.getenv("MEDIACRAWLER_CUSTOM_BROWSER_PATH", "")
 
 # 是否在 CDP 模式下启用无头模式
 # 注意：即使设置为 True，某些反检测功能在无头模式下可能无法正常工作
-CDP_HEADLESS = False
+CDP_HEADLESS = _env_bool("MEDIACRAWLER_CDP_HEADLESS", False)
 
 # 浏览器启动超时时间（秒）
-BROWSER_LAUNCH_TIMEOUT = 60
+BROWSER_LAUNCH_TIMEOUT = _env_int("MEDIACRAWLER_BROWSER_LAUNCH_TIMEOUT", 60)
 
 # 是否连接用户已打开的浏览器，而不是启动新的浏览器
 # 开启后，程序会连接一个已经启用了远程调试的浏览器
 # 用户需要在 Chrome 中开启远程调试：chrome://inspect/#remote-debugging
 # 或者使用命令行参数启动 Chrome：--remote-debugging-port=9222
 # 这种方式反检测效果最好，因为直接使用用户真实浏览器的所有 Cookie、扩展和浏览历史
-CDP_CONNECT_EXISTING = True
+CDP_CONNECT_EXISTING = _env_bool("MEDIACRAWLER_CDP_CONNECT_EXISTING", False)
 
 # 程序结束时是否自动关闭浏览器
 # 设置为 False 可以保持浏览器运行，方便调试
-AUTO_CLOSE_BROWSER = True
+AUTO_CLOSE_BROWSER = _env_bool("MEDIACRAWLER_AUTO_CLOSE_BROWSER", False)
 
 # Data saving type option configuration, supports: csv, db, json, jsonl, sqlite, excel, postgres. It is best to save to DB, with deduplication function.
 SAVE_DATA_OPTION = "jsonl"  # csv or db or json or jsonl or sqlite or excel or postgres
@@ -93,7 +110,7 @@ SAVE_DATA_OPTION = "jsonl"  # csv or db or json or jsonl or sqlite or excel or p
 SAVE_DATA_PATH = ""
 
 # Browser file configuration cached by the user's browser
-USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
+USER_DATA_DIR = os.getenv("MEDIACRAWLER_USER_DATA_DIR", "%s_user_data_dir")  # %s will be replaced by platform name
 
 # The number of pages to start crawling starts from the first page by default
 START_PAGE = 1
