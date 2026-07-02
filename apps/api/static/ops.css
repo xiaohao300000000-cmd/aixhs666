@@ -1,0 +1,28 @@
+:root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17202a; background: #f6f7f9; }
+body { margin: 0; }
+.topbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; background: #ffffff; border-bottom: 1px solid #d8dee8; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 16px; margin: 0 0 10px; }
+h3 { font-size: 14px; margin: 8px 0; }
+main { padding: 16px; display: grid; gap: 16px; }
+section { background: #ffffff; border: 1px solid #d8dee8; border-radius: 8px; padding: 14px; overflow: auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.card { border: 1px solid #d8dee8; border-radius: 6px; padding: 10px; background: #fbfcfe; min-height: 54px; }
+.label { color: #5d6a7a; font-size: 12px; }
+.value { font-weight: 650; overflow-wrap: anywhere; }
+.status { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #e8edf5; font-size: 12px; }
+.正常 { background: #dff5e7; color: #146c2e; }
+.警告 { background: #fff1c7; color: #7c5700; }
+.异常 { background: #ffe1df; color: #9e1c13; }
+.未配置 { background: #e8edf5; color: #485568; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { border-bottom: 1px solid #e4e8ef; padding: 7px 6px; text-align: left; vertical-align: top; }
+th { color: #5d6a7a; font-weight: 600; background: #fbfcfe; }
+button, input, select { font: inherit; border: 1px solid #c9d1dd; border-radius: 6px; padding: 6px 8px; background: #ffffff; }
+button { cursor: pointer; background: #1f6feb; color: #ffffff; border-color: #1f6feb; }
+button.secondary { color: #17202a; background: #ffffff; border-color: #c9d1dd; }
+.token, .filters, .inline-form, .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.item { border-bottom: 1px solid #e4e8ef; padding: 8px 0; }
+.muted { color: #5d6a7a; font-size: 12px; }
+.error { white-space: pre-wrap; overflow-wrap: anywhere; }

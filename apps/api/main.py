@@ -2,6 +2,8 @@ from fastapi import FastAPI
 
 from apps.api.routes.dashboard import router as dashboard_router
 from apps.api.routes.health import router as health_router
+from apps.api.routes.ops import router as ops_router
+from apps.api.routes.ops_api import router as ops_api_router
 from apps.api.routes.queries import router as queries_router
 
 
@@ -10,6 +12,8 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(queries_router)
     app.include_router(dashboard_router)
+    app.include_router(ops_router)
+    app.include_router(ops_api_router)
     return app
 
 
