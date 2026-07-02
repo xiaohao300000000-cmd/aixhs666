@@ -263,7 +263,44 @@ Not yet verified:
 
 ## V05: Database Dashboard Metrics
 
-Status: not started.
+Status: code implemented and covered by local SQLite tests.
+
+Implementation completed:
+
+- Added `apps/api/dashboard_metrics.py` to build dashboard metrics directly from database tables.
+- Added `GET /dashboard/summary` while keeping the existing `POST /dashboard/summary` offline/test payload path.
+- Database-backed metrics currently include:
+  - today's new content count,
+  - today's new comment count,
+  - today's new public profile count,
+  - observed discovery count and duplicate content ratio,
+  - per-query new content/discovery/task/failure counts,
+  - overall task failure rate,
+  - failed task ranking,
+  - content/comment/profile field completeness,
+  - phrase review status counts,
+  - high-value signal event count,
+  - pending phrase count,
+  - latest successful collection time,
+  - latest failure reason,
+  - partial and retry task counts.
+
+Automated tests executed:
+
+```bash
+.venv/bin/python -m pytest tests/test_data_dashboard.py -q
+```
+
+Result:
+
+```text
+6 passed, 1 warning in 0.28s
+```
+
+Not yet verified:
+
+- `GET /dashboard/summary` against a real PostgreSQL database with live collected rows.
+- Dashboard metrics after a real Xiaohongshu collection run.
 
 ## V06: Real Closed-Loop Validation
 

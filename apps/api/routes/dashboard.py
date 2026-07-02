@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from apps.api.dashboard_metrics import build_database_dashboard_response
 from intelligence.dashboard import (
     DailyDashboardMetric,
     DashboardInput,
@@ -17,8 +19,10 @@ from intelligence.dashboard import (
     dashboard_summary_to_dict,
 )
 from intelligence.scoring import QuerySourceScore
+from storage.database import get_session
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+SessionDep = Annotated[Session, Depends(get_session)]
 
 
 class DailyDashboardMetricPayload(BaseModel):
@@ -85,3 +89,8 @@ def summarize_dashboard(payload: DashboardSummaryPayload) -> dict[str, Any]:
         generated_at=payload.generated_at,
     )
     return dashboard_summary_to_dict(build_dashboard_summary(dashboard_input))
+
+
+@router.get("/summary")
+def get_dashboard_summary(session: SessionDep) -> dict[str, Any]:
+    return build_database_dashboard_response(session)
