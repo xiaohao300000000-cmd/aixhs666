@@ -132,6 +132,11 @@ def runtime_status(session: SessionDep) -> dict[str, Any]:
     return _pipeline_runner(session).status()
 
 
+@router.get("/dashboard/public")
+def public_dashboard(session: SessionDep) -> dict[str, Any]:
+    return _public_dashboard_payload(session)
+
+
 @router.post("/pipeline/runs")
 def create_pipeline_run(payload: PipelineRunCreatePayload, session: SessionDep, _: WriteAuth) -> dict[str, Any]:
     try:
@@ -658,6 +663,82 @@ def _mask_contact(value: str) -> str:
     if len(value) <= 4:
         return "*" * len(value)
     return f"{value[:2]}***{value[-2:]}"
+
+
+def _public_dashboard_payload(session: Session) -> dict[str, Any]:
+    runner = _pipeline_runner(session)
+    status_payload = runner.status()
+    latest = runner.latest_insights().get("latest_run")
+    result = (latest or {}).get("result_data") or {}
+    insight = result.get("insight") or {}
+    content_insights = insight.get("content_insights") or {}
+    collection = result.get("collection") or {}
+    processing = result.get("processing") or {}
+    intelligence = result.get("intelligence") or {}
+    queries = _dashboard_queries(session)
+    return {
+        "generated_at": _iso(_utc_now()),
+        "latest_run": latest,
+        "overview": {
+            "run_status": (latest or {}).get("status"),
+            "new_contents": collection.get("new_contents", 0),
+            "new_comments": collection.get("new_comments", 0),
+            "new_profiles": collection.get("new_profiles", 0),
+            "demand_events": processing.get("demand_events_created", 0),
+            "candidate_queries": intelligence.get("candidate_queries_created", 0),
+            "query_scores_updated": intelligence.get("query_scores_updated", 0),
+            "warnings": len(result.get("warnings") or []),
+            "errors": len(result.get("errors") or []),
+        },
+        "runtime_counts": status_payload.get("counts", {}),
+        "insights": {
+            "frequent_questions": content_insights.get("frequent_questions") or [],
+            "emerging_anxieties": content_insights.get("emerging_anxieties") or [],
+            "content_topics": content_insights.get("content_topics") or [],
+            "lead_magnet_topics": content_insights.get("lead_magnet_topics") or [],
+            "live_stream_topics": content_insights.get("live_stream_topics") or [],
+            "local_demand_differences": content_insights.get("local_demand_differences") or [],
+            "candidate_queries": insight.get("candidate_queries") or [],
+            "query_scores": insight.get("query_scores") or [],
+        },
+        "evidence": result.get("evidence") or [],
+        "recommended_actions": result.get("recommended_actions") or [],
+        "analysis_metadata": result.get("analysis_metadata"),
+        "queries": queries,
+        "system_health": {
+            "api": "正常",
+            "database": "正常",
+            "active_queries": status_payload.get("counts", {}).get("queries_active", 0),
+            "pipeline_runs": status_payload.get("counts", {}).get("pipeline_runs", 0),
+        },
+    }
+
+
+def _dashboard_queries(session: Session) -> list[dict[str, Any]]:
+    rows = session.scalars(select(StoredQuery).order_by(StoredQuery.priority.desc(), StoredQuery.id.asc()).limit(50)).all()
+    items = []
+    for query in rows:
+        task_count = session.scalar(select(func.count(CollectionTask.id)).where(CollectionTask.query_id == query.id)) or 0
+        failed = session.scalar(
+            select(func.count(CollectionTask.id)).where(CollectionTask.query_id == query.id, CollectionTask.status == TaskStatus.FAILED.value)
+        ) or 0
+        completed = session.scalar(
+            select(func.count(CollectionTask.id)).where(CollectionTask.query_id == query.id, CollectionTask.status == TaskStatus.COMPLETED.value)
+        ) or 0
+        output_count = session.scalar(select(func.count(DiscoveryRelation.id)).where(DiscoveryRelation.query_id == query.id)) or 0
+        items.append(
+            {
+                "id": query.id,
+                "query_text": query.query_text,
+                "status": query.status,
+                "priority": query.priority,
+                "output_count": output_count,
+                "last_run_at": _iso(query.last_run_at),
+                "success_rate": completed / task_count if task_count else None,
+                "failure_rate": failed / task_count if task_count else None,
+            }
+        )
+    return items
 
 
 def _pipeline_runner(session: Session) -> PipelineRunner:

@@ -51,6 +51,9 @@ def test_pipeline_runner_mock_full_cycle(factory: sessionmaker[Session], tmp_pat
     assert result["intelligence"]["candidate_queries_created"] >= 1
     assert result["intelligence"]["query_scores_updated"] == 1
     assert result["insight"]["content_insights"] is not None
+    assert result["evidence"]
+    assert result["evidence"][0]["source_entity_type"] in {"content", "comment"}
+    assert result["analysis_metadata"]["rule_version"] == "pipeline_rules_v1"
     with factory() as session:
         run = session.get(PipelineRun, payload["run_id"])
         assert run is not None
@@ -122,6 +125,8 @@ def test_pipeline_api_and_cli_use_same_runner_shape(
         )
         status = client.get("/ops/api/runtime/status")
         latest = client.get("/ops/api/insights/latest")
+        dashboard = client.get("/ops/api/dashboard/public")
+        page = client.get("/ops")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -129,6 +134,11 @@ def test_pipeline_api_and_cli_use_same_runner_shape(
     assert api_payload["result_data"]["queries"]["requested"] == 1
     assert status.status_code == 200
     assert latest.status_code == 200
+    assert dashboard.status_code == 200
+    assert dashboard.json()["evidence"]
+    assert dashboard.json()["analysis_metadata"]["rule_version"] == "pipeline_rules_v1"
+    assert page.status_code == 200
+    assert "今日机会总览" in page.text
 
     import apps.cli as cli
 

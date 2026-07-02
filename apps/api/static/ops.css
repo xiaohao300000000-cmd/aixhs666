@@ -6,6 +6,23 @@ h2 { font-size: 16px; margin: 0 0 10px; }
 h3 { font-size: 14px; margin: 8px 0; }
 main { padding: 16px; display: grid; gap: 16px; }
 section { background: #ffffff; border: 1px solid #d8dee8; border-radius: 8px; padding: 14px; overflow: auto; }
+.hero-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 16px; align-items: start; }
+.hero-copy h2 { font-size: 18px; margin-bottom: 12px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.metric { border: 1px solid #d8dee8; border-radius: 6px; padding: 10px; background: #fbfcfe; min-height: 58px; }
+.metric-value { font-size: 20px; font-weight: 720; overflow-wrap: anywhere; }
+.run-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; border: 1px solid #d8dee8; border-radius: 6px; background: #fbfcfe; }
+.run-form button { grid-column: 1 / -1; }
+.insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.insight-column { border: 1px solid #d8dee8; border-radius: 6px; padding: 10px; background: #fbfcfe; }
+.insight-item { border-bottom: 1px solid #e4e8ef; padding: 8px 0; }
+.insight-item:last-child { border-bottom: 0; }
+.insight-item ul { margin: 6px 0 0 18px; padding: 0; }
+.evidence-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
+.evidence-item { border: 1px solid #d8dee8; border-radius: 6px; padding: 10px; background: #fbfcfe; }
+.evidence-item summary { cursor: pointer; }
+.empty { color: #5d6a7a; padding: 8px 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
 .card { border: 1px solid #d8dee8; border-radius: 6px; padding: 10px; background: #fbfcfe; min-height: 54px; }
 .label { color: #5d6a7a; font-size: 12px; }
@@ -26,3 +43,10 @@ button.secondary { color: #17202a; background: #ffffff; border-color: #c9d1dd; }
 .item { border-bottom: 1px solid #e4e8ef; padding: 8px 0; }
 .muted { color: #5d6a7a; font-size: 12px; }
 .error { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .topbar { align-items: flex-start; flex-direction: column; }
+  .hero-panel { grid-template-columns: 1fr; }
+  .run-form { grid-template-columns: 1fr; }
+  .section-head { align-items: flex-start; flex-direction: column; }
+}

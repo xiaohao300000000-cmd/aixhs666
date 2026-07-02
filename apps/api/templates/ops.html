@@ -3,19 +3,57 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AIXHS Ops</title>
+    <title>AIXHS Ops 需求发现看板</title>
     <link rel="stylesheet" href="/ops/static/ops.css" />
   </head>
   <body>
     <header class="topbar">
-      <h1>AIXHS Ops</h1>
+      <h1>AIXHS Ops 需求发现看板</h1>
       <div class="token">
         <input id="ops-token" type="password" placeholder="OPS_TOKEN" autocomplete="off" />
         <label><input id="auto-refresh" type="checkbox" checked /> Auto</label>
-        <button id="refresh-all" type="button">Refresh</button>
+        <button id="refresh-all" type="button">刷新</button>
       </div>
     </header>
     <main>
+      <section class="hero-panel">
+        <div class="hero-copy">
+          <h2>今日机会总览</h2>
+          <div id="business-overview" class="metric-strip"></div>
+        </div>
+        <form id="run-pipeline" class="run-form">
+          <select name="mode">
+            <option value="all">全部启用查询</option>
+            <option value="query">指定查询 ID</option>
+          </select>
+          <input name="query_id" type="number" min="1" placeholder="查询 ID" />
+          <input name="collection_limit" type="number" min="1" max="200" value="20" />
+          <label><input name="skip_analysis" type="checkbox" /> 跳过分析</label>
+          <button>运行一轮</button>
+        </form>
+      </section>
+      <section>
+        <div class="section-head">
+          <h2>需求洞察</h2>
+          <span id="analysis-version" class="muted"></span>
+        </div>
+        <div id="insight-board" class="insight-grid"></div>
+      </section>
+      <section>
+        <div class="section-head">
+          <h2>证据链</h2>
+          <span class="muted">每条结论都应能追溯到内容或评论</span>
+        </div>
+        <div id="evidence-list" class="evidence-list"></div>
+      </section>
+      <section>
+        <h2>推荐动作与候选查询</h2>
+        <div class="columns">
+          <div><h3>推荐动作</h3><div id="recommended-actions"></div></div>
+          <div><h3>候选查询</h3><div id="candidate-queries"></div></div>
+          <div><h3>查询表现</h3><div id="query-performance"></div></div>
+        </div>
+      </section>
       <section>
         <h2>System</h2>
         <div id="system" class="grid"></div>

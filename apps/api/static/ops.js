@@ -7,6 +7,7 @@ document.querySelector("#refresh-all").addEventListener("click", refreshAll);
 document.querySelector("#task-filter").addEventListener("click", loadTasks);
 document.querySelector("#create-task").addEventListener("submit", createTask);
 document.querySelector("#create-query").addEventListener("submit", createQuery);
+document.querySelector("#run-pipeline").addEventListener("submit", runPipeline);
 document.body.addEventListener("click", handleActionClick);
 
 function headers() {
@@ -61,6 +62,74 @@ async function loadSystem() {
     card("Pending phrases", db.pending_phrase_count),
     card("Latest failure reason", db.latest_failure_reason),
   ].join("");
+}
+
+async function loadPublicDashboard() {
+  const data = await getJson("/ops/api/dashboard/public");
+  const overview = data.overview || {};
+  document.querySelector("#business-overview").innerHTML = [
+    metric("运行状态", overview.run_status || "-"),
+    metric("新增内容", overview.new_contents || 0),
+    metric("新增评论", overview.new_comments || 0),
+    metric("新增用户", overview.new_profiles || 0),
+    metric("需求事件", overview.demand_events || 0),
+    metric("候选查询", overview.candidate_queries || 0),
+    metric("警告", overview.warnings || 0),
+    metric("错误", overview.errors || 0),
+  ].join("");
+
+  const metadata = data.analysis_metadata || {};
+  document.querySelector("#analysis-version").textContent = metadata.rule_version
+    ? `${metadata.rule_version} · ${metadata.generated_at || ""}`
+    : "暂无分析版本";
+
+  document.querySelector("#insight-board").innerHTML = [
+    insightColumn("高频问题", data.insights?.frequent_questions || []),
+    insightColumn("新增焦虑点", data.insights?.emerging_anxieties || []),
+    insightColumn("内容选题", data.insights?.content_topics || []),
+    insightColumn("本地差异", data.insights?.local_demand_differences || [], true),
+  ].join("");
+
+  document.querySelector("#evidence-list").innerHTML = (data.evidence || []).slice(0, 12).map(evidenceItem).join("") || emptyState("暂无证据。先运行一轮 Pipeline。");
+  document.querySelector("#recommended-actions").innerHTML = (data.recommended_actions || []).map((item) => `<div class="item">${escapeHtml(item)}</div>`).join("") || emptyState("暂无推荐动作");
+  document.querySelector("#candidate-queries").innerHTML = (data.insights?.candidate_queries || []).slice(0, 10).map(candidateItem).join("") || emptyState("暂无候选查询");
+  document.querySelector("#query-performance").innerHTML = (data.queries || []).slice(0, 10).map(queryPerformanceItem).join("") || emptyState("暂无查询词");
+}
+
+function metric(label, value) {
+  return `<div class="metric"><div class="label">${escapeHtml(label)}</div><div class="metric-value">${escapeHtml(value)}</div></div>`;
+}
+
+function insightColumn(title, items, local = false) {
+  const body = items.length
+    ? items.slice(0, 6).map((item) => local ? localInsightItem(item) : insightItem(item)).join("")
+    : emptyState("暂无数据");
+  return `<div class="insight-column"><h3>${escapeHtml(title)}</h3>${body}</div>`;
+}
+
+function insightItem(item) {
+  const examples = (item.examples || []).slice(0, 2).map((example) => `<li>${escapeHtml(example)}</li>`).join("");
+  return `<div class="insight-item"><strong>${escapeHtml(item.title)}</strong><div class="muted">${escapeHtml(item.reason)} · 证据 ${item.evidence_count ?? 0}</div><ul>${examples}</ul></div>`;
+}
+
+function localInsightItem(item) {
+  return `<div class="insight-item"><strong>${escapeHtml(item.region)}</strong><div>${escapeHtml((item.top_terms || []).join("、"))}</div><div class="muted">${escapeHtml(item.reason)} · 证据 ${item.evidence_count ?? 0}</div></div>`;
+}
+
+function evidenceItem(item) {
+  return `<details class="evidence-item"><summary><strong>${escapeHtml(item.source_entity_type)}</strong> ${escapeHtml(item.source_entity_id)} · ${escapeHtml(item.occurred_at)}</summary><div>${escapeHtml(item.evidence_text)}</div><div class="muted">profile ${escapeHtml(item.public_profile_id)} · content ${escapeHtml(item.source_content_id)} · comment ${escapeHtml(item.source_comment_id)} · low-info ${escapeHtml(item.is_low_information)}</div></details>`;
+}
+
+function candidateItem(item) {
+  return `<div class="item"><strong>${escapeHtml(item.phrase)}</strong><div class="muted">潜力 ${pct(item.query_potential_score)} · 新鲜度 ${pct(item.novelty_score)} · 证据 ${item.source_text_count}</div><button class="secondary" data-create-query="${escapeHtml(item.phrase)}">加入查询词</button></div>`;
+}
+
+function queryPerformanceItem(item) {
+  return `<div class="item"><strong>${escapeHtml(item.query_text)}</strong><div class="muted">${escapeHtml(item.status)} · 优先级 ${item.priority} · 产出 ${item.output_count} · 成功 ${pct(item.success_rate)} · 失败 ${pct(item.failure_rate)}</div></div>`;
+}
+
+function emptyState(text) {
+  return `<div class="empty">${escapeHtml(text)}</div>`;
 }
 
 async function loadWorkers() {
@@ -140,7 +209,29 @@ async function createQuery(event) {
   loadQueries();
 }
 
+async function runPipeline(event) {
+  event.preventDefault();
+  const form = new FormData(event.target);
+  const mode = form.get("mode");
+  const queryId = Number(form.get("query_id"));
+  const payload = {
+    all_enabled: mode === "all",
+    query_ids: mode === "query" && queryId ? [queryId] : [],
+    collection_limit: Number(form.get("collection_limit") || 20),
+    skip_analysis: Boolean(form.get("skip_analysis")),
+    requested_by: "ops_dashboard",
+  };
+  await postJson("/ops/api/pipeline/runs", payload);
+  refreshAll();
+}
+
 async function handleActionClick(event) {
+  const createQueryButton = event.target.closest("button[data-create-query]");
+  if (createQueryButton) {
+    await postJson("/ops/api/queries", { query_text: createQueryButton.dataset.createQuery, priority: 50 });
+    refreshAll();
+    return;
+  }
   const button = event.target.closest("button[data-post]");
   if (!button) return;
   if (button.dataset.confirm && !window.confirm(button.dataset.confirm)) return;
@@ -149,6 +240,7 @@ async function handleActionClick(event) {
 }
 
 function refreshAll() {
+  loadPublicDashboard().catch(console.error);
   loadSystem().catch(console.error);
   loadWorkers().catch(console.error);
   loadTasks().catch(console.error);
@@ -168,5 +260,5 @@ function pct(value) {
 
 setInterval(() => { if (autoRefresh.checked && !state.hidden) loadWorkers().catch(console.error); }, 3000);
 setInterval(() => { if (autoRefresh.checked && !state.hidden) { loadTasks().catch(console.error); loadSystem().catch(console.error); } }, 5000);
-setInterval(() => { if (autoRefresh.checked && !state.hidden) { loadRecent().catch(console.error); loadErrors().catch(console.error); } }, 10000);
+setInterval(() => { if (autoRefresh.checked && !state.hidden) { loadPublicDashboard().catch(console.error); loadRecent().catch(console.error); loadErrors().catch(console.error); } }, 10000);
 refreshAll();

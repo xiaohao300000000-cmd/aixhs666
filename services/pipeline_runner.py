@@ -402,8 +402,47 @@ class PipelineRunner:
             "query_scores": [_to_jsonable(score) for score in scores[:20]],
             "content_insights": _to_jsonable(insight),
         }
+        result["evidence"] = self._evidence_payload(texts, processed)
+        result["analysis_metadata"] = {
+            "rule_version": "pipeline_rules_v1",
+            "text_processing_version": "text_processing_v1",
+            "demand_chain_version": "demand_chain_v1",
+            "clustering_version": "semantic_clustering_v1",
+            "phrase_discovery_version": "phrase_discovery_v1",
+            "query_scoring_version": "query_source_scoring_v1",
+            "content_insight_version": "content_insights_v1",
+            "ai_provider": "none",
+            "prompt_version": None,
+            "generated_at": _utc_now().isoformat(),
+        }
         result["recommended_actions"] = _recommended_actions(candidates, scores)
         self._set_progress(session, run, "insight", "completed")
+
+    def _evidence_payload(self, texts: list[tuple[str, str, str, int | None, datetime | None, str, int, int | None, int | None]], processed: list[Any]) -> list[dict[str, Any]]:
+        payload = []
+        processed_by_source = {item.source_id: item for item in processed}
+        for source_id, text, platform, profile_id, occurred_at, entity_type, entity_id, content_id, comment_id in texts[:100]:
+            processed_item = processed_by_source.get(source_id)
+            payload.append(
+                {
+                    "source_id": source_id,
+                    "platform": platform,
+                    "source_entity_type": entity_type,
+                    "source_entity_id": str(entity_id),
+                    "source_content_id": str(content_id) if content_id is not None else None,
+                    "source_comment_id": str(comment_id) if comment_id is not None else None,
+                    "public_profile_id": str(profile_id) if profile_id is not None else None,
+                    "occurred_at": _iso(occurred_at),
+                    "evidence_text": text,
+                    "normalized_text": processed_item.normalized_text if processed_item is not None else None,
+                    "is_low_information": processed_item.is_low_information if processed_item is not None else None,
+                    "low_info_reasons": [
+                        reason.value if isinstance(reason, Enum) else str(reason)
+                        for reason in (processed_item.low_info_reasons if processed_item is not None else ())
+                    ],
+                }
+            )
+        return payload
 
     def _text_records(self, session: Session) -> list[tuple[str, str, str, int | None, datetime | None, str, int, int | None, int | None]]:
         records = [
@@ -606,6 +645,8 @@ def _empty_result(run_id: int, *, status: str) -> dict[str, Any]:
         "errors": [],
         "recommended_actions": [],
         "insight": None,
+        "evidence": [],
+        "analysis_metadata": None,
     }
 
 
