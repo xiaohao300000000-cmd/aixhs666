@@ -290,3 +290,75 @@ MAX_HISTORY_CONTEXT_PER_QUERY = 50
 - 长期无人值守运行尚未完成
 
 在真实闭环通过前，不应把项目状态写成 100% 完成，也不应继续开发第二平台。
+
+## 10. 本机可视化看板启动方式
+
+2026-07-03 已补充一个面向非技术用户的本机启动入口：
+
+```text
+~/Desktop/打开AIXHS看板.command
+```
+
+双击该图标会执行 `scripts/open_dashboard.command`，自动完成以下动作：
+
+- 进入项目目录
+- 默认设置 `WORKER_ADAPTER=mediacrawler`
+- 默认设置本机 Ops 控制口令 `OPS_TOKEN=secret`
+- 检查 `third_party/MediaCrawler/.venv`
+- 如缺少 MediaCrawler 虚拟环境，自动创建并安装 `third_party/MediaCrawler/requirements.txt`
+- 检查小红书持久登录目录
+- 如未检测到登录态，启动 `python -m scripts.mediacrawler_login` 引导扫码登录
+- 登录完成后继续启动 API 服务
+- 自动打开 `/ops` 中文看板网页
+
+看板地址：
+
+```text
+http://127.0.0.1:8000/ops
+```
+
+页面右上角的 `OPS_TOKEN` 用于保护本机运维接口。默认本机启动器使用：
+
+```text
+secret
+```
+
+看板已改为中文显示，包含运行状态、查询、运行记录、洞察和启动一轮流程等入口。点击“启动一轮”时，如果当前没有启用查询，接口会自动创建一个默认真实查询，不再默认使用 mock 模拟采集。当前默认查询词为：
+
+```text
+KET PET 二刷
+```
+
+注意：
+
+- `mock` 只用于自动测试或显式调试，不是当前桌面看板的默认采集模式。
+- MediaCrawler 是项目内置主采集器，源码位于 `third_party/MediaCrawler`。
+- `.venv` 是 MediaCrawler 的本机运行环境，不提交到 Git；缺少时启动器会自动安装。
+- 首次扫码登录后，需要在终端按回车继续启动主程序。
+- 真实小红书平台可能出现验证码、限流或页面变更，出现时不能伪造成功，应在看板或日志中记录失败原因。
+
+## 11. 2026-07-03 变更摘要
+
+今天在 `feat/v15-agent-neutral-runtime` 分支完成并推送的主要变更：
+
+- 增加 Agent 中立 Pipeline Runner，CLI 和 REST 共用同一服务层。
+- 增加 `pipeline_runs` 运行状态持久化。
+- 增加增量分析范围，避免每次 `run-cycle` 重算整个数据库。
+- 增加 `analysis_processing_states`，用文本指纹和 `analysis_version` 判断是否需要重新分析。
+- 增加有限历史上下文上限，当前每个查询最多补充 50 条历史文本。
+- 增加 `/ops` 可视化看板。
+- 增加桌面双击启动脚本 `scripts/open_dashboard.command`。
+- 看板界面和运行反馈改为中文。
+- “启动一轮”无查询时会自动创建默认真实查询。
+- 桌面启动器默认使用真实 MediaCrawler 采集，不再默认 mock。
+- 桌面启动器会自动检查并安装 MediaCrawler `.venv`。
+- 桌面启动器会在没有小红书持久登录态时引导扫码登录，并在扫码完成后继续启动主程序和网页。
+
+本节记录的是 2026-07-03 当前分支已完成事项，具体提交以 `git log` 和 GitHub 分支历史为准。
+
+仍未完成或尚未充分验证：
+
+- 真实小红书小规模 Pipeline Runner 全链路需要再次从看板按钮触发确认。
+- 真实飞书凭证、真实发送和真实回调仍未验收。
+- 长期无人值守运行仍未完成。
+- 桌面启动器目前面向 macOS 本机；Windows/Linux 启动入口尚未制作。

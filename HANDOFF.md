@@ -4,9 +4,30 @@
 
 V15 Agent 中立运行框架已在 `feat/v15-agent-neutral-runtime` 接通。新增轻量 `PipelineRunner`、`pipeline_runs` 持久化、CLI 和 REST，使框架可以在不依赖 Codex 会话记忆的情况下完成一轮基础采集与分析。完整生产闭环仍因真实小红书 Pipeline Runner 小规模验证、真实飞书凭证和长期无人值守验证未完成而不能写成 100%。
 
+2026-07-03 已继续补齐本机可视化启动体验：新增桌面双击入口、中文 `/ops` 看板、真实 MediaCrawler 默认采集、MediaCrawler 依赖自动安装和首次扫码登录引导。普通用户现在可以从桌面图标启动本机服务并打开网页，但真实小红书采集仍需确认登录态、平台风控和本轮运行结果。
+
 ## 当前目标
 
 当前目标是从“模块可用”推进到“Agent 中立完整运行闭环”。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断、`/ops` 控制台，以及 Pipeline Runner。下一步必须在真实 MediaCrawler 依赖和登录态可用后执行一次小规模 `run-cycle` 验证，再配置 Feishu 凭证并执行真实发送/回调验收。
+
+本机普通用户入口：
+
+```text
+~/Desktop/打开AIXHS看板.command
+```
+
+双击后会运行 `scripts/open_dashboard.command`，默认使用：
+
+```text
+WORKER_ADAPTER=mediacrawler
+OPS_TOKEN=secret
+```
+
+该脚本会检查 `third_party/MediaCrawler/.venv`，缺失时自动创建并安装依赖；未检测到小红书持久登录态时，会启动 `python -m scripts.mediacrawler_login` 让用户扫码登录。扫码完成后需要在终端按回车，脚本会继续启动 API 服务并打开：
+
+```text
+http://127.0.0.1:8000/ops
+```
 
 ## 已确认范围
 
@@ -17,23 +38,45 @@ V15 Agent 中立运行框架已在 `feat/v15-agent-neutral-runtime` 接通。新
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 安装/确认 `third_party/MediaCrawler/.venv` 和持久登录态。
-2. 使用 `python -m apps.cli --json run-cycle --query-id <id> --collection-limit 5` 执行真实小红书 Pipeline Runner 验证。
-3. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
-4. 运行 Worker 或 Pipeline 小规模长期观察，记录登录态、限流、内存和任务状态。
-5. 更新 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` 的真实验证结果。
+1. 用桌面图标启动一次完整本机服务，确认 `/ops` 自动弹出。
+2. 在 `/ops` 页面输入 `secret`，点击“启动一轮”，确认真实 MediaCrawler 采集任务被创建和执行。
+3. 记录本轮真实数据：新增内容、评论、用户、处理文本、低信息、需求事件、候选词/聚类、评分和洞察。
+4. 如看板按钮失败，使用 `python -m apps.cli --json run-cycle --query-id <id> --collection-limit 5` 对照验证。
+5. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
+6. 运行 Worker 或 Pipeline 小规模长期观察，记录登录态、限流、内存和任务状态。
+7. 更新 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` 的真实验证结果。
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
 ## 当前已知风险
 
 - 真实小红书页面结构已验证一次，但后续仍可能变化
-- 当前最新副本未包含可用 `third_party/MediaCrawler/.venv`，真实 Pipeline Runner 验证未完成
+- `third_party/MediaCrawler/.venv` 不提交到 Git；当前桌面启动器会自动安装，但仍依赖网络和本机 Python 3.12
+- 首次小红书扫码登录后需要在终端按回车，脚本才会继续启动主程序
+- 真实 Pipeline Runner 从看板按钮触发的小规模验证尚未完整记录
 - Docker 未安装，当前使用本机 Homebrew PostgreSQL
 - 飞书真实发送和真实回调尚未验证
 - `pytest -m live` 因未启用 live 登录环境仍为 skipped
 
 这些风险直接影响 V0 完整真实闭环验收，不能把当前状态写成 100% 完成。
+
+
+## 2026-07-03 今日已完成
+
+- 提交并推送增量分析修复：Pipeline Runner 不再每轮读取全部 `contents` 和 `comments` 重算。
+- 新增 `analysis_processing_states`，用 `analysis_version`、文本指纹和处理记录判断是否需要重新分析。
+- 新增有限历史上下文策略，避免聚类和候选词发现脱离历史，也避免全库扫描。
+- 新增 `/ops` 运维看板，提供状态、查询、运行记录、洞察和启动一轮流程。
+- 新增 macOS 桌面启动图标：`~/Desktop/打开AIXHS看板.command`。
+- 新增 `scripts/open_dashboard.command`，可自动启动本机 API 并打开网页。
+- 看板界面、按钮反馈和状态文本改为中文。
+- “启动一轮”无启用查询时，会自动创建默认真实查询 `KET PET 二刷`。
+- 桌面启动器默认 `WORKER_ADAPTER=mediacrawler`，不再默认 mock。
+- 启动器会检查项目内 `third_party/MediaCrawler`，并自动创建 `third_party/MediaCrawler/.venv` 安装依赖。
+- 启动器未检测到小红书持久登录态时，会自动启动 MediaCrawler 登录流程。
+- 修复扫码登录后脚本停住的问题：扫码后在终端按回车，脚本会清理登录浏览器并继续启动主服务和网页。
+- 所有上述代码已推送到 GitHub 当前分支 `feat/v15-agent-neutral-runtime`。
+- 本次文档补充也需要提交并推送，具体 HEAD 以 `git log` 和 GitHub 分支历史为准。
 
 
 ## 新电脑与并发计划
