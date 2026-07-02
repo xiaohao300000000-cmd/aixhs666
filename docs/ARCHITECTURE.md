@@ -161,7 +161,7 @@ class PlatformAdapter(Protocol):
 
 - `MockPlatformAdapter`：测试和离线流程使用。
 - `XiaohongshuAdapter`：默认真实小红书 Playwright 页面/公开响应采集路径。
-- `MediaCrawlerXiaohongshuAdapter`：可选后端，通过 `WORKER_ADAPTER=mediacrawler` 启用，运行本机 MediaCrawler clone 并把 JSONL 输出转换为统一数据对象。
+- `MediaCrawlerXiaohongshuAdapter`：可选后端，通过 `WORKER_ADAPTER=mediacrawler` 启用，运行项目内 `third_party/MediaCrawler` 并把 JSONL 输出转换为统一数据对象。
 
 ## 5. 渐进式采集
 

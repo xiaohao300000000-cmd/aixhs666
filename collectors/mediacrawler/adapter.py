@@ -47,7 +47,7 @@ class MediaCrawlerConfig:
 
     @classmethod
     def from_env(cls) -> "MediaCrawlerConfig":
-        default_home = Path(__file__).resolve().parents[2].parent / "MediaCrawler"
+        default_home = Path(__file__).resolve().parents[2] / "third_party" / "MediaCrawler"
         home = Path(os.getenv("MEDIACRAWLER_HOME", str(default_home))).expanduser()
         python_executable = Path(
             os.getenv("MEDIACRAWLER_PYTHON", str(home / ".venv" / "bin" / "python"))

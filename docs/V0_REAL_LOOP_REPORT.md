@@ -412,7 +412,7 @@ Optional MediaCrawler backend added after live comparison:
 WORKER_ADAPTER=mediacrawler python -m apps.worker --once
 ```
 
-The adapter lives in `collectors/mediacrawler/` and runs a local MediaCrawler clone via `MEDIACRAWLER_HOME`.
+The adapter lives in `collectors/mediacrawler/` and runs the vendored MediaCrawler source under `third_party/MediaCrawler` via `MEDIACRAWLER_HOME`.
 It reads MediaCrawler JSONL outputs and maps them into the existing `PlatformAdapter` objects.
 MediaCrawler search mode fetches search results, note details, and optional comments in one subprocess run, so the adapter caches the outputs for later detail/comment tasks.
 Sensitive `xsec_token` and cookie-like values are redacted from adapter logs, and normalized note URLs do not include `xsec_token`.
@@ -434,6 +434,8 @@ MEDIACRAWLER_GET_COMMENTS=false adapter.search("KET 没过怎么办", limit=20)
 result: 20 search items returned
 first item: 6a37587e00000000210080ee / 我的口语有救了‼️ / 87 comments
 ```
+
+The same smoke also passed with the default vendored path `third_party/MediaCrawler`.
 
 Cached conversion verification using the full MediaCrawler run:
 

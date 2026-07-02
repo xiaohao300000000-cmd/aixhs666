@@ -193,7 +193,14 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 WORKER_ADAPTER=mediacrawler python -m apps.worker --once
 ```
 
-该后端通过 `MEDIACRAWLER_HOME` 指向本机 MediaCrawler clone，运行其小红书 search 模式并读取 JSONL 输出。MediaCrawler 一次 search 会同时补详情和评论，适配层会缓存这些输出，后续 detail/comment 任务优先复用缓存。该路径依赖 MediaCrawler 自身登录态和实现方式，不替代默认 Playwright adapter。
+该后端通过 `MEDIACRAWLER_HOME` 指向项目内 `third_party/MediaCrawler`，运行其小红书 search 模式并读取 JSONL 输出。MediaCrawler 一次 search 会同时补详情和评论，适配层会缓存这些输出，后续 detail/comment 任务优先复用缓存。该路径依赖 MediaCrawler 自身登录态和实现方式，不替代默认 Playwright adapter。
+
+首次使用前安装 MediaCrawler 依赖：
+
+```bash
+python3.12 -m venv third_party/MediaCrawler/.venv
+third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt
+```
 
 真实闭环仍需在具备以下条件的环境中执行：
 
