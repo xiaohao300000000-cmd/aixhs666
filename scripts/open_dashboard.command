@@ -23,20 +23,30 @@ export WORKER_ADAPTER="${WORKER_ADAPTER:-mediacrawler}"
 export OPS_TOKEN="${OPS_TOKEN:-secret}"
 
 if [ "$WORKER_ADAPTER" = "mediacrawler" ] && [ ! -x "$MEDIACRAWLER_PYTHON" ]; then
-  echo "当前已切换为真实采集模式，但未找到 MediaCrawler Python："
+  echo "提示：未找到 MediaCrawler Python，页面仍会打开，但真实采集前需要安装依赖："
   echo "$MEDIACRAWLER_PYTHON"
-  echo ""
-  echo "请先安装真实采集依赖："
-  echo "python3.12 -m venv third_party/MediaCrawler/.venv"
-  echo "third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt"
-  echo "python -m scripts.mediacrawler_login"
-  echo ""
-  read "?按回车退出..."
-  exit 1
 fi
 
-echo "正在检查真实数据库并执行迁移..."
-"$PYTHON_BIN" -m alembic upgrade head
+echo "正在检查数据库并执行迁移..."
+if ! "$PYTHON_BIN" -m alembic upgrade head; then
+  echo "真实数据库暂不可用，先用本地看板库打开页面。"
+  echo "真实采集前请确认 PostgreSQL 已启动并可连接：$DATABASE_URL"
+  export DATABASE_URL="sqlite+pysqlite:////tmp/aixhs-dashboard.db"
+  "$PYTHON_BIN" - <<'PY'
+import storage.models  # noqa: F401
+from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
+from storage.database import Base, engine
+from storage.models import Query
+
+Base.metadata.create_all(engine)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+with SessionLocal() as session:
+    if (session.scalar(select(func.count(Query.id))) or 0) == 0:
+        session.add(Query(query_text="KET PET 二刷", platform="xhs", query_type="seed", status="active", priority=100, source="dashboard_default"))
+        session.commit()
+PY
+fi
 
 if [ -f "$LOG_DIR/dashboard.pid" ]; then
   OLD_PID="$(cat "$LOG_DIR/dashboard.pid")"
@@ -62,6 +72,12 @@ echo ""
 echo "看板已打开。页面右上角 OPS_TOKEN 输入：$OPS_TOKEN"
 echo "当前采集模式：$WORKER_ADAPTER"
 echo "当前数据库：$DATABASE_URL"
+if [ "$WORKER_ADAPTER" = "mediacrawler" ] && [ ! -x "$MEDIACRAWLER_PYTHON" ]; then
+  echo "真实采集依赖未安装。安装命令："
+  echo "python3.12 -m venv third_party/MediaCrawler/.venv"
+  echo "third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt"
+  echo "python -m scripts.mediacrawler_login"
+fi
 echo "服务日志：$LOG_FILE"
 echo "关闭服务可执行：kill \$(cat $LOG_DIR/dashboard.pid)"
 echo ""
