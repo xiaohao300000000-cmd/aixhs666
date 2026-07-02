@@ -15,6 +15,7 @@ from storage import (
     ingest_content,
     ingest_profile,
     ingest_search_result,
+    upsert_discovery_relation,
     stable_text_hash,
 )
 from storage.database import Base
@@ -145,6 +146,35 @@ def test_same_query_content_discovery_is_idempotent(session: Session) -> None:
     assert updated_relation.rank_position == 5
     assert updated_relation.result_page == 2
     assert updated_relation.discovered_at == last_seen
+
+
+def test_discovery_relation_upsert_uses_unique_identity(session: Session) -> None:
+    adapter = MockPlatformAdapter()
+    query = _query(session, "ai-study")
+    content = ingest_content(session, adapter.get_content("note-ai-001"))
+
+    first_relation = upsert_discovery_relation(
+        session,
+        query=query,
+        content=content,
+        rank_position=1,
+        result_page=1,
+        discovery_method="search",
+    )
+    updated_relation = upsert_discovery_relation(
+        session,
+        query=query,
+        content=content,
+        rank_position=9,
+        result_page=3,
+        discovery_method="repeat-search",
+    )
+
+    assert updated_relation.id == first_relation.id
+    assert session.scalars(select(DiscoveryRelation)).all() == [first_relation]
+    assert updated_relation.rank_position == 9
+    assert updated_relation.result_page == 3
+    assert updated_relation.discovery_method == "repeat-search"
 
 
 def test_reply_comment_links_to_previously_ingested_parent(session: Session) -> None:

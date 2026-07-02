@@ -39,4 +39,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "live: tests that access live external services and require credentials or manual login",
+    "postgres: tests that require a real PostgreSQL database",
 ]

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import TypeAlias
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from collectors import CollectedComment, CollectedContent, CollectedProfile, CollectedSearchResult
@@ -176,6 +177,18 @@ def upsert_discovery_relation(
         session.add(content)
         session.flush()
 
+    bind = session.get_bind()
+    if bind.dialect.name == "postgresql":
+        return _native_upsert_discovery_relation(
+            session,
+            query_id=query_id,
+            content_id=content.id,
+            rank_position=rank_position,
+            result_page=result_page,
+            discovery_method=discovery_method,
+            discovered_at=seen_at,
+        )
+
     relation = session.scalar(
         select(DiscoveryRelation).where(
             DiscoveryRelation.query_id == query_id,
@@ -197,6 +210,63 @@ def upsert_discovery_relation(
     relation.discovered_at = seen_at
     session.flush()
     return relation
+
+
+def _native_upsert_discovery_relation(
+    session: Session,
+    *,
+    query_id: int,
+    content_id: int,
+    rank_position: int | None,
+    result_page: int | None,
+    discovery_method: str | None,
+    discovered_at: datetime,
+) -> DiscoveryRelation:
+    bind = session.get_bind()
+    insert_statement = _insert_discovery_relation(bind.dialect.name)
+    statement = (
+        insert_statement(DiscoveryRelation)
+        .values(
+            query_id=query_id,
+            content_id=content_id,
+            rank_position=rank_position,
+            result_page=result_page,
+            discovery_method=discovery_method,
+            discovered_at=discovered_at,
+        )
+        .on_conflict_do_update(
+            index_elements=["query_id", "content_id"],
+            set_={
+                "rank_position": rank_position,
+                "result_page": result_page,
+                "discovery_method": discovery_method,
+                "discovered_at": discovered_at,
+            },
+        )
+        .returning(DiscoveryRelation.id)
+    )
+    try:
+        relation_id = session.execute(statement).scalar_one()
+    except IntegrityError:
+        session.rollback()
+        raise
+    relation = session.get(DiscoveryRelation, relation_id)
+    if relation is None:
+        raise IngestReferenceError(f"discovery relation {relation_id} was not found after upsert")
+    session.refresh(relation)
+    return relation
+
+
+def _insert_discovery_relation(dialect_name: str):
+    if dialect_name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+
+        return insert
+    if dialect_name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+
+        return insert
+    raise IngestReferenceError(f"unsupported upsert dialect: {dialect_name}")
 
 
 def _seen_at(now: datetime | None) -> datetime:

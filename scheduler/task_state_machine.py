@@ -78,12 +78,19 @@ def create_task(
 
 def claim_next_task(session: Session, *, worker_id: str, now: datetime | None = None) -> CollectionTask | None:
     claimed_at = now or utc_now()
-    task = session.scalars(
+    statement = (
         select(CollectionTask)
         .where(CollectionTask.status.in_(RUNNABLE_STATUSES))
         .where(or_(CollectionTask.scheduled_at.is_(None), CollectionTask.scheduled_at <= claimed_at))
         .order_by(CollectionTask.priority.desc(), CollectionTask.scheduled_at.asc(), CollectionTask.id.asc())
         .limit(1)
+    )
+    bind = session.get_bind()
+    if bind.dialect.name == "postgresql":
+        statement = statement.with_for_update(skip_locked=True)
+
+    task = session.scalars(
+        statement
     ).first()
 
     if task is None:

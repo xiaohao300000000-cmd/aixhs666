@@ -109,7 +109,10 @@ class Comment(TimestampMixin, Base):
 
 class DiscoveryRelation(Base):
     __tablename__ = "discovery_relations"
-    __table_args__ = (Index("ix_discovery_relations_query_id_discovered_at", "query_id", "discovered_at"),)
+    __table_args__ = (
+        UniqueConstraint("query_id", "content_id", name="uq_discovery_relations_query_id_content_id"),
+        Index("ix_discovery_relations_query_id_discovered_at", "query_id", "discovered_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     query_id: Mapped[int] = mapped_column(ForeignKey("queries.id", ondelete="CASCADE"), nullable=False)

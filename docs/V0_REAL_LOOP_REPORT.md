@@ -144,7 +144,78 @@ Not yet verified:
 
 ## V03: Database Concurrency And Idempotency
 
-Status: not started.
+Status: code complete; PostgreSQL runtime validation pending due missing local PostgreSQL/Docker.
+
+Implemented:
+
+- `claim_next_task` now uses `FOR UPDATE SKIP LOCKED` when the active SQLAlchemy dialect is PostgreSQL.
+- Added unique ORM constraint `uq_discovery_relations_query_id_content_id` on `(query_id, content_id)`.
+- Added Alembic migration `0003_task_claiming_and_discovery_uniqueness`.
+- PostgreSQL discovery relation ingestion now uses native `INSERT ... ON CONFLICT DO UPDATE` for `(query_id, content_id)`.
+- Added tests asserting all required identity constraints:
+  - `(platform, platform_content_id)`
+  - `(platform, platform_comment_id)`
+  - `(platform, platform_user_id)`
+  - `(query_id, content_id)`
+- Added PostgreSQL-only concurrency test for `claim_next_task` with two sessions and row-lock skipping.
+
+Verification:
+
+```bash
+.venv/bin/python -m pytest tests/test_task_state_machine.py tests/test_storage_ingest.py tests/test_core_data_models.py tests/test_postgres_task_claiming.py -q
+```
+
+Result:
+
+```text
+24 passed, 1 skipped in 0.24s
+```
+
+The skipped test is the PostgreSQL-only concurrency test because `POSTGRES_TEST_DATABASE_URL` is not set.
+
+```bash
+.venv/bin/python -m alembic upgrade head --sql
+```
+
+Result:
+
+```text
+exit code 0
+generated PostgreSQL SQL including:
+ALTER TABLE discovery_relations ADD CONSTRAINT uq_discovery_relations_query_id_content_id UNIQUE (query_id, content_id);
+```
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+137 passed, 2 skipped, 1 warning in 0.62s
+```
+
+```bash
+.venv/bin/python -m pytest -m postgres -q
+```
+
+Result:
+
+```text
+1 skipped, 138 deselected, 1 warning in 0.26s
+```
+
+Not yet verified:
+
+- Real `alembic upgrade head` against PostgreSQL.
+- PostgreSQL two-worker concurrency test execution.
+- PostgreSQL discovery relation conflict behavior under concurrent writes.
+
+Environment blocker:
+
+- `docker` command is not installed.
+- `psql` and `pg_isready` are not installed.
+- `localhost:5432` is not accepting connections.
 
 ## V04: Real Feishu Integration
 

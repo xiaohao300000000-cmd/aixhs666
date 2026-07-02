@@ -165,6 +165,7 @@ def test_unique_constraints_match_identity_rules() -> None:
     assert ("platform", "platform_content_id") in unique_column_sets("contents")
     assert ("platform", "platform_comment_id") in unique_column_sets("comments")
     assert ("platform", "platform_user_id") in unique_column_sets("public_profiles")
+    assert ("query_id", "content_id") in unique_column_sets("discovery_relations")
 
 
 def test_required_indexes_are_declared() -> None:
