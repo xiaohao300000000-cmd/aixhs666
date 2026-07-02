@@ -204,3 +204,25 @@ class PipelineRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_message: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str | None] = mapped_column(String(255))
+
+
+class AnalysisProcessingState(Base):
+    __tablename__ = "analysis_processing_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_type",
+            "entity_id",
+            "analysis_version",
+            name="uq_analysis_processing_states_entity_version",
+        ),
+        Index("ix_analysis_processing_states_entity", "entity_type", "entity_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    analysis_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_fingerprint: Mapped[str | None] = mapped_column(String(128))
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_pipeline_run_id: Mapped[int | None] = mapped_column(ForeignKey("pipeline_runs.id", ondelete="SET NULL"))

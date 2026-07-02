@@ -20,7 +20,7 @@
 | 执行会话 | 主控单会话 |
 | 当前分支 | `feat/v15-agent-neutral-runtime` |
 | 阻塞数量 | 3 |
-| 最后更新 | 2026-07-03：新增 Agent 中立 Pipeline Runner、`pipeline_runs`、CLI、REST 和文档；`pytest -q` 163 passed, 2 skipped；真实 Pipeline Runner 小规模验证因当前副本未发现 MediaCrawler `.venv`/可见登录态未完成 |
+| 最后更新 | 2026-07-03：新增 Agent 中立 Pipeline Runner、增量分析处理状态、CLI、REST 和可查验 Dashboard；`pytest -q` 169 passed, 2 skipped；真实 Pipeline Runner 小规模验证因当前副本未发现 MediaCrawler `.venv`/可见登录态未完成 |
 
 ## 阶段进度
 

@@ -83,8 +83,13 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
     "duplicates": 8
   },
   "processing": {
-    "processed_contents": 56,
-    "low_information_contents": 7,
+    "records_in_scope": 12,
+    "processed_records": 12,
+    "new_contents_processed": 4,
+    "updated_contents_processed": 1,
+    "new_comments_processed": 7,
+    "updated_comments_processed": 0,
+    "low_information_records": 3,
     "demand_events_created": 15
   },
   "intelligence": {
@@ -95,6 +100,24 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   "warnings": [],
   "errors": [],
   "recommended_actions": []
+}
+```
+
+增量分析范围另有：
+
+```json
+{
+  "analysis_scope": {
+    "current_records": 12,
+    "historical_context_records": 38,
+    "total_records_used": 50,
+    "max_history_context_per_query": 50
+  },
+  "database_totals": {
+    "contents": 114,
+    "comments": 309,
+    "profiles": 403
+  }
 }
 ```
 
@@ -140,6 +163,40 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 - 内容、评论、用户和发现关系沿用现有唯一约束和 upsert，重复运行不会重复入库。
 - 每次 `run-cycle` 默认创建独立 `pipeline_runs` 记录。
 - 提供 `idempotency_key` 时，已完成的同 key 运行会直接返回既有记录。
+- 分析阶段使用 `analysis_processing_states` 记录处理状态，同一分析版本下文本未变化的数据不会被反复处理。
+
+## 增量分析说明
+
+每轮 Pipeline 会建立本轮范围：
+
+- 本轮涉及的 query IDs
+- 本轮新增或文本变化的 content IDs
+- 本轮新增或文本变化的 comment IDs
+- 本轮涉及的 profile IDs
+
+重新分析条件：
+
+```text
+没有处理状态
+或 analysis_version 变化
+或 source_fingerprint 变化
+```
+
+聚类、候选词和洞察会使用：
+
+```text
+本轮新增/更新文本 + 每个本轮 query 最多 50 条历史上下文
+```
+
+当本轮没有新增或更新文本时，`records_in_scope=0`，并返回：
+
+```json
+{
+  "warnings": [
+    "No new or updated text records were available for analysis."
+  ]
+}
+```
 
 ## 失败恢复
 

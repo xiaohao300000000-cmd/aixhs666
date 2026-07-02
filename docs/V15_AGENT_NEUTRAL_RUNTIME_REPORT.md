@@ -34,6 +34,61 @@
 
 REST 和 CLI 都调用同一个 `PipelineRunner` 服务层。
 
+## 增量分析修正
+
+旧实现中 `_text_records(session)` 会读取全部 `contents` 和全部 `comments`，导致每次 `run-cycle` 都重算历史文本、历史需求事件、历史聚类和历史候选词。
+
+当前实现改为：
+
+```text
+本轮新增/更新内容和评论
+→ 增量文本处理
+→ 增量需求识别
+→ 本轮文本 + 有限历史上下文做聚类/候选词/洞察
+```
+
+新增 `PipelineScope` 记录本轮范围：
+
+- `query_ids`
+- `content_ids`
+- `new_content_ids`
+- `updated_content_ids`
+- `comment_ids`
+- `new_comment_ids`
+- `updated_comment_ids`
+- `profile_ids`
+
+新增表 `analysis_processing_states`，记录：
+
+- `entity_type`
+- `entity_id`
+- `analysis_version`
+- `source_updated_at`
+- `source_fingerprint`
+- `processed_at`
+- `last_pipeline_run_id`
+
+判断是否需要重新处理：
+
+```text
+从未处理
+或 analysis_version 变化
+或 source_fingerprint 变化
+```
+
+为避免重复采集刷新 `updated_at` 导致误判，当前 `source_fingerprint` 只基于影响分析的文本字段：
+
+- 内容：`title + body_text`
+- 评论：`body_text + parent_comment_id`
+
+历史上下文上限：
+
+```text
+MAX_HISTORY_CONTEXT_PER_QUERY = 50
+```
+
+无新增/更新文本时，分析阶段正常完成，`records_in_scope=0`，不再重跑全库，并返回 warning。
+
 ## pipeline_runs 状态设计
 
 表：`pipeline_runs`
@@ -80,13 +135,22 @@ REST 和 CLI 都调用同一个 `PipelineRunner` 服务层。
 
 ```text
 .venv/bin/python -m pytest -q
-163 passed, 2 skipped, 1 warning
+169 passed, 2 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
-1 skipped, 164 deselected, 1 warning
+1 skipped, 170 deselected, 1 warning
 ```
 
 PostgreSQL 标记测试因当前环境没有启用对应真实测试数据库而 skipped。
+
+增量分析新增测试结果：
+
+- 第二轮无新数据：`records_in_scope == 0`，不重新处理旧内容/评论。
+- 只新增一条评论：`records_in_scope == 1`。
+- 内容正文变化：只重新处理该内容，旧评论不处理。
+- 分析版本从 v1 改 v2：本轮范围内旧数据重新进入处理范围。
+- 聚类失败：不写入处理状态，retry 后重新处理对应范围。
+- 1000 内容 + 3000 评论历史数据：本轮新增 1 内容 + 2 评论时，`records_in_scope == 3`，`historical_context_records <= 50`，`total_records_used <= 53`。
 
 ## 真实数据验证
 

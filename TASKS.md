@@ -15,7 +15,7 @@
 | 代码完成 | DONE：真实 adapter、Worker、PostgreSQL 幂等/并发、飞书 transport/callback、数据库看板、运行诊断、HTML 控制台 |
 | Agent 中立 Pipeline Runner | DONE：`services/pipeline_runner.py`、`pipeline_runs`、CLI、REST 已接入主流程 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
-| 自动测试通过 | DONE：`pytest -q` 为 163 passed, 2 skipped |
+| 自动测试通过 | DONE：`pytest -q` 为 169 passed, 2 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
@@ -27,10 +27,10 @@ V15 本机自动测试结果：
 
 ```text
 .venv/bin/python -m pytest -q
-163 passed, 2 skipped, 1 warning
+169 passed, 2 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
-1 skipped, 164 deselected, 1 warning
+1 skipped, 170 deselected, 1 warning
 ```
 
 ## 全局执行规则

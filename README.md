@@ -184,7 +184,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-163 passed, 2 skipped, 1 warning
+169 passed, 2 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -243,6 +243,36 @@ REST 入口：
 - `GET /ops/api/insights/latest`
 
 运行状态持久化在 `pipeline_runs`，包含 `status`、`request_data`、`progress_data`、`result_data`、`started_at`、`finished_at`、`error_message` 和可选 `idempotency_key`。详细接口见 `docs/AGENT_INTERFACE.md`，本次真实调用链审计与验证状态见 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md`。
+
+### 增量分析范围
+
+Pipeline Runner 的分析阶段不再每轮重算全库。采集阶段会形成本轮 `PipelineScope`，只把本轮新增或文本发生变化的内容/评论送入文本处理、需求识别、候选词和洞察生成。
+
+处理状态记录在 `analysis_processing_states`：
+
+- `entity_type`
+- `entity_id`
+- `analysis_version`
+- `source_updated_at`
+- `source_fingerprint`
+- `processed_at`
+- `last_pipeline_run_id`
+
+判断是否需要重新分析：
+
+```text
+从未处理
+或 analysis_version 变化
+或文本指纹变化
+```
+
+聚类和候选词发现会结合有限历史上下文，而不是全库上下文。当前上限：
+
+```text
+MAX_HISTORY_CONTEXT_PER_QUERY = 50
+```
+
+第二轮无新增/更新数据时，`processing.records_in_scope` 和 `processing.processed_records` 为 `0`，并返回 warning，不重新处理历史文本。
 
 2026-07-02 本机 PostgreSQL 和小红书真实采集已验证：
 
