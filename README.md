@@ -162,3 +162,36 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 ```
 
 独立执行对话不是项目经理对话的派生会话，不共享聊天上下文。项目经理通过 `orchestration/packets/TXX.md` 传递完整任务要求。
+
+## 8. V0 真实数据闭环状态
+
+当前 `feat/v0-real-data-loop` 分支已补齐真实闭环的代码主干：
+
+- Playwright 小红书 adapter：`collectors/xiaohongshu/`
+- Worker 入口：`python -m apps.worker`
+- PostgreSQL 安全任务领取：`FOR UPDATE SKIP LOCKED`
+- `discovery_relations(query_id, content_id)` 唯一约束与 upsert
+- 飞书 webhook transport、dry-run、重试、回调幂等处理
+- 数据库驱动看板：`GET /dashboard/summary`
+
+本机已验证：
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+结果：
+
+```text
+147 passed, 2 skipped, 1 warning
+```
+
+真实闭环仍需在具备以下条件的环境中执行：
+
+- Docker 或可用 PostgreSQL
+- `DATABASE_URL`
+- `POSTGRES_TEST_DATABASE_URL`
+- 小红书持久化浏览器 profile 和手动登录态
+- 飞书 Webhook 或应用凭证
+
+在真实闭环通过前，不应把项目状态写成 100% 完成，也不应继续开发第二平台。

@@ -356,3 +356,70 @@
 - 推荐第二平台
 - 预估成本
 - 接入计划
+
+## V0 真实数据闭环修正任务
+
+> 以下状态以代码和本机实际运行结果为准，不沿用 T01-T22 的“100% 完成”口径。
+
+## V01 真实小红书采集器
+
+状态：DONE_CODE / LIVE_PENDING
+
+结果：
+
+- 已新增 Playwright `collectors/xiaohongshu/` adapter。
+- 已覆盖本地页面样本解析和接口映射测试。
+- 未完成真实小红书登录后 live 采集验证。
+
+## V02 Worker 运行入口
+
+状态：DONE_CODE / PG_RUNTIME_PENDING
+
+结果：
+
+- 已新增 `python -m apps.worker`。
+- 已支持 once、worker_id、轮询、恢复超时、partial/retry 和任务分发。
+- 未完成真实 PostgreSQL 长运行 Worker 验证。
+
+## V03 数据库并发与幂等
+
+状态：DONE_CODE / PG_CONCURRENCY_PENDING
+
+结果：
+
+- 已实现 PostgreSQL `FOR UPDATE SKIP LOCKED` 领取逻辑。
+- 已新增 `discovery_relations(query_id, content_id)` 唯一约束。
+- 已实现 PostgreSQL discovery relation upsert。
+- PostgreSQL 并发测试因缺少 `POSTGRES_TEST_DATABASE_URL` 跳过。
+
+## V04 真实飞书集成
+
+状态：DONE_CODE / LIVE_FEISHU_PENDING
+
+结果：
+
+- 已新增 webhook transport、dry-run、重试、密钥遮蔽、callback token/signature helper 和幂等回调记录。
+- 已支持 `approve`、`reject`、`convert_to_query`。
+- 未配置真实飞书凭证，未完成真实发送验证。
+
+## V05 数据库看板统计
+
+状态：DONE_CODE / LIVE_PG_DASHBOARD_PENDING
+
+结果：
+
+- 已新增数据库驱动的 `GET /dashboard/summary`。
+- 已覆盖 SQLite 数据库聚合测试。
+- 未完成 PostgreSQL/live 数据看板验证。
+
+## V06 真实闭环验收
+
+状态：BLOCKED
+
+阻塞：
+
+- 本机没有 Docker：`docker compose up` 返回 `command not found`。
+- 本机没有运行 PostgreSQL：`alembic upgrade head` 连接 `localhost:5432` 被拒绝。
+- 未配置 `POSTGRES_TEST_DATABASE_URL`，PostgreSQL 并发测试跳过。
+- 未配置小红书 live 登录 profile。
+- 未配置飞书真实凭证。

@@ -4,7 +4,7 @@ Last updated: 2026-07-02
 
 ## Current True Status
 
-The repository is currently a mock-backed backend prototype. Prior task dashboards report completion of T01-T22, but code inspection shows the real V0 loop is not complete.
+The repository now contains V0 real-loop code for Xiaohongshu collection, worker execution, database idempotency, Feishu transport/callback handling, and database-backed dashboard metrics. The real external closed loop is not fully validated because this machine does not have Docker/PostgreSQL running, Feishu credentials, or a configured Xiaohongshu live login profile.
 
 ## P0 Baseline
 
@@ -304,7 +304,133 @@ Not yet verified:
 
 ## V06: Real Closed-Loop Validation
 
-Status: not started.
+Status: blocked after local automated verification.
+
+Automated verification executed:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+147 passed, 2 skipped, 1 warning in 0.96s
+```
+
+```bash
+.venv/bin/python -m pytest -m live -q
+```
+
+Result:
+
+```text
+1 skipped, 148 deselected, 1 warning in 0.27s
+```
+
+The live test was skipped because live Xiaohongshu execution is opt-in and no live runtime variables/profile are configured.
+
+```bash
+.venv/bin/python -m pytest -m postgres -q
+```
+
+Result:
+
+```text
+1 skipped, 148 deselected, 1 warning in 0.26s
+```
+
+The PostgreSQL concurrency test was skipped because `POSTGRES_TEST_DATABASE_URL` is not configured.
+
+```bash
+.venv/bin/python -m alembic upgrade head
+```
+
+Result:
+
+```text
+failed: connection to localhost:5432 refused
+```
+
+This is an environment failure: the default database URL points to PostgreSQL on localhost, but no PostgreSQL server is running.
+
+```bash
+DATABASE_URL=sqlite+pysqlite:////tmp/aixhs-v06-alembic-batch.sqlite .venv/bin/python -m alembic upgrade head
+```
+
+Result:
+
+```text
+exit code 0
+```
+
+This verifies the migration chain can run locally on SQLite after changing migration 0003 to Alembic batch mode. It does not replace the required PostgreSQL upgrade verification.
+
+```bash
+.venv/bin/python -m alembic upgrade head --sql
+```
+
+Result:
+
+```text
+exit code 0
+generated PostgreSQL SQL including:
+ALTER TABLE discovery_relations ADD CONSTRAINT uq_discovery_relations_query_id_content_id UNIQUE (query_id, content_id);
+```
+
+```bash
+docker compose up
+```
+
+Result:
+
+```text
+failed: docker: command not found
+```
+
+Environment checks:
+
+```text
+DATABASE_URL unset in shell; settings fall back to localhost PostgreSQL.
+POSTGRES_TEST_DATABASE_URL unset.
+XHS_BROWSER_PROFILE_DIR unset.
+FEISHU_ENABLED unset.
+FEISHU_WEBHOOK_URL unset.
+FEISHU_APP_ID unset.
+FEISHU_APP_SECRET unset.
+FEISHU_VERIFICATION_TOKEN unset.
+FEISHU_ENCRYPT_KEY unset.
+docker command not installed.
+psql command not installed.
+localhost:5432 is not accepting PostgreSQL connections.
+```
+
+Real-data validation metrics:
+
+```text
+query seed count: 0 live-created in this environment
+real posts/search results collected: 0
+real comments collected: 0
+real public profiles collected: 0
+duplicate contents observed in live run: not verified
+duplicate discovery relations observed in live run: not verified
+failed task count in live run: not verified
+partial/retry count in live run: not verified
+Feishu send result: dry-run/mocked tests only; no real send
+database dashboard live result: not verified against PostgreSQL/live collected rows
+```
+
+Required real closed-loop steps not completed:
+
+- Creating the five seed queries in PostgreSQL.
+- Running the real Xiaohongshu worker after manual login.
+- Collecting at least 100 real posts/search results.
+- Collecting real detail/comment/profile data.
+- Forcing and recovering from a worker interruption against PostgreSQL.
+- Re-running the same query batch and measuring real dedupe behavior.
+- Verifying two workers do not claim the same PostgreSQL task.
+- Sending a real Feishu alert.
+- Reading dashboard metrics from a PostgreSQL database populated by real Xiaohongshu rows.
 
 ## Risks
 
@@ -315,3 +441,5 @@ Status: not started.
 - Feishu credentials may be unavailable, limiting verification to dry-run and mocked HTTP.
 - Long-running browser and worker processes need resource monitoring.
 - Public-data collection boundaries and compliance requirements must remain explicit.
+- PostgreSQL migration and concurrency behavior still need to be executed against a real PostgreSQL service.
+- The current local machine cannot run `docker compose up` because Docker is not installed or not on PATH.

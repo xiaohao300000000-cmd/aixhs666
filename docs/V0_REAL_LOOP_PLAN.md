@@ -22,25 +22,37 @@ This V0 explicitly excludes second-platform evaluation, private messaging, autom
 
 ### V01: Real Xiaohongshu Collector
 
+Status: code complete; live Xiaohongshu validation pending.
+
 Implement `collectors/xiaohongshu/` with Playwright-based browser access, persistent login profile, explicit login and selector errors, parser tests using saved real-page samples, and live tests marked separately.
 
 ### V02: Worker Runtime Entry
+
+Status: code complete; long-running PostgreSQL worker validation pending.
 
 Implement `python -m apps.worker` with database Session setup, adapter loading, task polling, task-type dispatch, partial/retry handling, timeout recovery, graceful shutdown, configurable worker ID, polling interval, and once mode.
 
 ### V03: Database Concurrency And Idempotency
 
+Status: code complete; PostgreSQL runtime concurrency validation pending.
+
 Make PostgreSQL task claiming safe with `FOR UPDATE SKIP LOCKED`, add a unique constraint for `discovery_relations(query_id, content_id)`, use database-backed upsert/conflict handling, and add PostgreSQL concurrency tests.
 
 ### V04: Real Feishu Integration
+
+Status: code complete; real Feishu delivery and callback validation pending.
 
 Add Feishu transport and callback handling on top of existing payload builders, including webhook/app delivery, retries, timeouts, dry-run, secret masking, signature/verification helpers, and idempotent review callbacks.
 
 ### V05: Database Dashboard Metrics
 
+Status: code complete; PostgreSQL/live-data dashboard validation pending.
+
 Add `GET /dashboard/summary` backed directly by PostgreSQL statistics for collection volume, duplication, query output, task success/failure, field completeness, high-value signals, phrase review state, and latest collection status.
 
 ### V06: Real Closed-Loop Validation
+
+Status: blocked by missing local Docker/PostgreSQL, missing Feishu credentials, and missing configured Xiaohongshu live login/profile.
 
 Run a real Xiaohongshu validation with five education seed queries, at least 100 real search results/posts, partial detail/comment/profile collection, forced worker interruption and recovery, repeated collection dedupe checks, dashboard validation, and Feishu real send or documented dry-run.
 
