@@ -304,7 +304,7 @@ Not yet verified:
 
 ## V06: Real Closed-Loop Validation
 
-Status: blocked after local automated verification.
+Status: blocked after local automated verification and one real Xiaohongshu navigation attempt.
 
 Automated verification executed:
 
@@ -329,6 +329,32 @@ Result:
 ```
 
 The live test was skipped because live Xiaohongshu execution is opt-in and no live runtime variables/profile are configured.
+
+Real Xiaohongshu navigation attempt on 2026-07-02:
+
+```bash
+RUN_XHS_LIVE=1 XHS_HEADLESS=false XHS_BROWSER_PROFILE_DIR=.runtime/xhs-profile XHS_SNAPSHOT_DIR=.runtime/snapshots XHS_SCREENSHOT_DIR=.runtime/screenshots XHS_MANUAL_LOGIN_TIMEOUT_MS=300000 .venv/bin/python -m pytest tests/test_xiaohongshu_adapter.py::test_live_xiaohongshu_search_requires_opt_in -q -s
+```
+
+Result:
+
+```text
+failed with XiaohongshuNetworkError:
+Page.goto: net::ERR_CONNECTION_CLOSED at https://www.xiaohongshu.com/search_result?keyword=KET+...
+screenshot=.runtime/screenshots/search-KET-没过怎么办.png
+```
+
+Network diagnosis:
+
+```text
+curl https://www.xiaohongshu.com/ failed with SSL_ERROR_SYSCALL.
+DNS through the local environment returned fake-ip 198.18.0.111.
+Clash Verge is configured with mixed-port 7897 and fake-ip DNS.
+curl through 127.0.0.1:7897 still failed after CONNECT with SSL_ERROR_SYSCALL.
+DoH resolved www.xiaohongshu.com to 43.159.95.157, but direct --resolve also failed with SSL_ERROR_SYSCALL.
+```
+
+Conclusion: the live browser reached the real Xiaohongshu URL path, but the current machine/network/proxy route closes the TLS connection before login or page parsing can begin. This is not evidence of successful live collection.
 
 ```bash
 .venv/bin/python -m pytest -m postgres -q

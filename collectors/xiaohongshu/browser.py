@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from playwright.sync_api import BrowserContext, Page, Playwright, TimeoutError as PlaywrightTimeoutError, sync_playwright
+from playwright.sync_api import BrowserContext, Error as PlaywrightError, Page, Playwright, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from collectors.xiaohongshu import selectors
-from collectors.xiaohongshu.exceptions import LoginRequiredError, PageExpiredError, PageTimeoutError
+from collectors.xiaohongshu.exceptions import LoginRequiredError, PageExpiredError, PageTimeoutError, XiaohongshuNetworkError
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +100,12 @@ class XiaohongshuBrowser:
             except PlaywrightTimeoutError as exc:
                 screenshot = self._save_screenshot(page, artifact_name)
                 raise PageTimeoutError(f"Xiaohongshu page timed out: {url}; screenshot={screenshot}") from exc
+            except PlaywrightError as exc:
+                screenshot = self._save_screenshot(page, artifact_name)
+                raise XiaohongshuNetworkError(
+                    f"Xiaohongshu navigation failed on the current network: {url}; "
+                    f"error={exc}; screenshot={screenshot}"
+                ) from exc
 
             for _ in range(max(scroll_limit, 0)):
                 page.mouse.wheel(0, 1200)

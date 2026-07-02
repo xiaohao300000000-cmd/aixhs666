@@ -9,6 +9,7 @@ from collectors.xiaohongshu.exceptions import (
     PageTimeoutError,
     SelectorChangedError,
     XiaohongshuAdapterError,
+    XiaohongshuNetworkError,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "XiaohongshuAdapter",
     "XiaohongshuAdapterError",
     "XiaohongshuBrowserConfig",
+    "XiaohongshuNetworkError",
 ]

@@ -18,5 +18,6 @@ build/
 *.egg-info/
 *.log
 playwright/.auth/
+.runtime/
 screenshots/
 artifacts/

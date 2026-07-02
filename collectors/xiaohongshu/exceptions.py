@@ -17,6 +17,10 @@ class PageExpiredError(XiaohongshuAdapterError):
     """Raised when a loaded page is expired or invalid."""
 
 
+class XiaohongshuNetworkError(XiaohongshuAdapterError):
+    """Raised when the browser cannot reach Xiaohongshu over the current network."""
+
+
 class ContentNotFoundError(XiaohongshuAdapterError):
     """Raised when a requested note or profile does not exist or is unavailable."""
 
