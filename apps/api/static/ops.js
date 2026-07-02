@@ -222,7 +222,7 @@ async function runPipeline(event) {
   const mode = form.get("mode");
   const queryId = Number(form.get("query_id"));
   const payload = {
-    all_enabled: mode === "all",
+    all_enabled: mode !== "query" || !queryId,
     query_ids: mode === "query" && queryId ? [queryId] : [],
     collection_limit: Number(form.get("collection_limit") || 20),
     skip_analysis: Boolean(form.get("skip_analysis")),
@@ -230,12 +230,19 @@ async function runPipeline(event) {
   };
   try {
     showNotice("正在启动一轮 Pipeline...", "info");
+    await ensureRunnableQuery();
     const result = await postJson("/ops/api/pipeline/runs", payload);
     showNotice(`Pipeline 已完成：run ${result.run_id}，状态 ${result.status}`, "success");
     refreshAll();
   } catch (error) {
     showNotice(`运行失败：${humanError(error)}`, "error");
   }
+}
+
+async function ensureRunnableQuery() {
+  const data = await getJson("/ops/api/queries");
+  if ((data.items || []).some((item) => item.status === "active")) return;
+  await postJson("/ops/api/queries", { query_text: "admissions", priority: 100 });
 }
 
 async function handleActionClick(event) {
