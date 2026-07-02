@@ -16,9 +16,9 @@
 | 自动测试通过 | DONE：`pytest -q` 为 157 passed, 2 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
-| 真实小红书验证通过 | BLOCKED：主采集器固定为 MediaCrawler；仍需执行 `python -m scripts.mediacrawler_login` 完成首次人工扫码 |
+| 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
 | 真实飞书验证通过 | BLOCKED：未配置真实 Feishu 凭证 |
-| 完整闭环通过 | BLOCKED：真实采集和真实飞书未完成 |
+| 完整闭环通过 | BLOCKED：真实飞书和长期无人值守运行未完成 |
 
 ## 全局执行规则
 

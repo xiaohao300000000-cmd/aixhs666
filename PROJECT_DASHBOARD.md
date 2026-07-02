@@ -16,11 +16,11 @@
 | 项目 | 当前值 |
 |---|---|
 | 当前阶段 | V0 真实数据闭环修正 |
-| 当前主任务 | V0 真实闭环验收：PostgreSQL/控制台已验证，小红书登录和飞书凭证阻塞 |
+| 当前主任务 | V0 小规模试运行：PostgreSQL/控制台/小红书 live 采集已验证，飞书真实凭证和长期运行待验证 |
 | 执行会话 | 主控单会话 |
 | 当前分支 | `main` |
-| 阻塞数量 | 3 |
-| 最后更新 | 2026-07-02：PostgreSQL migration/runtime check/postgres test 通过；`/ops` 控制台完成；MediaCrawler 固定为主采集器并使用持久登录态；仍需首次人工扫码；Feishu 真实凭证未配置 |
+| 阻塞数量 | 2 |
+| 最后更新 | 2026-07-02：PostgreSQL migration/runtime check/postgres test 通过；`/ops` 控制台完成；MediaCrawler 持久登录态完成；live DB 已有 114 内容、309 评论、403 用户；Feishu 真实凭证未配置 |
 
 ## 阶段进度
 
@@ -113,8 +113,8 @@ gantt
 | ID | 阻塞内容 | 影响任务 | 负责人 | 处理状态 |
 |---|---|---|---|---|
 | V0-B1 | Docker 未安装，Compose 不可用；当前使用 Homebrew PostgreSQL | Docker 环境复现 | 用户/环境 | 已记录替代环境 |
-| V0-B2 | MediaCrawler 持久 profile 尚未完成首次人工扫码 | 真实搜索/详情/评论/主页采集 | 用户/环境 | 执行 `python -m scripts.mediacrawler_login` |
-| V0-B3 | 未配置飞书凭证 | 真实飞书发送与回调验证 | 用户/环境 | 待配置 |
+| V0-B2 | 未配置飞书凭证 | 真实飞书发送与回调验证 | 用户/环境 | 待配置 |
+| V0-B3 | 未完成 4-8 小时长期运行 | 稳定性验收 | 主控/环境 | 待执行 |
 
 ## 最近完成
 

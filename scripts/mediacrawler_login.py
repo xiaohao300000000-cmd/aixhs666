@@ -27,7 +27,7 @@ def main() -> None:
     os.environ["MEDIACRAWLER_TIMEOUT_SECONDS"] = str(args.timeout_seconds)
 
     config = MediaCrawlerConfig.from_env()
-    user_data_dir = config.home / "browser_data" / (config.user_data_dir % "xhs")
+    user_data_dir = config.persistent_profile_dir
     print(f"MediaCrawler home: {config.home}")
     print(f"Persistent XHS profile: {user_data_dir}")
     print(f"CDP self-managed browser: {config.enable_cdp_mode and not config.cdp_connect_existing}")

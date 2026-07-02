@@ -52,6 +52,13 @@ class MediaCrawlerConfig:
     user_data_dir: str
     custom_browser_path: str | None
 
+    @property
+    def persistent_profile_dir(self) -> Path:
+        profile_name = self.user_data_dir % "xhs"
+        if self.enable_cdp_mode:
+            profile_name = f"cdp_{profile_name}"
+        return self.home / "browser_data" / profile_name
+
     @classmethod
     def from_env(cls) -> "MediaCrawlerConfig":
         default_home = Path(__file__).resolve().parents[2] / "third_party" / "MediaCrawler"

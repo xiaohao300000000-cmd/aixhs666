@@ -83,6 +83,7 @@ def system_status(session: SessionDep) -> dict[str, Any]:
     dashboard = build_database_dashboard_response(session)
     media_config = MediaCrawlerConfig.from_env()
     xhs_config = XiaohongshuBrowserConfig.from_env()
+    media_profile_exists = media_config.persistent_profile_dir.exists()
     latest_success = session.scalar(
         select(CollectionTask.finished_at)
         .where(CollectionTask.status == TaskStatus.COMPLETED.value)
@@ -103,7 +104,10 @@ def system_status(session: SessionDep) -> dict[str, Any]:
         "worker_online_count": online_workers,
         "mediacrawler": _status("正常" if media_config.home.exists() else "异常", str(media_config.home)),
         "playwright": _status("正常" if xhs_config.profile_dir.exists() else "警告", str(xhs_config.profile_dir)),
-        "xiaohongshu_login": _status("未配置", "Use browser login check for live status"),
+        "xiaohongshu_login": _status(
+            "正常" if media_profile_exists else "警告",
+            f"MediaCrawler persistent profile {'exists' if media_profile_exists else 'is missing'}: {media_config.persistent_profile_dir}",
+        ),
         "feishu": _status("正常" if os.getenv("FEISHU_WEBHOOK_URL") else "未配置", "Webhook configured" if os.getenv("FEISHU_WEBHOOK_URL") else "No webhook"),
         "latest_successful_collection_at": latest_success.isoformat() if latest_success else None,
         "latest_failed_collection_at": latest_failure.isoformat() if latest_failure else None,
@@ -393,14 +397,17 @@ def open_snapshot(snapshot_id: int, session: SessionDep) -> FileResponse:
 def browser_status() -> dict[str, Any]:
     media_config = MediaCrawlerConfig.from_env()
     xhs_config = XiaohongshuBrowserConfig.from_env()
+    media_profile_exists = media_config.persistent_profile_dir.exists()
     return {
         "backend": os.getenv("WORKER_ADAPTER", "xiaohongshu"),
         "mediacrawler_available": media_config.home.exists() and media_config.python_executable.exists(),
         "playwright_profile_dir": str(xhs_config.profile_dir),
         "headless": xhs_config.headless,
-        "login_status": "未配置",
+        "login_status": "正常" if media_profile_exists else "警告",
         "last_login_check_at": None,
         "mediacrawler_recent_run_dir": _latest_path(media_config.output_root),
+        "mediacrawler_persistent_profile_dir": str(media_config.persistent_profile_dir),
+        "mediacrawler_persistent_profile_exists": media_profile_exists,
     }
 
 

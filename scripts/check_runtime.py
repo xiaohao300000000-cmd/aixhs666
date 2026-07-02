@@ -71,7 +71,7 @@ def build_report() -> dict[str, Any]:
         "worker_id": os.getenv("WORKER_ID"),
         "snapshot_root": os.getenv("WORKER_SNAPSHOT_ROOT", ".runtime/storage-snapshots"),
     }
-    mediacrawler_profile_dir = media_config.home / "browser_data" / (media_config.user_data_dir % "xhs")
+    mediacrawler_profile_dir = media_config.persistent_profile_dir
     checks["mediacrawler"] = {
         "ok": media_config.home.exists() and media_config.python_executable.exists(),
         "home": str(media_config.home),

@@ -15,16 +15,24 @@ Validated on 2026-07-02:
 - `pytest -q` passed with `157 passed, 2 skipped`.
 - `/ops`, `/ops/api/tasks`, `/ops/api/system`, and `GET /dashboard/summary` read the live PostgreSQL database.
 
+Validated live Xiaohongshu on 2026-07-02:
+
+- MediaCrawler persistent login profile was created and reused.
+- 6 real education queries were executed through Worker.
+- Live PostgreSQL now contains 114 contents, 309 comments, 403 public profiles, 121 discovery relations, and 118 snapshots.
+- Duplicate counts are 0 for contents, comments, public profiles, and discovery relations.
+- A partial comment task was resumed from cursor and completed.
+- `/ops/api/system` reports Xiaohongshu login status as normal based on MediaCrawler persistent profile.
+
 Not validated:
 
 - Docker Compose, because `docker` is not installed.
-- Real Xiaohongshu data collection, because the MediaCrawler persistent login profile has not yet completed the first manual QR login.
 - Real Feishu delivery/callback, because credentials are not configured.
-- Long-running Worker, dedupe with real content, interrupted real collection resume, and 100+ real result acceptance.
+- Long-running Worker for 4-8 hours.
 
 Live result file: `orchestration/e2e/live_postgres_result.json`.
 
-Current live PostgreSQL counts: 5 queries, 5 search tasks, 0 contents, 0 comments, 0 public profiles, 0 discovery relations, 0 snapshots, 1 retry, 4 pending. This is not a completed real closed loop.
+Current live PostgreSQL counts: 6 queries, 7 search tasks, 95 comment tasks, 114 contents, 309 comments, 403 public profiles, 121 discovery relations, 118 snapshots, 102 completed tasks, 0 pending, 0 retry, 0 partial, 0 failed.
 
 Collector policy update:
 
@@ -32,7 +40,7 @@ Collector policy update:
 - Default Worker adapter: `mediacrawler`.
 - Project Playwright adapter remains only for fallback/debug and is not the main collection path.
 - Persistent login command: `python -m scripts.mediacrawler_login`.
-- Persistent profile: `third_party/MediaCrawler/browser_data/aixhs_xhs_user_data_dir`.
+- Persistent profile: `third_party/MediaCrawler/browser_data/cdp_aixhs_xhs_user_data_dir`.
 
 ## P0 Baseline
 

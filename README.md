@@ -201,7 +201,7 @@ python -m apps.worker --once
 - 默认 `MEDIACRAWLER_CDP_CONNECT_EXISTING=false`
 - 默认 `MEDIACRAWLER_SAVE_LOGIN_STATE=true`
 - 默认 `MEDIACRAWLER_AUTO_CLOSE_BROWSER=false`
-- 默认持久 profile：`third_party/MediaCrawler/browser_data/aixhs_xhs_user_data_dir`
+- 默认持久 profile：`third_party/MediaCrawler/browser_data/cdp_aixhs_xhs_user_data_dir`
 
 首次登录时运行：
 
@@ -218,18 +218,19 @@ python3.12 -m venv third_party/MediaCrawler/.venv
 third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt
 ```
 
-2026-07-02 本机 PostgreSQL 已验证：
+2026-07-02 本机 PostgreSQL 和小红书真实采集已验证：
 
 - `alembic upgrade head` 成功，当前 revision：`0004_worker_heartbeats`
 - `python -m scripts.check_runtime` 成功
 - `POSTGRES_TEST_DATABASE_URL=... pytest -m postgres -q` 成功，结果：`1 passed`
 - `/ops` 和 `GET /dashboard/summary` 可读取真实 PostgreSQL
+- MediaCrawler 持久登录态已创建并复用
+- 真实 live PostgreSQL 当前已有：114 内容、309 评论、403 用户、121 发现关系、118 快照
 
-真实闭环尚未通过：
+真实闭环剩余未通过：
 
 - Docker 未安装，本机使用 Homebrew PostgreSQL
-- MediaCrawler 已固化为主采集器；登录态需要先用 `python -m scripts.mediacrawler_login` 完成一次人工扫码
-- live PostgreSQL 数据库已有 5 个真实教育关键词 search 任务，但帖子、评论、用户仍为 0
 - 真实飞书凭证未配置，仅完成 dry-run 和 mocked HTTP 测试
+- 长期无人值守运行尚未完成
 
 在真实闭环通过前，不应把项目状态写成 100% 完成，也不应继续开发第二平台。
