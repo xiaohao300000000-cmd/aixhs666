@@ -1,5 +1,6 @@
 const tokenInput = document.querySelector("#ops-token");
 const autoRefresh = document.querySelector("#auto-refresh");
+const notice = document.querySelector("#notice");
 const state = { hidden: false };
 
 document.addEventListener("visibilitychange", () => { state.hidden = document.hidden; });
@@ -25,6 +26,12 @@ async function postJson(url, body = {}) {
   const response = await fetch(url, { method: "POST", headers: headers(), body: JSON.stringify(body) });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
+}
+
+function showNotice(message, kind = "info") {
+  notice.hidden = false;
+  notice.className = `notice ${kind}`;
+  notice.textContent = message;
 }
 
 function card(label, value, cls = "") {
@@ -221,22 +228,38 @@ async function runPipeline(event) {
     skip_analysis: Boolean(form.get("skip_analysis")),
     requested_by: "ops_dashboard",
   };
-  await postJson("/ops/api/pipeline/runs", payload);
-  refreshAll();
+  try {
+    showNotice("正在启动一轮 Pipeline...", "info");
+    const result = await postJson("/ops/api/pipeline/runs", payload);
+    showNotice(`Pipeline 已完成：run ${result.run_id}，状态 ${result.status}`, "success");
+    refreshAll();
+  } catch (error) {
+    showNotice(`运行失败：${humanError(error)}`, "error");
+  }
 }
 
 async function handleActionClick(event) {
   const createQueryButton = event.target.closest("button[data-create-query]");
   if (createQueryButton) {
-    await postJson("/ops/api/queries", { query_text: createQueryButton.dataset.createQuery, priority: 50 });
-    refreshAll();
+    try {
+      await postJson("/ops/api/queries", { query_text: createQueryButton.dataset.createQuery, priority: 50 });
+      showNotice("候选查询已加入查询词库", "success");
+      refreshAll();
+    } catch (error) {
+      showNotice(`加入查询失败：${humanError(error)}`, "error");
+    }
     return;
   }
   const button = event.target.closest("button[data-post]");
   if (!button) return;
   if (button.dataset.confirm && !window.confirm(button.dataset.confirm)) return;
-  await postJson(button.dataset.post);
-  refreshAll();
+  try {
+    await postJson(button.dataset.post);
+    showNotice("操作已完成", "success");
+    refreshAll();
+  } catch (error) {
+    showNotice(`操作失败：${humanError(error)}`, "error");
+  }
 }
 
 function refreshAll() {
@@ -256,6 +279,16 @@ function escapeHtml(value) {
 
 function pct(value) {
   return value == null ? "-" : `${Math.round(value * 100)}%`;
+}
+
+function humanError(error) {
+  const text = String(error?.message || error || "");
+  try {
+    const parsed = JSON.parse(text);
+    return parsed.detail || text;
+  } catch {
+    return text;
+  }
 }
 
 setInterval(() => { if (autoRefresh.checked && !state.hidden) loadWorkers().catch(console.error); }, 3000);

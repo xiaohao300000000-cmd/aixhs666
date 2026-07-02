@@ -23,9 +23,27 @@ export OPS_TOKEN="${OPS_TOKEN:-secret}"
 
 "$PYTHON_BIN" - <<'PY'
 import storage.models  # noqa: F401
+from sqlalchemy import select, func
 from storage.database import Base, engine
+from storage.models import Query
+from sqlalchemy.orm import sessionmaker
 
 Base.metadata.create_all(engine)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+with SessionLocal() as session:
+    query_count = session.scalar(select(func.count(Query.id))) or 0
+    if query_count == 0:
+        session.add(
+            Query(
+                query_text="admissions",
+                platform="xhs",
+                query_type="seed",
+                status="active",
+                priority=100,
+                source="dashboard_demo",
+            )
+        )
+        session.commit()
 PY
 
 if ! lsof -iTCP:"$PORT" -sTCP:LISTEN -n -P >/dev/null 2>&1; then

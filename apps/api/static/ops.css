@@ -6,6 +6,10 @@ h2 { font-size: 16px; margin: 0 0 10px; }
 h3 { font-size: 14px; margin: 8px 0; }
 main { padding: 16px; display: grid; gap: 16px; }
 section { background: #ffffff; border: 1px solid #d8dee8; border-radius: 8px; padding: 14px; overflow: auto; }
+.notice { border: 1px solid #c9d1dd; border-radius: 6px; padding: 10px 12px; background: #fbfcfe; font-weight: 600; }
+.notice.info { border-color: #9bbcf2; background: #eef5ff; color: #164f9f; }
+.notice.success { border-color: #9bd3ab; background: #ecf8ef; color: #146c2e; }
+.notice.error { border-color: #efaaa5; background: #fff0ef; color: #9e1c13; }
 .hero-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 16px; align-items: start; }
 .hero-copy h2 { font-size: 18px; margin-bottom: 12px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
