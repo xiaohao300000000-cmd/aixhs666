@@ -37,7 +37,54 @@ Warning: Starlette deprecation warning from `fastapi.testclient` importing `http
 
 ## V01: Real Xiaohongshu Collector
 
-Status: not started.
+Status: code complete; live page validation pending.
+
+Implemented:
+
+- Added `collectors/xiaohongshu/` with Playwright browser runtime, persistent profile config, centralized selectors, parser mapping, and explicit exception classes.
+- Supported `search`, `get_content`, `list_comments`, and `get_profile` through the existing `PlatformAdapter` protocol objects.
+- Added environment-based runtime directories for browser profile, snapshots, screenshots, timeout, and manual login window.
+- Added parser tests with local saved page samples for search, content detail, comments, profile, login-required pages, selector failure, and missing optional fields.
+- Added a `pytest.mark.live` live search test that is opt-in via `RUN_XHS_LIVE=1`.
+- Added Playwright as a project dependency and recorded the dependency decision in `DECISIONS.md`.
+
+Verification:
+
+```bash
+.venv/bin/python -m pytest tests/test_xiaohongshu_adapter.py -q
+```
+
+Result:
+
+```text
+10 passed, 1 skipped in 0.66s
+```
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+130 passed, 1 skipped, 1 warning in 0.67s
+```
+
+```bash
+.venv/bin/python -m pytest -m live -q
+```
+
+Result:
+
+```text
+1 skipped, 130 deselected, 1 warning in 0.26s
+```
+
+Not yet verified:
+
+- Manual Xiaohongshu login.
+- Live Xiaohongshu search result extraction.
+- Live detail, comment, and profile extraction.
 
 ## V02: Worker Runtime Entry
 

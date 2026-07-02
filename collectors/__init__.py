@@ -11,6 +11,7 @@ from collectors.base import (
     SearchPage,
 )
 from collectors.mock import MockPlatformAdapter
+from collectors.xiaohongshu import XiaohongshuAdapter
 
 __all__ = [
     "CollectedComment",
@@ -22,4 +23,5 @@ __all__ = [
     "PageCursor",
     "PlatformAdapter",
     "SearchPage",
+    "XiaohongshuAdapter",
 ]

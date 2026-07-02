@@ -10,6 +10,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13,<2.0",
     "fastapi>=0.115,<1.0",
+    "playwright>=1.49,<2.0",
     "psycopg[binary]>=3.2,<4.0",
     "pydantic>=2.8,<3.0",
     "sqlalchemy>=2.0,<3.0",
@@ -36,3 +37,6 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "live: tests that access live external services and require credentials or manual login",
+]
