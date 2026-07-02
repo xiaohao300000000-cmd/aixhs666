@@ -1,0 +1,48 @@
+{
+  "status": "passed",
+  "generated_at": "2026-07-02T10:30:00+00:00",
+  "checks": {
+    "processed_texts": true,
+    "dynamic_budget": true,
+    "source_pool": true,
+    "source_score": true,
+    "event_priority": true,
+    "demand_chains": true,
+    "signal_alerts": true,
+    "phrase_review": true,
+    "dashboard": true,
+    "content_insights": true,
+    "platform_evaluation": true
+  },
+  "summary": {
+    "processed_text_count": 4,
+    "high_value_source_count": 7,
+    "top_alert": "福州五年级 PET 二刷压线，求推荐机构，价格多少？",
+    "top_alert_score": 0.898,
+    "phrase_candidates": [
+      "五年级",
+      "二刷",
+      "五年",
+      "价格",
+      "冲刺"
+    ],
+    "dashboard_duplicate_rate": 0.0,
+    "content_topics": [
+      "选题: PET 家长最关心的三个决策点",
+      "选题: 二刷 家长最关心的三个决策点",
+      "选题: 五年 家长最关心的三个决策点"
+    ],
+    "local_regions": [
+      "福州",
+      "厦门"
+    ],
+    "recommended_second_platform": "知乎",
+    "second_platform_plan_steps": [
+      "整理 知乎 的 20 个教育种子查询或种子来源",
+      "用公开页面完成 L0 搜索或列表样本采集原型",
+      "抽样补全正文、评论或问答上下文，记录缺失字段",
+      "复跑同一批样本，统计新增率、重复率、失败率和上下文完整率",
+      "用 T20 看板指标和 T21 内容洞察样例判断是否继续接入"
+    ]
+  }
+}

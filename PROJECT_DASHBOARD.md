@@ -5,22 +5,22 @@
 ## 总体进度
 
 ```text
-已完成：16 / 22
-总体进度：73%
+已完成：22 / 22
+总体进度：100%
 
-[███████████████░░░░░] 73%
+[████████████████████] 100%
 ```
 
 ## 当前状态
 
 | 项目 | 当前值 |
 |---|---|
-| 当前阶段 | 阶段 4：事件雷达与预警 |
-| 当前主任务 | T17 事件日历 待派发 |
+| 当前阶段 | 阶段 6：第二平台评估 |
+| 当前主任务 | T01-T22 已完成，待实战闭环测试 |
 | 执行会话 | W1/W2 待机；W3/W4 关闭 |
 | 当前分支 | 主控：`main` |
 | 阻塞数量 | 0 |
-| 最后更新 | 2026-07-02 04:05 CST：T11-T16 已验收合并；下一步派发 T17-T22 |
+| 最后更新 | 2026-07-02 10:15 CST：T17-T22 已验收合并；下一步执行实战闭环测试 |
 
 ## 阶段进度
 
@@ -30,9 +30,9 @@
 | 阶段 1 | 小红书采集 MVP | T07–T10 | 4/4 | 100% | 已完成 |
 | 阶段 2 | 动态采集与来源评分 | T11–T13 | 3/3 | 100% | 已完成 |
 | 阶段 3 | AI 新词发现 | T14–T16 | 3/3 | 100% | 已完成 |
-| 阶段 4 | 事件雷达与预警 | T17–T19 | 0/3 | 0% | 待派发 T17 |
-| 阶段 5 | 看板与内容洞察 | T20–T21 | 0/2 | 0% | 未开始 |
-| 阶段 6 | 第二平台评估 | T22 | 0/1 | 0% | 未开始 |
+| 阶段 4 | 事件雷达与预警 | T17–T19 | 3/3 | 100% | 已完成 |
+| 阶段 5 | 看板与内容洞察 | T20–T21 | 2/2 | 100% | 已完成 |
+| 阶段 6 | 第二平台评估 | T22 | 1/1 | 100% | 已完成 |
 
 ## 任务看板
 
@@ -54,12 +54,12 @@
 | T14 | 文本处理与低信息标记 | 3 | T05 | DONE | W2 | `task/T14-text-processing-low-info` | ACCEPT：`8b25692`，62 passed |
 | T15 | 语义聚类与新词发现 | 3 | T14 | DONE | W3 | `task/T15-semantic-clustering-phrase-discovery` | ACCEPT：`243181d`，71 passed |
 | T16 | 飞书新词审核 | 3 | T15 | DONE | W3 | `task/T16-feishu-phrase-review` | ACCEPT：`cbc43bc`，77 passed |
-| T17 | 事件日历 | 4 | T06,T13 | TODO | 未分配 | - | 待验收 |
-| T18 | 需求事件链 | 4 | T02,T14 | TODO | 未分配 | - | 待验收 |
-| T19 | 信号新鲜度与飞书预警 | 4 | T13,T17,T18 | TODO | 未分配 | - | 待验收 |
-| T20 | 数据看板 | 5 | T13,T16,T19 | TODO | 未分配 | - | 待验收 |
-| T21 | 内容洞察输出 | 5 | T15,T20 | TODO | 未分配 | - | 待验收 |
-| T22 | 第二平台评估 | 6 | T20,T21 | TODO | 未分配 | - | 待验收 |
+| T17 | 事件日历 | 4 | T06,T13 | DONE | W1 | `task/T17-event-calendar` | ACCEPT：`514e8b9`，97 passed |
+| T18 | 需求事件链 | 4 | T02,T14 | DONE | W2 | `task/T18-demand-event-chain` | ACCEPT：`4d9ef37`，95 passed |
+| T19 | 信号新鲜度与飞书预警 | 4 | T13,T17,T18 | DONE | W1 | `task/T19-signal-freshness-alerts` | ACCEPT：`e2809b7`，106 passed |
+| T20 | 数据看板 | 5 | T13,T16,T19 | DONE | W1 | `task/T20-data-dashboard` | ACCEPT：`fbb8e44`，110 passed |
+| T21 | 内容洞察输出 | 5 | T15,T20 | DONE | W1 | `task/T21-content-insights` | ACCEPT：`46a1b13`，114 passed |
+| T22 | 第二平台评估 | 6 | T20,T21 | DONE | W1 | `task/T22-second-platform-evaluation` | ACCEPT：`9bf7f40`，120 passed |
 
 ## GitHub 可视化甘特图
 
@@ -134,12 +134,18 @@ gantt
 | 2026-07-02 | T14 文本处理与低信息标记 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T14.md` |
 | 2026-07-02 | T15 语义聚类与新词发现 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T15.md` |
 | 2026-07-02 | T16 飞书新词审核 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T16.md` |
+| 2026-07-02 | T17 事件日历 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T17.md` |
+| 2026-07-02 | T18 需求事件链 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T18.md` |
+| 2026-07-02 | T19 信号新鲜度与飞书预警 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T19.md` |
+| 2026-07-02 | T20 数据看板 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T20.md` |
+| 2026-07-02 | T21 内容洞察输出 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T21.md` |
+| 2026-07-02 | T22 第二平台评估 | ACCEPT，本地 pytest 通过 | `orchestration/reports/T22.md` |
 
 ## 下一步
 
-1. 为 T17-T22 创建任务简报
-2. 按依赖顺序新开独立执行对话派发 T17、T18、T19、T20、T21、T22
-3. 每个任务完成后验收、合并、更新看板并推送
+1. 执行实战数据闭环测试
+2. 记录闭环测试报告和风险
+3. 将最终说明发送到用户指定邮箱
 
 
 ## 并发管理
