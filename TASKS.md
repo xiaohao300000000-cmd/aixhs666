@@ -14,12 +14,14 @@
 |---|---|
 | 代码完成 | DONE：真实 adapter、Worker、PostgreSQL 幂等/并发、飞书 transport/callback、数据库看板、运行诊断、HTML 控制台 |
 | Agent 中立 Pipeline Runner | DONE：`services/pipeline_runner.py`、`pipeline_runs`、CLI、REST 已接入主流程 |
+| AI 自动获客最小闭环 | DONE_CODE：`leads`、`lead_evidence`、`enrichment_tasks`、历史回填、Pipeline 增量接入和 `/leads` 获客页面已完成 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
 | 自动测试通过 | DONE：`pytest -q` 为 169 passed, 2 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
 | 真实 Pipeline Runner 验证通过 | BLOCKED：当前最新副本未发现 MediaCrawler `.venv` 和可见登录态，尚未执行真实 `run-cycle` |
+| 真实潜在客户回填验证通过 | DONE：本机历史库 `leads-backfill --rebuild` 生成 24 潜在客户、25 证据、46 待完善任务、24 待完善、0 可跟进 |
 | 真实飞书验证通过 | BLOCKED：未配置真实 Feishu 凭证 |
 | 完整闭环通过 | BLOCKED：真实飞书和长期无人值守运行未完成 |
 

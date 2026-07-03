@@ -24,6 +24,7 @@ from intelligence.phrase_discovery import discover_phrase_candidates
 from intelligence.scoring import QuerySourceStats, ScoringTargetType, rank_query_sources
 from intelligence.text_processing import process_text
 from scheduler import TaskStatus, create_task
+from services.lead_generation import generate_leads_for_profiles
 from storage.models import AnalysisProcessingState, CollectionTask, Comment, Content, DiscoveryRelation, PipelineRun, PublicProfile
 from storage.models import Query as StoredQuery
 
@@ -509,6 +510,8 @@ class PipelineRunner:
         result["processing"]["demand_events_created"] = sum(
             1 for chain in chains for event in chain.events if event.event_type != DemandEventType.UNKNOWN
         )
+        lead_result = generate_leads_for_profiles(session, set(scope.profile_ids))
+        result["leads"] = lead_result.to_dict()
         self._set_progress(session, run, "demand_events", "completed")
 
         context_processed = [process_text(record.text, source_id=record.source_id) for record in historical_texts]
@@ -836,6 +839,14 @@ def _empty_result(run_id: int, *, status: str) -> dict[str, Any]:
             "clusters_created_or_updated": 0,
             "candidate_queries_created": 0,
             "query_scores_updated": 0,
+        },
+        "leads": {
+            "leads_created": 0,
+            "leads_updated": 0,
+            "evidence_created": 0,
+            "enrichment_tasks_created": 0,
+            "qualified_leads": 0,
+            "needs_enrichment_leads": 0,
         },
         "warnings": [],
         "errors": [],

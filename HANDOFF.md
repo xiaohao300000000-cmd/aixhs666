@@ -6,9 +6,24 @@ V15 Agent 中立运行框架已在 `feat/v15-agent-neutral-runtime` 接通。新
 
 2026-07-03 已继续补齐本机可视化启动体验：新增桌面双击入口、中文 `/ops` 看板、真实 MediaCrawler 默认采集、MediaCrawler 依赖自动安装和首次扫码登录引导。普通用户现在可以从桌面图标启动本机服务并打开网页，但真实小红书采集仍需确认登录态、平台风控和本轮运行结果。
 
+2026-07-03 已把产品方向从“数据采集与分析看板”拉回“AI 自动获客”。新增 `leads`、`lead_evidence`、`enrichment_tasks`，支持从历史帖子/评论回填潜在客户，并在 Pipeline 后续增量运行时更新 lead。新增 `/leads` 作为产品主页面，`/ops` 保留为运维页面。
+
+本机已执行：
+
+```bash
+.venv/bin/alembic upgrade head
+.venv/bin/python -m apps.cli --json leads-backfill --rebuild
+```
+
+真实历史库回填结果：
+
+```json
+{"leads": {"enrichment_tasks_created": 46, "evidence_created": 25, "leads_created": 24, "leads_updated": 0, "needs_enrichment_leads": 24, "qualified_leads": 0}}
+```
+
 ## 当前目标
 
-当前目标是从“模块可用”推进到“Agent 中立完整运行闭环”。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断、`/ops` 控制台，以及 Pipeline Runner。下一步必须在真实 MediaCrawler 依赖和登录态可用后执行一次小规模 `run-cycle` 验证，再配置 Feishu 凭证并执行真实发送/回调验收。
+当前目标是从“模块可用”推进到“AI 自动获客真实闭环”。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断、`/ops` 控制台、Pipeline Runner，以及 `/leads` 获客页面。下一步必须先对本机历史库执行 lead 回填，记录潜在客户、证据、待完善和可跟进数量；再在真实 MediaCrawler 依赖和登录态可用后执行一次小规模 `run-cycle` 验证。
 
 本机普通用户入口：
 
@@ -29,6 +44,18 @@ OPS_TOKEN=secret
 http://127.0.0.1:8000/ops
 ```
 
+产品主页面：
+
+```text
+http://127.0.0.1:8000/leads
+```
+
+历史数据回填潜在客户：
+
+```bash
+python -m apps.cli --json leads-backfill
+```
+
 ## 已确认范围
 
 - 第一阶段平台：小红书
@@ -39,12 +66,14 @@ http://127.0.0.1:8000/ops
 ## 需要主控 Codex 完成的下一件事
 
 1. 用桌面图标启动一次完整本机服务，确认 `/ops` 自动弹出。
-2. 在 `/ops` 页面输入 `secret`，点击“启动一轮”，确认真实 MediaCrawler 采集任务被创建和执行。
-3. 记录本轮真实数据：新增内容、评论、用户、处理文本、低信息、需求事件、候选词/聚类、评分和洞察。
-4. 如看板按钮失败，使用 `python -m apps.cli --json run-cycle --query-id <id> --collection-limit 5` 对照验证。
-5. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
-6. 运行 Worker 或 Pipeline 小规模长期观察，记录登录态、限流、内存和任务状态。
-7. 更新 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` 的真实验证结果。
+2. 执行 `python -m apps.cli --json leads-backfill --rebuild`，记录历史库真实潜在客户数量、证据数量、待完善数量和可跟进数量。
+3. 打开 `/leads`，确认四个业务桶展示真实客户卡片：今日新发现、待完善信息、可跟进客户、已处理客户。
+4. 在 `/ops` 页面输入 `secret`，点击“启动一轮”，确认真实 MediaCrawler 采集任务被创建和执行。
+5. 记录本轮真实获客数据：新增潜在客户、证据、待完善任务、可跟进客户。
+6. 如看板按钮失败，使用 `python -m apps.cli --json run-cycle --query-id <id> --collection-limit 5` 对照验证。
+7. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
+8. 运行 Worker 或 Pipeline 小规模长期观察，记录登录态、限流、内存和任务状态。
+9. 更新 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` 的真实验证结果。
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
@@ -77,6 +106,9 @@ http://127.0.0.1:8000/ops
 - 修复扫码登录后脚本停住的问题：扫码后在终端按回车，脚本会清理登录浏览器并继续启动主服务和网页。
 - 所有上述代码已推送到 GitHub 当前分支 `feat/v15-agent-neutral-runtime`。
 - 本次文档补充也需要提交并推送，具体 HEAD 以 `git log` 和 GitHub 分支历史为准。
+- 新增 AI 自动获客最小闭环代码和页面：`services/lead_generation.py`、`/api/leads`、`/leads`、`leads-backfill`。
+- 新增 lead 相关测试，完整测试已通过：`180 passed, 2 skipped, 1 warning`。
+- 已完成本机历史库潜在客户回填：24 个潜在客户、25 条证据、46 个待完善任务、0 个可跟进客户。
 
 
 ## 新电脑与并发计划

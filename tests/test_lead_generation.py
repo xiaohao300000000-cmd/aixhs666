@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from apps.cli import main as cli_main
+from services.lead_generation import generate_leads_from_history, generate_leads_for_profiles, rebuild_auto_leads_from_history
+from storage.database import Base
+from storage.models import Comment, Content, EnrichmentTask, Lead, LeadEvidence, PublicProfile
+
+
+@pytest.fixture()
+def factory() -> Iterator[sessionmaker[Session]]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    yield SessionLocal
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+def test_lead_models_persist_business_objects(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = _profile(region_text="福州")
+        session.add(profile)
+        session.flush()
+        lead = Lead(
+            platform="xhs",
+            public_profile_id=profile.id,
+            status="needs_enrichment",
+            region_text="福州",
+            demand_type="exam_retry",
+            product="PET",
+            intent_stage="recovery",
+            intent_score=74,
+            information_completeness=60,
+            known_info_json={"region": "福州", "product": "PET"},
+            missing_info_json=["contact"],
+            recommended_next_step="补充公开联系方式后人工判断是否可跟进",
+        )
+        session.add(lead)
+        session.flush()
+        evidence = LeadEvidence(
+            lead_id=lead.id,
+            source_entity_type="comment",
+            source_entity_id=12,
+            evidence_text="孩子 PET 压线没过，想找二刷冲刺班",
+            demand_type="exam_retry",
+            intent_stage="recovery",
+            score_contribution=74,
+        )
+        task = EnrichmentTask(
+            lead_id=lead.id,
+            task_type="find_contact",
+            status="pending",
+            reason="缺少公开联系方式",
+        )
+        session.add_all([evidence, task])
+        session.commit()
+
+    with factory() as session:
+        saved = session.scalar(select(Lead).where(Lead.platform == "xhs"))
+        assert saved is not None
+        assert saved.profile.display_name == "福州家长"
+        assert saved.evidence_items[0].evidence_text.startswith("孩子 PET")
+        assert saved.enrichment_tasks[0].task_type == "find_contact"
+
+
+def test_generate_leads_from_history_merges_profile_evidence(factory: sessionmaker[Session]) -> None:
+    profile_id = _seed_ket_pet_history(factory)
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 1
+    assert result.evidence_created == 2
+    assert result.enrichment_tasks_created >= 1
+    with factory() as session:
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        assert lead.product == "PET"
+        assert lead.demand_type == "exam_retry"
+        assert lead.intent_score >= 70
+        assert lead.status in {"needs_enrichment", "qualified"}
+        assert len(lead.evidence_items) == 2
+        assert lead.known_info_json["region"] == "福州"
+        assert "contact" in lead.missing_info_json
+
+
+def test_generate_leads_is_idempotent_and_preserves_manual_status(factory: sessionmaker[Session]) -> None:
+    profile_id = _seed_ket_pet_history(factory)
+
+    with factory() as session:
+        first = generate_leads_from_history(session)
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        lead.status = "handled"
+        session.commit()
+    with factory() as session:
+        second = generate_leads_from_history(session)
+        session.commit()
+
+    assert first.leads_created == 1
+    assert second.leads_created == 0
+    with factory() as session:
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        assert lead.status == "handled"
+        assert session.query(Lead).count() == 1
+        assert session.query(LeadEvidence).count() == 2
+        task_types = [task.task_type for task in session.scalars(select(EnrichmentTask)).all()]
+        assert sorted(task_types) == sorted(set(task_types))
+
+
+def test_rebuild_auto_leads_preserves_ignored_manual_leads(factory: sessionmaker[Session]) -> None:
+    profile_id = _seed_ket_pet_history(factory)
+    with factory() as session:
+        generate_leads_from_history(session)
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        lead.status = "ignored"
+        session.commit()
+
+    with factory() as session:
+        result = rebuild_auto_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        assert lead.status == "ignored"
+        assert session.query(LeadEvidence).count() == 2
+
+
+def test_generate_leads_for_profiles_limits_scope(factory: sessionmaker[Session]) -> None:
+    target_profile_id = _seed_ket_pet_history(factory)
+    with factory() as session:
+        other = _profile(platform_user_id="other", display_name="路人")
+        session.add(other)
+        session.flush()
+        content = Content(
+            platform="xhs",
+            platform_content_id="other-note",
+            content_type="note",
+            author_profile_id=other.id,
+            title="KET 备考",
+            body_text="想问 KET 暑假班怎么选",
+        )
+        session.add(content)
+        session.commit()
+        other_id = other.id
+
+    with factory() as session:
+        result = generate_leads_for_profiles(session, {target_profile_id})
+        session.commit()
+
+    assert result.leads_created == 1
+    with factory() as session:
+        assert session.scalar(select(Lead).where(Lead.public_profile_id == target_profile_id)) is not None
+        assert session.scalar(select(Lead).where(Lead.public_profile_id == other_id)) is None
+
+
+def test_advice_content_without_user_need_does_not_create_lead(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = _profile(platform_user_id="teacher-1", display_name="英语老师")
+        session.add(profile)
+        session.flush()
+        session.add(
+            Content(
+                platform="xhs",
+                platform_content_id="teacher-note",
+                content_type="note",
+                author_profile_id=profile.id,
+                title="教了9年 PET 总结出来的十条建议",
+                body_text="PET 备考时间不建议超过一年，希望给迷茫的家长一些方向。",
+            )
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        assert session.query(Lead).count() == 0
+
+
+def test_leads_backfill_cli_outputs_generation_counts(
+    factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _seed_ket_pet_history(factory)
+    monkeypatch.setattr("apps.cli.SessionLocal", factory)
+
+    exit_code = cli_main(["--json", "leads-backfill"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert '"leads_created": 1' in output
+    assert '"evidence_created": 2' in output
+
+
+def _seed_ket_pet_history(factory: sessionmaker[Session]) -> int:
+    now = datetime.now(UTC)
+    with factory() as session:
+        profile = _profile(region_text="福州")
+        session.add(profile)
+        session.flush()
+        content = Content(
+            platform="xhs",
+            platform_content_id="note-1",
+            content_type="note",
+            author_profile_id=profile.id,
+            title="福州 PET 二刷求推荐",
+            body_text="孩子 PET 压线没过，想找暑假冲刺班，哪家机构靠谱？",
+            region_text="福州",
+            published_at=now - timedelta(hours=2),
+            url="https://example.test/note-1",
+        )
+        session.add(content)
+        session.flush()
+        comment = Comment(
+            platform="xhs",
+            platform_comment_id="comment-1",
+            content_id=content.id,
+            author_profile_id=profile.id,
+            body_text="价格多少，可以先试听吗？",
+            published_at=now - timedelta(hours=1),
+        )
+        session.add(comment)
+        session.commit()
+        return profile.id
+
+
+def _profile(
+    *,
+    platform_user_id: str = "u-1",
+    display_name: str = "福州家长",
+    region_text: str | None = None,
+) -> PublicProfile:
+    return PublicProfile(
+        platform="xhs",
+        platform_user_id=platform_user_id,
+        display_name=display_name,
+        profile_url=f"https://example.test/user/{platform_user_id}",
+        region_text=region_text,
+    )

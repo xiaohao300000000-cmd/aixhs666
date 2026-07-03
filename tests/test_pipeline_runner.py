@@ -44,7 +44,7 @@ def factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
 
 def test_pipeline_runner_mock_full_cycle(factory: sessionmaker[Session], tmp_path: Path) -> None:
     query_id = _seed_query(factory, "admissions")
-    runner = _runner(factory, tmp_path)
+    runner = _runner(factory, tmp_path, adapter=MutableAdapter())
 
     payload = runner.run_cycle(query_ids=[query_id], collection_limit=20, requested_by="test")
 
@@ -60,6 +60,8 @@ def test_pipeline_runner_mock_full_cycle(factory: sessionmaker[Session], tmp_pat
     assert result["processing"]["new_contents_processed"] == 1
     assert result["processing"]["new_comments_processed"] == 2
     assert result["processing"]["demand_events_created"] >= 1
+    assert result["leads"]["leads_created"] >= 1
+    assert result["leads"]["evidence_created"] >= 1
     assert result["intelligence"]["clusters_created_or_updated"] >= 1
     assert result["intelligence"]["candidate_queries_created"] >= 1
     assert result["intelligence"]["query_scores_updated"] == 1

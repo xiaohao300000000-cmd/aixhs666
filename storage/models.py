@@ -51,6 +51,7 @@ class PublicProfile(TimestampMixin, Base):
 
     contents: Mapped[list[Content]] = relationship(back_populates="author_profile")
     comments: Mapped[list[Comment]] = relationship(back_populates="author_profile")
+    leads: Mapped[list[Lead]] = relationship(back_populates="profile")
 
 
 class Content(TimestampMixin, Base):
@@ -226,3 +227,75 @@ class AnalysisProcessingState(Base):
     source_fingerprint: Mapped[str | None] = mapped_column(String(128))
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_pipeline_run_id: Mapped[int | None] = mapped_column(ForeignKey("pipeline_runs.id", ondelete="SET NULL"))
+
+
+class Lead(TimestampMixin, Base):
+    __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("platform", "public_profile_id", name="uq_leads_platform_public_profile_id"),
+        Index("ix_leads_status_updated_at", "status", "updated_at"),
+        Index("ix_leads_intent_score", "intent_score"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)
+    public_profile_id: Mapped[int] = mapped_column(ForeignKey("public_profiles.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="new", server_default="new")
+    region_text: Mapped[str | None] = mapped_column(String(255))
+    demand_type: Mapped[str | None] = mapped_column(String(100))
+    product: Mapped[str | None] = mapped_column(String(100))
+    intent_stage: Mapped[str | None] = mapped_column(String(100))
+    intent_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    information_completeness: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    known_info_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    missing_info_json: Mapped[list[str] | None] = mapped_column(JSON)
+    recommended_next_step: Mapped[str | None] = mapped_column(Text)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    profile: Mapped[PublicProfile] = relationship(back_populates="leads")
+    evidence_items: Mapped[list[LeadEvidence]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    enrichment_tasks: Mapped[list[EnrichmentTask]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+
+
+class LeadEvidence(Base):
+    __tablename__ = "lead_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "lead_id",
+            "source_entity_type",
+            "source_entity_id",
+            name="uq_lead_evidence_lead_source",
+        ),
+        Index("ix_lead_evidence_lead_id", "lead_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    source_entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_id: Mapped[int | None] = mapped_column(ForeignKey("contents.id", ondelete="SET NULL"))
+    comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id", ondelete="SET NULL"))
+    evidence_text: Mapped[str] = mapped_column(Text, nullable=False)
+    demand_type: Mapped[str | None] = mapped_column(String(100))
+    intent_stage: Mapped[str | None] = mapped_column(String(100))
+    score_contribution: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    lead: Mapped[Lead] = relationship(back_populates="evidence_items")
+
+
+class EnrichmentTask(TimestampMixin, Base):
+    __tablename__ = "enrichment_tasks"
+    __table_args__ = (
+        UniqueConstraint("lead_id", "task_type", name="uq_enrichment_tasks_lead_task_type"),
+        Index("ix_enrichment_tasks_status_updated_at", "status", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", server_default="pending")
+    reason: Mapped[str | None] = mapped_column(Text)
+
+    lead: Mapped[Lead] = relationship(back_populates="enrichment_tasks")

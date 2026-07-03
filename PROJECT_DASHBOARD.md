@@ -16,11 +16,11 @@
 | 项目 | 当前值 |
 |---|---|
 | 当前阶段 | V0 真实数据闭环修正 |
-| 当前主任务 | V15 Agent 中立运行框架：Pipeline Runner/CLI/REST/运行状态已接通，真实 Pipeline 小规模验证、飞书真实凭证和长期运行待验证 |
+| 当前主任务 | AI 自动获客最小闭环：历史帖子/评论可生成潜在客户、证据和待完善任务，`/leads` 为产品主页面；本机历史回填已生成 24 个潜在客户，真实 Pipeline 小规模验证待记录 |
 | 执行会话 | 主控单会话 |
 | 当前分支 | `feat/v15-agent-neutral-runtime` |
 | 阻塞数量 | 3 |
-| 最后更新 | 2026-07-03：新增 Agent 中立 Pipeline Runner、增量分析处理状态、CLI、REST 和可查验 Dashboard；`pytest -q` 169 passed, 2 skipped；真实 Pipeline Runner 小规模验证因当前副本未发现 MediaCrawler `.venv`/可见登录态未完成 |
+| 最后更新 | 2026-07-03：新增 AI 自动获客业务对象、历史回填、Pipeline lead 增量接入和 `/leads` 获客页面；`pytest -q` 180 passed, 2 skipped；本机历史库回填 24 潜在客户、25 证据、46 待完善任务、0 可跟进 |
 
 ## 阶段进度
 
@@ -116,12 +116,14 @@ gantt
 | V0-B2 | 未配置飞书凭证 | 真实飞书发送与回调验证 | 用户/环境 | 待配置 |
 | V0-B3 | 未完成 4-8 小时长期运行 | 稳定性验收 | 主控/环境 | 待执行 |
 | V15-B1 | 当前副本未发现 MediaCrawler `.venv` 和可见持久登录态 | 真实 Pipeline Runner 小规模验证 | 主控/环境 | 待安装/确认 |
+| V15-B2 | 当前历史库 lead 回填已完成，但 0 个达到可跟进条件 | AI 自动获客验收 | 主控/环境 | 待完善公开信息或调整可跟进阈值 |
 
 ## 最近完成
 
 | 日期 | 任务 | 结果 | 报告 |
 |---|---|---|---|
 | 2026-07-03 | V15 Agent 中立运行框架 | Pipeline Runner/CLI/REST/运行状态接通；自动测试通过；真实平台验证未完成 | `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` |
+| 2026-07-03 | AI 自动获客最小闭环 | `leads`/证据/待完善任务、历史回填、Pipeline 增量接入、`/leads` 页面完成；真实回填数量待记录 | `docs/superpowers/specs/2026-07-03-ai-leads-business-loop-design.md` |
 | 2026-07-01 | T01 仓库骨架 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T01.md` |
 | 2026-07-01 | T02 核心数据模型 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T02.md` |
 | 2026-07-01 | T03 任务状态机 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T03.md` |
@@ -147,10 +149,10 @@ gantt
 
 ## 下一步
 
-1. 准备 Docker/PostgreSQL 环境并设置 `DATABASE_URL`、`POSTGRES_TEST_DATABASE_URL`
-2. 配置小红书浏览器 profile 并手动登录
-3. 配置飞书 Webhook 或应用凭证
-4. 执行 V06 真实闭环验收，达标后再讨论第二平台
+1. 执行 `python -m apps.cli --json leads-backfill`，记录潜在客户、证据、待完善和可跟进数量
+2. 打开 `/leads`，确认获客页面展示真实客户卡片
+3. 配置小红书浏览器 profile 并执行真实 Pipeline 小规模验证
+4. 配置飞书 Webhook 或应用凭证
 
 
 ## 并发管理

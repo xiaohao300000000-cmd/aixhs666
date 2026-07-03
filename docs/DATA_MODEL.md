@@ -315,6 +315,88 @@ created_at
 - 预警有效
 - 预警无效
 
+### leads
+
+面向 AI 自动获客的潜在客户对象，按公开平台用户聚合。
+
+```text
+id
+platform
+public_profile_id
+status
+region_text
+demand_type
+product
+intent_stage
+intent_score
+information_completeness
+known_info_json
+missing_info_json
+recommended_next_step
+first_seen_at
+last_seen_at
+created_at
+updated_at
+```
+
+唯一键：
+
+```text
+platform + public_profile_id
+```
+
+`status`：
+
+- new
+- needs_enrichment
+- qualified
+- handled
+- ignored
+
+### lead_evidence
+
+保存潜在客户判断依据。每条证据必须追溯到帖子或评论。
+
+```text
+id
+lead_id
+source_entity_type
+source_entity_id
+content_id
+comment_id
+evidence_text
+demand_type
+intent_stage
+score_contribution
+created_at
+```
+
+唯一键：
+
+```text
+lead_id + source_entity_type + source_entity_id
+```
+
+### enrichment_tasks
+
+保存待完善信息和后续动作。
+
+```text
+id
+lead_id
+task_type
+status
+reason
+created_at
+updated_at
+```
+
+唯一键：
+
+```text
+lead_id + task_type
+```
+
 ## 3. 三层数据
 
 ### Raw 层

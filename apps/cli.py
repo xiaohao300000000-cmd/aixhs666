@@ -6,6 +6,7 @@ import sys
 from typing import Any
 
 from apps.worker.main import load_adapter
+from services.lead_generation import generate_leads_from_history, rebuild_auto_leads_from_history
 from services.pipeline_runner import PipelineRunError, PipelineRunner
 from storage.database import SessionLocal
 
@@ -33,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     insights = subparsers.add_parser("insights", help="Show insights.")
     insights.add_argument("--latest", action="store_true", help="Show latest insight output.")
+
+    leads_backfill = subparsers.add_parser("leads-backfill", help="Generate leads from historical contents and comments.")
+    leads_backfill.add_argument("--rebuild", action="store_true", help="Delete auto-status leads and regenerate from history.")
     return parser
 
 
@@ -59,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
             payload = runner.retry_run(args.run_id, requested_by="cli-retry")
         elif args.command == "insights":
             payload = runner.latest_insights()
+        elif args.command == "leads-backfill":
+            with SessionLocal() as session:
+                result = rebuild_auto_leads_from_history(session) if args.rebuild else generate_leads_from_history(session)
+                session.commit()
+                payload = {"leads": result.to_dict()}
         else:
             parser.error(f"unknown command: {args.command}")
     except PipelineRunError as exc:

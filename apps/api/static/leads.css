@@ -1,0 +1,173 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f7f8;
+  color: #1f2933;
+}
+
+body {
+  margin: 0;
+}
+
+.topbar {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d8dee4;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.topbar p {
+  color: #667085;
+  margin-top: 4px;
+}
+
+button {
+  background: #0f766e;
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 10px 14px;
+}
+
+button.secondary {
+  background: #475467;
+}
+
+main {
+  padding: 20px 24px 32px;
+}
+
+.summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 20px;
+}
+
+.summary div {
+  background: #ffffff;
+  border: 1px solid #d8dee4;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.summary span {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.summary label {
+  color: #667085;
+  font-size: 13px;
+}
+
+.board {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(260px, 1fr));
+}
+
+.lane {
+  min-width: 0;
+}
+
+.lane h2 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.lead-list {
+  display: grid;
+  gap: 10px;
+}
+
+.lead-card {
+  background: #ffffff;
+  border: 1px solid #d8dee4;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.lead-card header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.lead-card h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.score {
+  background: #ecfdf3;
+  border-radius: 999px;
+  color: #027a48;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.meta,
+.missing,
+.next-step,
+.evidence {
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 8px;
+}
+
+.evidence {
+  border-left: 3px solid #0f766e;
+  padding-left: 8px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.empty {
+  color: #98a2b3;
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+@media (max-width: 1180px) {
+  .board,
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .board,
+  .summary {
+    grid-template-columns: 1fr;
+  }
+}

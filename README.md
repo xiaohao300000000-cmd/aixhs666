@@ -218,7 +218,55 @@ python3.12 -m venv third_party/MediaCrawler/.venv
 third_party/MediaCrawler/.venv/bin/pip install -r third_party/MediaCrawler/requirements.txt
 ```
 
-## 9. Agent 中立运行框架
+## 9. AI 自动获客业务闭环
+
+当前产品主页面转为：
+
+```text
+http://127.0.0.1:8000/leads
+```
+
+`/leads` 面向使用者展示潜在客户，而不是展示采集和聚类过程。系统会把历史和新增的小红书 KET/PET 帖子、评论、公开用户加工成：
+
+- `leads`：潜在客户卡片
+- `lead_evidence`：判断依据
+- `enrichment_tasks`：待完善信息和后续任务
+
+业务闭环：
+
+```text
+帖子/评论
+→ 识别真实需求
+→ 关联公开用户身份
+→ 合并该用户多条内容和评论
+→ 生成潜在客户卡片
+→ 判断信息完整度和意向阶段
+→ 进入待完善信息队列
+→ 展示在获客看板
+```
+
+历史数据回填入口：
+
+```bash
+python -m apps.cli --json leads-backfill
+```
+
+规则调整后需要重算自动生成结果时使用：
+
+```bash
+python -m apps.cli --json leads-backfill --rebuild
+```
+
+新的验收指标：
+
+- 找到多少潜在客户
+- 每个客户是否有明确证据
+- 多少进入待完善队列
+- 多少已经达到可跟进条件
+
+`/ops` 保留为运维页面。聚类、查询评分和内容洞察继续作为后台能力，用于帮助系统找到更多高质量线索，不再作为主要产品结果展示。
+
+## 10. Agent 中立运行框架
 
 当前分支新增轻量 Pipeline Runner，把已有采集、入库、文本处理、需求事件、聚类/新词、查询评分和内容洞察接为一条框架主流程。框架不依赖 Codex、OpenClaw、Hermes 或任何具体大模型 API；任意 Agent 只要能调用 Shell 或 HTTP，就能读取状态、启动一轮流程、查看结果并恢复失败运行。
 

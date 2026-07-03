@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 获客看板</title>
+    <link rel="stylesheet" href="/leads/static/leads.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>AI 获客看板</h1>
+        <p>小红书 KET/PET 潜在客户</p>
+      </div>
+      <button id="backfill-button" type="button">从历史数据生成客户</button>
+    </header>
+
+    <main>
+      <section class="summary" aria-label="获客统计">
+        <div>
+          <span id="today-new">0</span>
+          <label>今日新发现</label>
+        </div>
+        <div>
+          <span id="needs-enrichment">0</span>
+          <label>待完善信息</label>
+        </div>
+        <div>
+          <span id="qualified">0</span>
+          <label>可跟进客户</label>
+        </div>
+        <div>
+          <span id="handled">0</span>
+          <label>已处理客户</label>
+        </div>
+      </section>
+
+      <section class="board" aria-label="潜在客户列表">
+        <div class="lane" data-status="new">
+          <h2>今日新发现</h2>
+          <div id="lane-new" class="lead-list"></div>
+        </div>
+        <div class="lane" data-status="needs_enrichment">
+          <h2>待完善信息</h2>
+          <div id="lane-needs_enrichment" class="lead-list"></div>
+        </div>
+        <div class="lane" data-status="qualified">
+          <h2>可跟进客户</h2>
+          <div id="lane-qualified" class="lead-list"></div>
+        </div>
+        <div class="lane" data-status="handled">
+          <h2>已处理客户</h2>
+          <div id="lane-handled" class="lead-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/leads/static/leads.js"></script>
+  </body>
+</html>
