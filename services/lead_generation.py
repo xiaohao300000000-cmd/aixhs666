@@ -343,7 +343,7 @@ def _has_lead_intent(normalized_text: str, *, source_entity_type: str) -> bool:
         if _is_provider_or_guide_content(normalized_text):
             return False
         return any(word in normalized_text for word in (*strong_content_intent_words, *content_problem_words))
-    if _is_provider_comment(normalized_text):
+    if _is_provider_comment(normalized_text) or _is_promo_comment(normalized_text) or _is_no_need_comment(normalized_text):
         return False
     comment_intent_words = (
         *strong_content_intent_words,
@@ -403,6 +403,37 @@ def _is_provider_comment(normalized_text: str) -> bool:
             "家长逼着",
             "我带KET",
             "我带PET",
+        )
+    )
+
+
+def _is_promo_comment(normalized_text: str) -> bool:
+    return any(
+        word in normalized_text
+        for word in (
+            "专业机构",
+            "靠谱机构",
+            "同团队",
+            "系统规划",
+            "稳步规划",
+            "少走太多弯路",
+            "上岸",
+            "培训不上",
+            "机构帮孩子",
+        )
+    )
+
+
+def _is_no_need_comment(normalized_text: str) -> bool:
+    return any(
+        word in normalized_text
+        for word in (
+            "没有报班",
+            "没报英文班",
+            "不为考试",
+            "不为考级",
+            "无所谓",
+            "节约钱和时间",
         )
     )
 

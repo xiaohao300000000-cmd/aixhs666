@@ -108,8 +108,9 @@ python -m apps.cli --json leads-backfill
 - 本次文档补充也需要提交并推送，具体 HEAD 以 `git log` 和 GitHub 分支历史为准。
 - 新增 AI 自动获客最小闭环代码和页面：`services/lead_generation.py`、`/api/leads`、`/leads`、`leads-backfill`。
 - 新增 lead 相关测试，完整测试已通过：`184 passed, 2 skipped, 1 warning`。
-- 已收紧 lead 规则：排除攻略、老师、机构和资料分享类供给侧内容；评论只保留报课、课程、机构、价格、试听、老师是否带课等跟进相关问题。
-- 已完成本机历史库潜在客户回填：5 个潜在客户、5 条证据、10 个待完善任务、0 个可跟进客户。
+- 已收紧 lead 规则：排除攻略、老师、机构、推广和明确无需求内容；评论只保留报课、课程、机构、价格、试听、老师是否带课等跟进相关问题。
+- 用户人工点击已处理的 3 个 lead 已确认是真实家长：`请问PET阅读怎么提高呢？`、`老师，线上带PET吗？`、`请问考完pet您给孩子报什么课程了么？`
+- 已重新执行 `leads-backfill --rebuild`，自动队列中的广告/无需求候选已清空；当前 `/api/leads/summary` 为 `handled=3`、`needs_enrichment=0`、`qualified=0`。
 
 
 ## 新电脑与并发计划

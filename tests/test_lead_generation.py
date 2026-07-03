@@ -333,6 +333,94 @@ def test_provider_and_resource_comments_do_not_create_leads(factory: sessionmake
         assert session.query(Lead).count() == 0
 
 
+def test_institution_promo_and_no_exam_comments_do_not_create_leads(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        promo_user = _profile(platform_user_id="promo-user", display_name="推广用户")
+        no_need_user = _profile(platform_user_id="no-need-user", display_name="不报班家长")
+        session.add_all([promo_user, no_need_user])
+        session.flush()
+        content = Content(
+            platform="xhs",
+            platform_content_id="comment-source",
+            content_type="note",
+            title="PET 讨论",
+            body_text="PET 家长讨论区。",
+        )
+        session.add(content)
+        session.flush()
+        session.add_all(
+            [
+                Comment(
+                    platform="xhs",
+                    platform_comment_id="promo-comment",
+                    content_id=content.id,
+                    author_profile_id=promo_user.id,
+                    body_text=(
+                        "我家三娃家庭，大娃当年就是跟着专业机构系统规划KET/PET，"
+                        "靠谱机构帮孩子避开盲目刷题，现在二娃也在同团队稳步规划。"
+                    ),
+                ),
+                Comment(
+                    platform="xhs",
+                    platform_comment_id="no-need-comment",
+                    content_id=content.id,
+                    author_profile_id=no_need_user.id,
+                    body_text="家里没报英文班，节约钱和时间，没有报班，不为考试，什么pet都无所谓。",
+                ),
+            ]
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        assert session.query(Lead).count() == 0
+
+
+def test_parent_followup_comments_create_leads(factory: sessionmaker[Session]) -> None:
+    comments = (
+        "请问PET阅读怎么提高呢？",
+        "老师，线上带PET吗？",
+        "请问考完pet您给孩子报什么课程了么？",
+    )
+    with factory() as session:
+        content = Content(
+            platform="xhs",
+            platform_content_id="parent-question-source",
+            content_type="note",
+            title="PET 家长问答",
+            body_text="PET 讨论区。",
+        )
+        session.add(content)
+        session.flush()
+        for index, body_text in enumerate(comments, start=1):
+            profile = _profile(platform_user_id=f"parent-question-{index}", display_name=f"家长{index}")
+            session.add(profile)
+            session.flush()
+            session.add(
+                Comment(
+                    platform="xhs",
+                    platform_comment_id=f"parent-question-comment-{index}",
+                    content_id=content.id,
+                    author_profile_id=profile.id,
+                    body_text=body_text,
+                )
+            )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 3
+    assert result.evidence_created == 3
+    with factory() as session:
+        assert session.query(Lead).count() == 3
+
+
 def test_leads_backfill_cli_outputs_generation_counts(
     factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
