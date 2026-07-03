@@ -35,7 +35,7 @@ async function loadLane(status) {
 function renderLeadCard(lead) {
   const card = document.createElement("article");
   card.className = "lead-card";
-  const evidence = lead.evidence?.[0]?.evidence_text || "暂无证据";
+  const evidence = excerpt(lead.evidence?.[0]?.evidence_text || "暂无证据", 96);
   const missing = lead.missing_info?.length ? lead.missing_info.join("、") : "无";
   card.innerHTML = `
     <header>
@@ -44,7 +44,7 @@ function renderLeadCard(lead) {
     </header>
     <div class="meta">${escapeHtml(lead.region_text || "未知地区")} · ${escapeHtml(lead.product || "未知课程")} · ${escapeHtml(lead.demand_type || "未知需求")} · ${escapeHtml(lead.intent_stage || "未知阶段")}</div>
     <div class="missing">缺失信息：${escapeHtml(missing)}</div>
-    <div class="evidence">${escapeHtml(evidence)}</div>
+    <div class="evidence"><strong>证据摘要</strong>${escapeHtml(evidence)}</div>
     <div class="next-step">${escapeHtml(lead.recommended_next_step || "")}</div>
     <div class="actions">
       <button class="secondary" type="button" data-action="handled">已处理</button>
@@ -90,6 +90,12 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function excerpt(value, maxLength) {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
 }
 
 document.getElementById("backfill-button").addEventListener("click", runBackfill);

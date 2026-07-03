@@ -197,6 +197,142 @@ def test_advice_content_without_user_need_does_not_create_lead(factory: sessionm
         assert session.query(Lead).count() == 0
 
 
+def test_guide_content_with_rhetorical_question_and_fee_does_not_create_lead(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = _profile(platform_user_id="teacher-2", display_name="备考博主")
+        session.add(profile)
+        session.flush()
+        session.add(
+            Content(
+                platform="xhs",
+                platform_content_id="guide-note",
+                content_type="note",
+                author_profile_id=profile.id,
+                title="除了雅思你可能有更优解",
+                body_text=(
+                    "很多朋友想考一份语言证书，但雅思真的适配所有人吗？"
+                    "费用：KET约1150元，PET约1350元。"
+                    "刷PET真题有利于重塑阅读逻辑。#KET #PET"
+                ),
+            )
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        assert session.query(Lead).count() == 0
+
+
+def test_parent_experience_content_without_request_does_not_create_lead(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = _profile(platform_user_id="parent-blogger", display_name="经验家长")
+        session.add(profile)
+        session.flush()
+        session.add(
+            Content(
+                platform="xhs",
+                platform_content_id="parent-guide",
+                content_type="note",
+                author_profile_id=profile.id,
+                title="因为儿子 KET 过了，普及一下备考强度",
+                body_text="三年级普娃去年拿下 KET，整理备考顺序、教材和学习建议给大家参考。",
+            )
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        assert session.query(Lead).count() == 0
+
+
+def test_teacher_or_provider_content_does_not_create_lead(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = _profile(platform_user_id="provider", display_name="课程老师")
+        session.add(profile)
+        session.flush()
+        session.add_all(
+            [
+                Content(
+                    platform="xhs",
+                    platform_content_id="provider-note-1",
+                    content_type="note",
+                    author_profile_id=profile.id,
+                    title="老天奶！差1分没过 KET",
+                    body_text="上周有个孩子差1分没过 KET，一生气整理了 KET 扣分点。",
+                ),
+                Content(
+                    platform="xhs",
+                    platform_content_id="provider-note-2",
+                    content_type="note",
+                    author_profile_id=profile.id,
+                    title="暑假托管机构问我能不能教小学 KET",
+                    body_text="机构问我能不能教 KET 小班教学任务，想请懂行的人给点教学大纲建议。",
+                ),
+            ]
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        assert session.query(Lead).count() == 0
+
+
+def test_provider_and_resource_comments_do_not_create_leads(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        provider = _profile(platform_user_id="provider-comment", display_name="独立老师")
+        resource_user = _profile(platform_user_id="resource-user", display_name="资料用户")
+        session.add_all([provider, resource_user])
+        session.flush()
+        content = Content(
+            platform="xhs",
+            platform_content_id="source-note",
+            content_type="note",
+            title="PET 备考经验",
+            body_text="PET 备考资料整理。",
+        )
+        session.add(content)
+        session.flush()
+        session.add_all(
+            [
+                Comment(
+                    platform="xhs",
+                    platform_comment_id="provider-comment",
+                    content_id=content.id,
+                    author_profile_id=provider.id,
+                    body_text="我是独立老师，家长总逼着我带 KET/PET，生源也因此丢了一些。",
+                ),
+                Comment(
+                    platform="xhs",
+                    platform_comment_id="resource-comment",
+                    content_id=content.id,
+                    author_profile_id=resource_user.id,
+                    body_text="PET核心词汇能分享吗？",
+                ),
+            ]
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        assert session.query(Lead).count() == 0
+
+
 def test_leads_backfill_cli_outputs_generation_counts(
     factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,

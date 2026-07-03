@@ -18,7 +18,7 @@ V15 Agent 中立运行框架已在 `feat/v15-agent-neutral-runtime` 接通。新
 真实历史库回填结果：
 
 ```json
-{"leads": {"enrichment_tasks_created": 46, "evidence_created": 25, "leads_created": 24, "leads_updated": 0, "needs_enrichment_leads": 24, "qualified_leads": 0}}
+{"leads": {"enrichment_tasks_created": 10, "evidence_created": 5, "leads_created": 5, "leads_updated": 0, "needs_enrichment_leads": 5, "qualified_leads": 0}}
 ```
 
 ## 当前目标
@@ -65,7 +65,7 @@ python -m apps.cli --json leads-backfill
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 用桌面图标启动一次完整本机服务，确认 `/ops` 自动弹出。
+1. 用桌面图标启动一次完整本机服务，确认 `/leads` 自动弹出。
 2. 执行 `python -m apps.cli --json leads-backfill --rebuild`，记录历史库真实潜在客户数量、证据数量、待完善数量和可跟进数量。
 3. 打开 `/leads`，确认四个业务桶展示真实客户卡片：今日新发现、待完善信息、可跟进客户、已处理客户。
 4. 在 `/ops` 页面输入 `secret`，点击“启动一轮”，确认真实 MediaCrawler 采集任务被创建和执行。
@@ -107,8 +107,9 @@ python -m apps.cli --json leads-backfill
 - 所有上述代码已推送到 GitHub 当前分支 `feat/v15-agent-neutral-runtime`。
 - 本次文档补充也需要提交并推送，具体 HEAD 以 `git log` 和 GitHub 分支历史为准。
 - 新增 AI 自动获客最小闭环代码和页面：`services/lead_generation.py`、`/api/leads`、`/leads`、`leads-backfill`。
-- 新增 lead 相关测试，完整测试已通过：`180 passed, 2 skipped, 1 warning`。
-- 已完成本机历史库潜在客户回填：24 个潜在客户、25 条证据、46 个待完善任务、0 个可跟进客户。
+- 新增 lead 相关测试，完整测试已通过：`184 passed, 2 skipped, 1 warning`。
+- 已收紧 lead 规则：排除攻略、老师、机构和资料分享类供给侧内容；评论只保留报课、课程、机构、价格、试听、老师是否带课等跟进相关问题。
+- 已完成本机历史库潜在客户回填：5 个潜在客户、5 条证据、10 个待完善任务、0 个可跟进客户。
 
 
 ## 新电脑与并发计划

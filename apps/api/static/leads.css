@@ -140,6 +140,13 @@ main {
   padding-left: 8px;
 }
 
+.evidence strong {
+  color: #1f2933;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
 .actions {
   display: flex;
   gap: 8px;

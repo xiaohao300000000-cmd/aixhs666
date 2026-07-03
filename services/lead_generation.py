@@ -163,7 +163,7 @@ def _build_candidate(profile: PublicProfile, records: list[LeadSourceRecord]) ->
     if product is None:
         return None
     for record in records:
-        event_type = _classify_lead_event(record.text)
+        event_type = _classify_lead_event(record.text, source_entity_type=record.source_entity_type)
         if event_type == DemandEventType.UNKNOWN:
             continue
         demand_type = event_type.value
@@ -305,42 +305,104 @@ def _stage_for_event(event_type: DemandEventType) -> DemandEventStage:
     return DemandEventStage.EXPLORING
 
 
-def _classify_lead_event(text: str) -> DemandEventType:
+def _classify_lead_event(text: str, *, source_entity_type: str) -> DemandEventType:
     normalized = normalize_text(text)
-    if not _has_lead_intent(normalized):
+    if not _has_lead_intent(normalized, source_entity_type=source_entity_type):
         return DemandEventType.UNKNOWN
     if any(word in normalized for word in ("二刷", "再考", "重考", "压线", "没过", "没通过", "刷分")):
         return DemandEventType.EXAM_RETRY
     return classify_demand_event(text)
 
 
-def _has_lead_intent(normalized_text: str) -> bool:
+def _has_lead_intent(normalized_text: str, *, source_entity_type: str) -> bool:
+    strong_content_intent_words = (
+        "求推荐",
+        "求问",
+        "想问",
+        "请问",
+        "想找",
+        "哪家",
+        "哪个好",
+        "怎么选",
+        "有没有",
+        "价格多少",
+        "多少钱",
+        "试听",
+        "体验课",
+    )
+    content_problem_words = (
+        "二刷",
+        "再考",
+        "重考",
+        "压线",
+        "没过",
+        "没通过",
+        "来得及",
+    )
+    if source_entity_type == "content":
+        if _is_provider_or_guide_content(normalized_text):
+            return False
+        return any(word in normalized_text for word in (*strong_content_intent_words, *content_problem_words))
+    if _is_provider_comment(normalized_text):
+        return False
+    comment_intent_words = (
+        *strong_content_intent_words,
+        *content_problem_words,
+        "价格",
+        "报课",
+        "报班",
+        "课程",
+        "线上带",
+        "带PET",
+        "带KET",
+        "机构",
+    )
+    return any(
+        word in normalized_text
+        for word in comment_intent_words
+    )
+
+
+def _is_provider_or_guide_content(normalized_text: str) -> bool:
     return any(
         word in normalized_text
         for word in (
-            "求推荐",
-            "求问",
-            "想问",
-            "请问",
-            "想找",
-            "哪家",
-            "哪个好",
-            "怎么选",
-            "有没有",
-            "价格",
-            "多少钱",
-            "试听",
-            "体验课",
-            "二刷",
-            "再考",
-            "重考",
-            "压线",
-            "没过",
-            "没通过",
-            "来得及",
-            "吗",
-            "？",
-            "?",
+            "教了",
+            "老师",
+            "佬师",
+            "机构问我",
+            "托管机构",
+            "能不能教",
+            "小班教学",
+            "教学大纲",
+            "备考攻略",
+            "备考经验",
+            "总结出来",
+            "十条建议",
+            "学习顺序",
+            "刷题顺序",
+            "扣分点",
+            "普及一下",
+            "分享",
+            "整理了",
+            "给大家参考",
+        )
+    )
+
+
+def _is_provider_comment(normalized_text: str) -> bool:
+    return any(
+        word in normalized_text
+        for word in (
+            "独立老师",
+            "我是老师",
+            "我是一个老师",
+            "生源",
+            "我半道接手",
+            "我一直建议",
+            "家长逼着",
+            "我带KET",
+            "我带PET",
         )
     )
 

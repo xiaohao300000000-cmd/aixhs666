@@ -83,18 +83,20 @@ if [ -f "$LOG_DIR/dashboard.pid" ]; then
 fi
 
 if ! lsof -iTCP:"$PORT" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
-  echo "正在启动 AIXHS 真实看板服务：http://127.0.0.1:$PORT/ops"
+  echo "正在启动 AIXHS 获客服务：http://127.0.0.1:$PORT/leads"
   nohup "$PYTHON_BIN" -m uvicorn apps.api.main:app --host 127.0.0.1 --port "$PORT" > "$LOG_FILE" 2>&1 &
   echo $! > "$LOG_DIR/dashboard.pid"
   sleep 2
 else
-  echo "AIXHS 看板服务已经在运行：http://127.0.0.1:$PORT/ops"
+  echo "AIXHS 获客服务已经在运行：http://127.0.0.1:$PORT/leads"
 fi
 
-open "http://127.0.0.1:$PORT/ops"
+open "http://127.0.0.1:$PORT/leads"
 
 echo ""
-echo "看板已打开。页面右上角 OPS_TOKEN 输入：$OPS_TOKEN"
+echo "获客看板已打开：http://127.0.0.1:$PORT/leads"
+echo "运维页面仍可访问：http://127.0.0.1:$PORT/ops"
+echo "运维页面 OPS_TOKEN 输入：$OPS_TOKEN"
 echo "当前采集模式：$WORKER_ADAPTER"
 echo "当前数据库：$DATABASE_URL"
 echo "MediaCrawler 环境：$MEDIACRAWLER_PYTHON"
