@@ -22,3 +22,4 @@ playwright/.auth/
 third_party/MediaCrawler/browser_data/
 screenshots/
 artifacts/
+/reports/
