@@ -21,7 +21,7 @@
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
 | 真实 Pipeline Runner 验证通过 | BLOCKED：当前最新副本未发现 MediaCrawler `.venv` 和可见登录态，尚未执行真实 `run-cycle` |
-| 真实潜在客户回填验证通过 | DONE：本机历史库经人工校正后保留 3 个真实家长为已处理，广告/无需求自动候选已清空，待完善 0，可跟进 0 |
+| 真实潜在客户回填验证通过 | DONE：本机历史库经人工校正后保留 3 个真实家长为可跟进，广告/无需求自动候选已清空，待完善 0，可跟进 3 |
 | 真实飞书验证通过 | BLOCKED：未配置真实 Feishu 凭证 |
 | 完整闭环通过 | BLOCKED：真实飞书和长期无人值守运行未完成 |
 

@@ -143,6 +143,27 @@ def test_rebuild_auto_leads_preserves_ignored_manual_leads(factory: sessionmaker
         assert session.query(LeadEvidence).count() == 2
 
 
+def test_rebuild_auto_leads_preserves_qualified_manual_leads(factory: sessionmaker[Session]) -> None:
+    profile_id = _seed_ket_pet_history(factory)
+    with factory() as session:
+        generate_leads_from_history(session)
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        lead.status = "qualified"
+        session.commit()
+
+    with factory() as session:
+        result = rebuild_auto_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 0
+    with factory() as session:
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile_id))
+        assert lead is not None
+        assert lead.status == "qualified"
+        assert session.query(LeadEvidence).count() == 2
+
+
 def test_generate_leads_for_profiles_limits_scope(factory: sessionmaker[Session]) -> None:
     target_profile_id = _seed_ket_pet_history(factory)
     with factory() as session:

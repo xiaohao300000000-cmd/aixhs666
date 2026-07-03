@@ -12,7 +12,7 @@ from intelligence.text_processing import normalize_text
 from storage.models import Comment, Content, EnrichmentTask, Lead, LeadEvidence, PublicProfile
 
 
-MANUAL_LEAD_STATUSES = {"handled", "ignored"}
+MANUAL_LEAD_STATUSES = {"handled", "ignored", "qualified"}
 PRODUCT_KEYWORDS = {
     "PET": ("PET", "pet", "小五", "小六"),
     "KET": ("KET", "ket", "小剑桥"),
