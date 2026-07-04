@@ -1,5 +1,11 @@
 """Feishu integration helpers."""
 
+from integrations.feishu.bitable import (
+    FeishuBitableClient,
+    FeishuBitableError,
+    FeishuBitableSettings,
+    FeishuBitableWriteResult,
+)
 from integrations.feishu.callbacks import (
     FeishuCallbackAction,
     FeishuCallbackError,
@@ -33,6 +39,10 @@ from integrations.feishu.webhook import (
 )
 
 __all__ = [
+    "FeishuBitableClient",
+    "FeishuBitableError",
+    "FeishuBitableSettings",
+    "FeishuBitableWriteResult",
     "FeishuAPIError",
     "FeishuCallbackAction",
     "FeishuCallbackError",
