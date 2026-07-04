@@ -140,3 +140,100 @@ def test_run_agent_cycle_runs_pipeline_for_selected_queries(factory: sessionmake
     assert payload["pipeline"]["status"] == "completed"
     assert payload["pipeline"]["result_data"]["agent"] == {"workbench_candidates": 0}
     assert payload["workbench_rows"] == []
+
+
+def test_agent_run_cli_outputs_run_agent_cycle_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import apps.cli as cli
+
+    class StubPipelineRunner:
+        def __init__(self, **_: object) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "PipelineRunner", StubPipelineRunner)
+    monkeypatch.setattr(cli, "load_adapter", lambda _: object())
+    monkeypatch.setattr(cli, "run_agent_cycle", lambda session_factory, runner: {"pipeline": None, "workbench_rows": []})
+
+    exit_code = cli.main(["--json", "agent-run"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == '{"pipeline": null, "workbench_rows": []}'
+
+
+def test_feishu_sync_cli_outputs_sync_result(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import apps.cli as cli
+
+    class StubPipelineRunner:
+        def __init__(self, **_: object) -> None:
+            pass
+
+    class StubSession:
+        def __enter__(self) -> "StubSession":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def commit(self) -> None:
+            return None
+
+    class StubClient:
+        def __init__(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "PipelineRunner", StubPipelineRunner)
+    monkeypatch.setattr(cli, "load_adapter", lambda _: object())
+    monkeypatch.setattr(cli, "SessionLocal", lambda: StubSession())
+    monkeypatch.setattr(cli, "rank_leads_for_workbench", lambda session: ["row"])
+    monkeypatch.setattr(cli, "FeishuBitableClient", StubClient)
+    monkeypatch.setattr(
+        cli,
+        "sync_workbench_rows",
+        lambda session, client, rows: type("Result", (), {"__dict__": {"created": 0, "updated": 0, "dry_run": 1, "failed": 0}})(),
+    )
+
+    exit_code = cli.main(["--json", "feishu-sync"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == '{"feishu_sync": {"created": 0, "dry_run": 1, "failed": 0, "updated": 0}}'
+
+
+def test_feishu_pull_feedback_cli_outputs_feedback_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import apps.cli as cli
+
+    class StubPipelineRunner:
+        def __init__(self, **_: object) -> None:
+            pass
+
+    class StubSession:
+        def __enter__(self) -> "StubSession":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def commit(self) -> None:
+            return None
+
+    class StubClient:
+        def __init__(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "PipelineRunner", StubPipelineRunner)
+    monkeypatch.setattr(cli, "load_adapter", lambda _: object())
+    monkeypatch.setattr(cli, "SessionLocal", lambda: StubSession())
+    monkeypatch.setattr(cli, "FeishuBitableClient", StubClient)
+    monkeypatch.setattr(cli, "pull_workbench_feedback", lambda session, client: {"updated": 0, "skipped": 0})
+
+    exit_code = cli.main(["--json", "feishu-pull-feedback"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == '{"feishu_feedback": {"skipped": 0, "updated": 0}}'

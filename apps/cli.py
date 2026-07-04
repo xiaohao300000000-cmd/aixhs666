@@ -6,6 +6,9 @@ import sys
 from typing import Any
 
 from apps.worker.main import load_adapter
+from integrations.feishu.bitable import FeishuBitableClient
+from services.agent_runtime import rank_leads_for_workbench, run_agent_cycle
+from services.feishu_workbench import pull_workbench_feedback, sync_workbench_rows
 from services.lead_generation import generate_leads_from_history, rebuild_auto_leads_from_history
 from services.pipeline_runner import PipelineRunError, PipelineRunner
 from storage.database import SessionLocal
@@ -37,6 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     leads_backfill = subparsers.add_parser("leads-backfill", help="Generate leads from historical contents and comments.")
     leads_backfill.add_argument("--rebuild", action="store_true", help="Delete auto-status leads and regenerate from history.")
+    subparsers.add_parser("agent-run", help="Run agent-selected collection and sync-ready prioritization.")
+    subparsers.add_parser("feishu-sync", help="Sync prioritized leads to Feishu Bitable.")
+    subparsers.add_parser("feishu-pull-feedback", help="Pull Feishu Bitable status changes back into PostgreSQL.")
     return parser
 
 
@@ -68,6 +74,20 @@ def main(argv: list[str] | None = None) -> int:
                 result = rebuild_auto_leads_from_history(session) if args.rebuild else generate_leads_from_history(session)
                 session.commit()
                 payload = {"leads": result.to_dict()}
+        elif args.command == "agent-run":
+            payload = run_agent_cycle(SessionLocal, runner)
+        elif args.command == "feishu-sync":
+            with SessionLocal() as session:
+                rows = rank_leads_for_workbench(session)
+                client = FeishuBitableClient()
+                result = sync_workbench_rows(session, client, rows)
+                session.commit()
+                payload = {"feishu_sync": result.__dict__}
+        elif args.command == "feishu-pull-feedback":
+            with SessionLocal() as session:
+                client = FeishuBitableClient()
+                payload = {"feishu_feedback": pull_workbench_feedback(session, client)}
+                session.commit()
         else:
             parser.error(f"unknown command: {args.command}")
     except PipelineRunError as exc:

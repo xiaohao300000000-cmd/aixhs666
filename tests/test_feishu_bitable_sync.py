@@ -8,9 +8,9 @@ from sqlalchemy.pool import StaticPool
 
 from integrations.feishu.bitable import FeishuBitableClient, FeishuBitableError, FeishuBitableSettings
 from services.agent_runtime import AgentLeadRow
-from services.feishu_workbench import build_workbench_fields, sync_workbench_rows
+from services.feishu_workbench import FeishuWorkbenchSyncResult, build_workbench_fields, pull_workbench_feedback, sync_workbench_rows
 from storage.database import Base
-from storage.models import FeishuBitableRecord
+from storage.models import FeishuBitableRecord, Lead, PublicProfile
 
 
 def test_bitable_client_dry_run_returns_payload_without_network() -> None:
@@ -282,6 +282,50 @@ def test_sync_workbench_rows_skips_mapping_rows_without_credentials(factory: ses
     assert no_network.get_calls == 0
     with factory() as session:
         assert session.query(FeishuBitableRecord).count() == 0
+
+
+class FakeListClient:
+    settings = FeishuBitableSettings(enabled=False, app_id=None, app_secret=None, app_token="app", table_id="tbl")
+
+    def list_records(self):
+        return [{"record_id": "rec1", "fields": {"状态": "不合适", "负责人": "小王", "备注": "广告号"}}]
+
+
+def test_pull_feedback_updates_manual_status(factory) -> None:
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="u1", display_name="客户")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="needs_enrichment")
+        session.add(lead)
+        session.flush()
+        session.add(
+            FeishuBitableRecord(
+                local_entity_type="lead",
+                local_entity_id=lead.id,
+                app_token="app",
+                table_id="tbl",
+                record_id="rec1",
+                last_sync_status="synced",
+            )
+        )
+        session.commit()
+
+    with factory() as session:
+        result = pull_workbench_feedback(session, FakeListClient())
+        session.commit()
+
+    assert result["updated"] == 1
+    with factory() as session:
+        lead = session.get(Lead, 1)
+        assert lead is not None
+        assert lead.status == "ignored"
+
+
+def test_workbench_sync_result_exposes_dict_for_cli() -> None:
+    result = FeishuWorkbenchSyncResult(created=1, updated=2, dry_run=3, failed=4)
+
+    assert result.__dict__ == {"created": 1, "updated": 2, "dry_run": 3, "failed": 4}
 
 
 class _FailingClient:

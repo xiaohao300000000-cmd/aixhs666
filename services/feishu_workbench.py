@@ -9,15 +9,24 @@ from sqlalchemy.orm import Session
 
 from integrations.feishu.bitable import FeishuBitableClient
 from services.agent_runtime import AgentLeadRow
-from storage.models import FeishuBitableRecord
+from storage.models import FeishuBitableRecord, Lead
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class FeishuWorkbenchSyncResult:
     created: int = 0
     updated: int = 0
     dry_run: int = 0
     failed: int = 0
+
+
+STATUS_FROM_FEISHU = {
+    "新发现": "new",
+    "待确认": "needs_enrichment",
+    "可跟进": "qualified",
+    "已跟进": "handled",
+    "不合适": "ignored",
+}
 
 
 def build_workbench_fields(row: AgentLeadRow) -> dict[str, Any]:
@@ -78,6 +87,41 @@ def sync_workbench_rows(
             mapping.last_error = None
     session.flush()
     return FeishuWorkbenchSyncResult(**counts)
+
+
+def pull_workbench_feedback(session: Session, client: FeishuBitableClient) -> dict[str, int]:
+    updated = 0
+    skipped = 0
+    records = client.list_records()
+    app_token = client.settings.app_token or "dry-run-app"
+    table_id = client.settings.table_id or "dry-run-table"
+    for record in records:
+        record_id = str(record.get("record_id") or "")
+        fields = record.get("fields") or {}
+        status_label = fields.get("状态")
+        mapping = session.scalar(
+            select(FeishuBitableRecord).where(
+                FeishuBitableRecord.app_token == app_token,
+                FeishuBitableRecord.table_id == table_id,
+                FeishuBitableRecord.record_id == record_id,
+            )
+        )
+        if mapping is None or status_label not in STATUS_FROM_FEISHU:
+            skipped += 1
+            continue
+        lead = session.get(Lead, mapping.local_entity_id)
+        if lead is None:
+            skipped += 1
+            continue
+        lead.status = STATUS_FROM_FEISHU[str(status_label)]
+        lead.owner_name = fields.get("负责人") or lead.owner_name
+        lead.operator_note = fields.get("备注") or lead.operator_note
+        lead.last_feedback_at = datetime.now(UTC)
+        mapping.remote_fields_json = dict(fields)
+        mapping.last_sync_status = "feedback_pulled"
+        updated += 1
+    session.flush()
+    return {"updated": updated, "skipped": skipped}
 
 
 def _get_or_create_mapping(
