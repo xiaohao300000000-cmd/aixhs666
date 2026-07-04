@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from intelligence.demand_chain import DemandEventType, DemandEventStage, classify_demand_event
 from intelligence.text_processing import normalize_text
-from services.lead_intent import LeadEntryType, classify_lead_intent
+from services.lead_intent import LeadEntryType, LeadIntentAction, LeadIntentDecision, classify_lead_intent
 from storage.models import Comment, Content, EnrichmentTask, Lead, LeadEvidence, PublicProfile
 
 
@@ -160,7 +160,7 @@ def _records_by_profile(session: Session, profile_ids: set[int]) -> dict[int, li
 def _build_candidate(profile: PublicProfile, records: list[LeadSourceRecord]) -> LeadCandidate | None:
     evidence: list[tuple[LeadSourceRecord, int, str, str]] = []
     combined_text = " ".join(record.text for record in records)
-    decisions = []
+    decisions: list[LeadIntentDecision] = []
     product = _detect_product(combined_text)
     if product is None:
         return None
@@ -175,8 +175,7 @@ def _build_candidate(profile: PublicProfile, records: list[LeadSourceRecord]) ->
         decisions.append(decision)
         event_type = _classify_lead_event(record.text, source_entity_type=record.source_entity_type)
         if event_type == DemandEventType.UNKNOWN:
-            demand_type = decision.actions[0].value if decision.actions else "question"
-            intent_stage = "exploring"
+            demand_type, intent_stage = _fallback_demand_from_intent(decision)
         else:
             demand_type = event_type.value
             intent_stage = _stage_for_event(event_type).value
@@ -485,6 +484,26 @@ def _best_stage(values: list[str]) -> str:
         if value in values:
             return value
     return values[0]
+
+
+def _fallback_demand_from_intent(decision: LeadIntentDecision) -> tuple[str, str]:
+    for action in decision.actions:
+        mapped = _ACTION_TO_DEMAND.get(action)
+        if mapped is not None:
+            return mapped
+    return DemandEventType.QUESTION.value, DemandEventStage.EXPLORING.value
+
+
+_ACTION_TO_DEMAND: dict[LeadIntentAction, tuple[str, str]] = {
+    LeadIntentAction.PRICE: (DemandEventType.PRICE.value, DemandEventStage.ACTION_READY.value),
+    LeadIntentAction.TRIAL: (DemandEventType.TRIAL.value, DemandEventStage.ACTION_READY.value),
+    LeadIntentAction.INSTITUTION: (DemandEventType.COMPARISON.value, DemandEventStage.EVALUATING.value),
+    LeadIntentAction.COMPARISON: (DemandEventType.COMPARISON.value, DemandEventStage.EVALUATING.value),
+    LeadIntentAction.EXAM_RETRY: (DemandEventType.EXAM_RETRY.value, DemandEventStage.RECOVERY.value),
+    LeadIntentAction.COURSE: (DemandEventType.PLANNING.value, DemandEventStage.PLANNING.value),
+    LeadIntentAction.ENROLLMENT: (DemandEventType.PLANNING.value, DemandEventStage.PLANNING.value),
+    LeadIntentAction.IMPROVEMENT: (DemandEventType.QUESTION.value, DemandEventStage.EXPLORING.value),
+}
 
 
 def _missing_info(known_info: dict[str, Any]) -> list[str]:

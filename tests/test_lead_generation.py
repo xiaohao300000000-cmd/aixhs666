@@ -442,6 +442,48 @@ def test_parent_followup_comments_create_leads(factory: sessionmaker[Session]) -
         assert session.query(Lead).count() == 3
 
 
+def test_generate_leads_persists_intent_metadata_and_fallback_stage(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = _profile(platform_user_id="intent-fallback", display_name="跟进家长")
+        session.add(profile)
+        session.flush()
+        content = Content(
+            platform="xhs",
+            platform_content_id="intent-fallback-note",
+            content_type="note",
+            title="PET 家长交流",
+            body_text="孩子 PET 学习交流。",
+        )
+        session.add(content)
+        session.flush()
+        session.add(
+            Comment(
+                platform="xhs",
+                platform_comment_id="intent-fallback-comment",
+                content_id=content.id,
+                author_profile_id=profile.id,
+                body_text="老师，线上带PET",
+            )
+        )
+        session.commit()
+
+    with factory() as session:
+        result = generate_leads_from_history(session)
+        session.commit()
+
+    assert result.leads_created == 1
+    with factory() as session:
+        lead = session.scalar(select(Lead).where(Lead.public_profile_id == profile.id))
+        assert lead is not None
+        assert lead.demand_type == "planning"
+        assert lead.intent_stage == "planning"
+        assert lead.known_info_json["human_need"] == "家长在咨询KET/PET相关学习安排"
+        assert lead.known_info_json["recommendation_reason"]
+        assert lead.known_info_json["suggested_next_step"] == lead.recommended_next_step
+        for token in ("exam_retry", "institution", "course", "high", "medium"):
+            assert token not in lead.known_info_json["recommendation_reason"]
+
+
 def test_leads_backfill_cli_outputs_generation_counts(
     factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,

@@ -35,3 +35,11 @@ def test_incomplete_parent_question_needs_confirmation() -> None:
     assert decision.entry_type == LeadEntryType.CONFIRM
     assert LeadIntentAction.IMPROVEMENT in decision.actions
     assert "地区" in decision.missing_info
+
+
+def test_recommendation_reason_is_human_readable_chinese_only() -> None:
+    decision = classify_lead_intent("孩子PET没过，福州有二刷冲刺班推荐吗？", source_entity_type="comment")
+
+    assert decision.recommendation_reason
+    for token in ("exam_retry", "institution", "course", "high", "medium"):
+        assert token not in decision.recommendation_reason

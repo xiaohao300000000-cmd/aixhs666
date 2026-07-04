@@ -147,8 +147,9 @@ def _human_need(actions: tuple[LeadIntentAction, ...]) -> str:
 
 
 def _recommendation_reason(actions: tuple[LeadIntentAction, ...], confidence: str) -> str:
-    action_names = "、".join(action.value for action in actions)
-    return f"文本包含明确咨询动作：{action_names}；置信度为{confidence}"
+    action_names = "、".join(_action_label(action) for action in actions)
+    confidence_label = "较高" if confidence == "high" else "中等"
+    return f"文本中提到了{action_names}等明确需求，意向判断{confidence_label}"
 
 
 def _next_step(missing: tuple[str, ...], actions: tuple[LeadIntentAction, ...]) -> str:
@@ -170,3 +171,16 @@ def _looks_rhetorical_content(normalized: str) -> bool:
 
 def _contains_any(normalized: str, words: tuple[str, ...]) -> bool:
     return any(word in normalized for word in words)
+
+
+def _action_label(action: LeadIntentAction) -> str:
+    return {
+        LeadIntentAction.COURSE: "课程安排",
+        LeadIntentAction.INSTITUTION: "机构选择",
+        LeadIntentAction.PRICE: "课程价格",
+        LeadIntentAction.TRIAL: "试听体验",
+        LeadIntentAction.ENROLLMENT: "报名计划",
+        LeadIntentAction.EXAM_RETRY: "补考提升",
+        LeadIntentAction.COMPARISON: "方案对比",
+        LeadIntentAction.IMPROVEMENT: "能力提升",
+    }[action]
