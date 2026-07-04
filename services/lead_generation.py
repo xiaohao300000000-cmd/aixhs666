@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from intelligence.demand_chain import DemandEventType, DemandEventStage, classify_demand_event
 from intelligence.text_processing import normalize_text
+from services.lead_intent import LeadEntryType, classify_lead_intent
 from storage.models import Comment, Content, EnrichmentTask, Lead, LeadEvidence, PublicProfile
 
 
@@ -159,20 +160,32 @@ def _records_by_profile(session: Session, profile_ids: set[int]) -> dict[int, li
 def _build_candidate(profile: PublicProfile, records: list[LeadSourceRecord]) -> LeadCandidate | None:
     evidence: list[tuple[LeadSourceRecord, int, str, str]] = []
     combined_text = " ".join(record.text for record in records)
+    decisions = []
     product = _detect_product(combined_text)
     if product is None:
         return None
     for record in records:
+        decision = classify_lead_intent(
+            record.text,
+            source_entity_type=record.source_entity_type,
+            context_text=combined_text,
+        )
+        if decision.entry_type == LeadEntryType.SKIP:
+            continue
+        decisions.append(decision)
         event_type = _classify_lead_event(record.text, source_entity_type=record.source_entity_type)
         if event_type == DemandEventType.UNKNOWN:
-            continue
-        demand_type = event_type.value
-        intent_stage = _stage_for_event(event_type).value
+            demand_type = decision.actions[0].value if decision.actions else "question"
+            intent_stage = "exploring"
+        else:
+            demand_type = event_type.value
+            intent_stage = _stage_for_event(event_type).value
         evidence.append((record, _score_record(record.text, event_type), demand_type, intent_stage))
     if not evidence:
         return None
 
     best = max(evidence, key=lambda item: item[1])
+    best_decision = decisions[evidence.index(best)]
     region = profile.region_text or _first_region(record.region_text for record in records) or _detect_region(combined_text)
     demand_type = _best_demand_type([item[2] for item in evidence])
     intent_stage = _best_stage([item[3] for item in evidence])
@@ -188,6 +201,9 @@ def _build_candidate(profile: PublicProfile, records: list[LeadSourceRecord]) ->
         "intent_stage": intent_stage,
         "evidence_count": len(evidence),
         "public_contact": profile.public_contact_text,
+        "human_need": best_decision.human_need,
+        "recommendation_reason": best_decision.recommendation_reason,
+        "suggested_next_step": best_decision.suggested_next_step,
     }
     missing_info = _missing_info(known_info)
     completeness = _completeness(known_info)
@@ -201,7 +217,7 @@ def _build_candidate(profile: PublicProfile, records: list[LeadSourceRecord]) ->
         information_completeness=completeness,
         known_info={key: value for key, value in known_info.items() if value not in (None, "")},
         missing_info=missing_info,
-        recommended_next_step=_recommended_next_step(missing_info, intent_score, best[3]),
+        recommended_next_step=best_decision.suggested_next_step or _recommended_next_step(missing_info, intent_score, best[3]),
         evidence=evidence,
     )
 
