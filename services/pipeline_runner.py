@@ -851,6 +851,9 @@ def _empty_result(run_id: int, *, status: str) -> dict[str, Any]:
             "qualified_leads": 0,
             "needs_enrichment_leads": 0,
         },
+        "agent": {
+            "workbench_candidates": 0,
+        },
         "warnings": [],
         "errors": [],
         "recommended_actions": [],

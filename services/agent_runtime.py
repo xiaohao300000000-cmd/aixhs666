@@ -62,7 +62,9 @@ def run_agent_cycle(
 ) -> dict[str, Any]:
     with session_factory() as session:
         query_ids = select_queries_for_agent(session, limit=query_limit)
-    result = runner.run_cycle(query_ids=query_ids, collection_limit=collection_limit, requested_by="agent")
+    result = None
+    if query_ids:
+        result = runner.run_cycle(query_ids=query_ids, collection_limit=collection_limit, requested_by="agent")
     with session_factory() as session:
         rows = rank_leads_for_workbench(session)
     return {"pipeline": result, "workbench_rows": [asdict(row) for row in rows]}

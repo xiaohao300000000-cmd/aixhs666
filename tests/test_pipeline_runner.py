@@ -216,6 +216,28 @@ def test_pipeline_runner_records_failure_and_retry_continues(factory: sessionmak
         assert session.query(Comment).count() == 2
 
 
+def test_pipeline_dry_run_includes_stable_agent_payload(factory: sessionmaker[Session], tmp_path: Path) -> None:
+    query_id = _seed_query(factory, "admissions")
+    runner = _runner(factory, tmp_path)
+
+    payload = runner.run_cycle(query_ids=[query_id], collection_limit=20, requested_by="test", dry_run=True)
+
+    assert payload["status"] == "completed"
+    assert payload["result_data"]["agent"] == {"workbench_candidates": 0}
+    assert "dry-run: no collection or analysis was executed" in payload["result_data"]["warnings"]
+
+
+def test_pipeline_skip_analysis_includes_stable_agent_payload(factory: sessionmaker[Session], tmp_path: Path) -> None:
+    query_id = _seed_query(factory, "admissions")
+    runner = _runner(factory, tmp_path)
+
+    payload = runner.run_cycle(query_ids=[query_id], collection_limit=20, requested_by="test", skip_analysis=True)
+
+    assert payload["status"] == "completed"
+    assert payload["result_data"]["agent"] == {"workbench_candidates": 0}
+    assert "analysis skipped by request" in payload["result_data"]["warnings"]
+
+
 def test_pipeline_api_and_cli_use_same_runner_shape(
     factory: sessionmaker[Session],
     tmp_path: Path,
