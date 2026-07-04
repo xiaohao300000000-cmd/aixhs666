@@ -40,30 +40,42 @@ def sync_workbench_rows(
     rows: list[AgentLeadRow],
 ) -> FeishuWorkbenchSyncResult:
     counts = {"created": 0, "updated": 0, "dry_run": 0, "failed": 0}
-    app_token = client.settings.app_token or "dry-run-app"
-    table_id = client.settings.table_id or "dry-run-table"
+    app_token = client.settings.app_token
+    table_id = client.settings.table_id
+    can_persist_mapping = bool(app_token and table_id)
     now = datetime.now(UTC)
     for row in rows:
-        mapping = _get_or_create_mapping(session, row.lead_id, app_token=app_token, table_id=table_id)
+        mapping = (
+            _get_or_create_mapping(
+                session,
+                row.lead_id,
+                app_token=app_token,
+                table_id=table_id,
+            )
+            if can_persist_mapping
+            else None
+        )
         fields = build_workbench_fields(row)
         try:
-            result = client.upsert_record(mapping.record_id, fields)
+            result = client.upsert_record(mapping.record_id if mapping is not None else None, fields)
         except Exception as exc:
-            mapping.last_sync_status = "failed"
-            mapping.last_error = str(exc)
+            if mapping is not None:
+                mapping.last_sync_status = "failed"
+                mapping.last_error = str(exc)
             counts["failed"] += 1
             continue
         if result.dry_run:
             counts["dry_run"] += 1
-        elif mapping.record_id:
+        elif mapping is not None and mapping.record_id:
             counts["updated"] += 1
         else:
             counts["created"] += 1
-        mapping.record_id = result.record_id or mapping.record_id
-        mapping.remote_fields_json = fields
-        mapping.last_synced_at = now
-        mapping.last_sync_status = "dry_run" if result.dry_run else "synced"
-        mapping.last_error = None
+        if mapping is not None:
+            mapping.record_id = result.record_id or mapping.record_id
+            mapping.remote_fields_json = fields
+            mapping.last_synced_at = now
+            mapping.last_sync_status = "dry_run" if result.dry_run else "synced"
+            mapping.last_error = None
     session.flush()
     return FeishuWorkbenchSyncResult(**counts)
 

@@ -223,14 +223,16 @@ def test_sync_workbench_rows_is_idempotent(factory: sessionmaker[Session]) -> No
         source_url="",
         discovered_at="2026-07-04T10:00:00+08:00",
     )
+    no_network = _NoNetworkClient()
     client = FeishuBitableClient(
         settings=FeishuBitableSettings(
             enabled=False,
             app_id=None,
             app_secret=None,
-            app_token="app",
-            table_id="tbl",
-        )
+            app_token="local-test-base",
+            table_id="local-test-table",
+        ),
+        http_client=no_network,
     )
 
     with factory() as session:
@@ -240,8 +242,46 @@ def test_sync_workbench_rows_is_idempotent(factory: sessionmaker[Session]) -> No
 
     assert first.dry_run == 1
     assert second.dry_run == 1
+    assert no_network.post_calls == 0
+    assert no_network.get_calls == 0
     with factory() as session:
         assert session.query(FeishuBitableRecord).count() == 1
+
+
+def test_sync_workbench_rows_skips_mapping_rows_without_credentials(factory: sessionmaker[Session]) -> None:
+    row = AgentLeadRow(
+        lead_id=2,
+        customer="福州家长",
+        need="孩子PET二刷需要冲刺",
+        product="PET",
+        intent_level="高",
+        reason="明确询问二刷冲刺班",
+        next_step="先确认考试时间",
+        status_label="待确认",
+        source_url="",
+        discovered_at="2026-07-04T10:00:00+08:00",
+    )
+    no_network = _NoNetworkClient()
+    client = FeishuBitableClient(
+        settings=FeishuBitableSettings(
+            enabled=False,
+            app_id=None,
+            app_secret=None,
+            app_token=None,
+            table_id=None,
+        ),
+        http_client=no_network,
+    )
+
+    with factory() as session:
+        result = sync_workbench_rows(session, client, [row])
+        session.commit()
+
+    assert result.dry_run == 1
+    assert no_network.post_calls == 0
+    assert no_network.get_calls == 0
+    with factory() as session:
+        assert session.query(FeishuBitableRecord).count() == 0
 
 
 class _FailingClient:
@@ -261,6 +301,20 @@ class _ClosableClient(_FailingClient):
 
     def close(self) -> None:
         self.closed = True
+
+
+class _NoNetworkClient(_FailingClient):
+    def __init__(self) -> None:
+        self.post_calls = 0
+        self.get_calls = 0
+
+    def post(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        self.post_calls += 1
+        raise AssertionError("network access is not expected")
+
+    def get(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        self.get_calls += 1
+        raise AssertionError("network access is not expected")
 
 
 class _TimeoutingClient:
