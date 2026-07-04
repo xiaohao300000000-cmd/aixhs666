@@ -37,3 +37,13 @@ Commit
 
 Concerns
 - None. The only issue encountered was the pre-existing `slots=True` / `__dict__` incompatibility, which is now covered by a regression test.
+
+Follow-up Fix
+- Stamped `lead.updated_at` in `pull_workbench_feedback()` with the same local timestamp used for `last_feedback_at`, so pulled Feishu feedback now refreshes the lead's audit timestamp alongside status, owner, and note fields.
+- Strengthened `tests/test_feishu_bitable_sync.py` to start from an older `updated_at` value and assert the field changes after feedback pull, while also verifying it stays aligned with `last_feedback_at`.
+
+Verification for this fix
+- `.venv/bin/python -m pytest tests/test_feishu_bitable_sync.py tests/test_agent_runtime.py -q`
+- Result: `20 passed`
+- `.venv/bin/python -m pytest -q`
+- Result: `215 passed, 2 skipped, 1 warning`

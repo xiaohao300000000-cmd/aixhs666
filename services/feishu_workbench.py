@@ -116,7 +116,9 @@ def pull_workbench_feedback(session: Session, client: FeishuBitableClient) -> di
         lead.status = STATUS_FROM_FEISHU[str(status_label)]
         lead.owner_name = fields.get("负责人") or lead.owner_name
         lead.operator_note = fields.get("备注") or lead.operator_note
-        lead.last_feedback_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        lead.last_feedback_at = now
+        lead.updated_at = now
         mapping.remote_fields_json = dict(fields)
         mapping.last_sync_status = "feedback_pulled"
         updated += 1

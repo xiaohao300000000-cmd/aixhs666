@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
@@ -296,7 +297,13 @@ def test_pull_feedback_updates_manual_status(factory) -> None:
         profile = PublicProfile(platform="xhs", platform_user_id="u1", display_name="客户")
         session.add(profile)
         session.flush()
-        lead = Lead(platform="xhs", public_profile_id=profile.id, status="needs_enrichment")
+        original_updated_at = datetime.now() - timedelta(days=1)
+        lead = Lead(
+            platform="xhs",
+            public_profile_id=profile.id,
+            status="needs_enrichment",
+            updated_at=original_updated_at,
+        )
         session.add(lead)
         session.flush()
         session.add(
@@ -320,6 +327,9 @@ def test_pull_feedback_updates_manual_status(factory) -> None:
         lead = session.get(Lead, 1)
         assert lead is not None
         assert lead.status == "ignored"
+        assert lead.updated_at is not None
+        assert lead.last_feedback_at == lead.updated_at
+        assert lead.updated_at > original_updated_at
 
 
 def test_workbench_sync_result_exposes_dict_for_cli() -> None:
