@@ -512,6 +512,9 @@ class PipelineRunner:
         )
         lead_result = generate_leads_for_profiles(session, set(scope.profile_ids))
         result["leads"] = lead_result.to_dict()
+        result["agent"] = {
+            "workbench_candidates": lead_result.qualified_leads + lead_result.needs_enrichment_leads,
+        }
         self._set_progress(session, run, "demand_events", "completed")
 
         context_processed = [process_text(record.text, source_id=record.source_id) for record in historical_texts]

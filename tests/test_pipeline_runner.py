@@ -62,6 +62,7 @@ def test_pipeline_runner_mock_full_cycle(factory: sessionmaker[Session], tmp_pat
     assert result["processing"]["demand_events_created"] >= 1
     assert result["leads"]["leads_created"] >= 1
     assert result["leads"]["evidence_created"] >= 1
+    assert result["agent"]["workbench_candidates"] >= 1
     assert result["intelligence"]["clusters_created_or_updated"] >= 1
     assert result["intelligence"]["candidate_queries_created"] >= 1
     assert result["intelligence"]["query_scores_updated"] == 1
