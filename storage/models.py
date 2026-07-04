@@ -250,6 +250,9 @@ class Lead(TimestampMixin, Base):
     known_info_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     missing_info_json: Mapped[list[str] | None] = mapped_column(JSON)
     recommended_next_step: Mapped[str | None] = mapped_column(Text)
+    owner_name: Mapped[str | None] = mapped_column(String(255))
+    operator_note: Mapped[str | None] = mapped_column(Text)
+    last_feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -299,3 +302,30 @@ class EnrichmentTask(TimestampMixin, Base):
     reason: Mapped[str | None] = mapped_column(Text)
 
     lead: Mapped[Lead] = relationship(back_populates="enrichment_tasks")
+
+
+class FeishuBitableRecord(TimestampMixin, Base):
+    __tablename__ = "feishu_bitable_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "local_entity_type",
+            "local_entity_id",
+            "app_token",
+            "table_id",
+            name="uq_feishu_bitable_local_record",
+        ),
+        Index("ix_feishu_bitable_record_id", "record_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    local_entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    local_entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    app_token: Mapped[str] = mapped_column(String(255), nullable=False)
+    table_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    record_id: Mapped[str | None] = mapped_column(String(255))
+    sync_direction: Mapped[str] = mapped_column(String(50), nullable=False, default="push", server_default="push")
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", server_default="pending")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    remote_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)

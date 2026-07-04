@@ -1,7 +1,16 @@
+from collections.abc import Iterator
+
 import httpx
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from integrations.feishu.bitable import FeishuBitableClient, FeishuBitableError, FeishuBitableSettings
+from services.agent_runtime import AgentLeadRow
+from services.feishu_workbench import build_workbench_fields, sync_workbench_rows
+from storage.database import Base
+from storage.models import FeishuBitableRecord
 
 
 def test_bitable_client_dry_run_returns_payload_without_network() -> None:
@@ -162,6 +171,77 @@ def test_bitable_client_external_http_client_is_not_closed() -> None:
     client.close()
 
     assert client_handle.closed is False
+
+
+def test_workbench_fields_are_human_readable() -> None:
+    row = AgentLeadRow(
+        lead_id=1,
+        customer="福州家长",
+        need="孩子PET二刷需要冲刺",
+        product="PET",
+        intent_level="高",
+        reason="明确询问二刷冲刺班",
+        next_step="先确认考试时间",
+        status_label="待确认",
+        source_url="https://www.xiaohongshu.com/example",
+        discovered_at="2026-07-04T10:00:00+08:00",
+    )
+
+    fields = build_workbench_fields(row)
+
+    assert fields["客户"] == "福州家长"
+    assert fields["需求"] == "孩子PET二刷需要冲刺"
+    assert fields["状态"] == "待确认"
+    assert "needs_enrichment" not in str(fields)
+    assert "lead_evidence" not in str(fields)
+
+
+@pytest.fixture()
+def factory() -> Iterator[sessionmaker[Session]]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    yield SessionLocal
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+def test_sync_workbench_rows_is_idempotent(factory: sessionmaker[Session]) -> None:
+    row = AgentLeadRow(
+        lead_id=1,
+        customer="福州家长",
+        need="孩子PET二刷需要冲刺",
+        product="PET",
+        intent_level="高",
+        reason="明确询问二刷冲刺班",
+        next_step="先确认考试时间",
+        status_label="待确认",
+        source_url="",
+        discovered_at="2026-07-04T10:00:00+08:00",
+    )
+    client = FeishuBitableClient(
+        settings=FeishuBitableSettings(
+            enabled=False,
+            app_id=None,
+            app_secret=None,
+            app_token="app",
+            table_id="tbl",
+        )
+    )
+
+    with factory() as session:
+        first = sync_workbench_rows(session, client, [row])
+        second = sync_workbench_rows(session, client, [row])
+        session.commit()
+
+    assert first.dry_run == 1
+    assert second.dry_run == 1
+    with factory() as session:
+        assert session.query(FeishuBitableRecord).count() == 1
 
 
 class _FailingClient:
