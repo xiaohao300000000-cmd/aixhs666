@@ -81,3 +81,30 @@ Result:
 - `lark-cli` user identity has the required Base scopes and can write this table.
 - Project sync now supports `FEISHU_BITABLE_TRANSPORT=lark_cli`.
 - `feishu-pull-feedback` accepts CLI-shaped select values such as `["可跟进"]`.
+
+## AI Screening Workbench
+
+Existing crawled records were screened before writing to Base. The export keeps only `push` and `confirm` intent decisions and writes two related tables:
+
+- Customer table: `AI筛选客户线索`, table ID `tblAHiwa7ip0IkxQ`
+- Evidence table: `AI筛选证据明细`, table ID `tblWuVvYREtAPHGs`
+- Bidirectional link: evidence field `关联客户线索` points to the customer table; customer field `关联证据明细` points back to evidence rows.
+- Base URL: `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld`
+
+Export result from the current database:
+
+```json
+{"customers": 10, "evidence": 10}
+```
+
+Verification:
+
+```text
+Customer records created: 10
+Evidence records created: 10
+Evidence links updated: 10
+.venv/bin/python -m pytest -q
+225 passed, 2 skipped, 1 warning
+```
+
+The AI screening export is implemented in `services/feishu_ai_workbench.py` and covered by `tests/test_feishu_ai_workbench.py`. The tests verify that resource-only comments, guide-style posts, out-of-scope exam noise, and generic price opinions are not imported as customer leads.
