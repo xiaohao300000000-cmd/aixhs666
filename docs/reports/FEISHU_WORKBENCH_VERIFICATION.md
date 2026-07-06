@@ -84,27 +84,41 @@ Result:
 
 ## AI Screening Workbench
 
-Existing crawled records were screened before writing to Base. The export keeps only `push` and `confirm` intent decisions and writes two related tables:
+Existing crawled records were screened before writing to Base. The export keeps strict high-intent leads separate from broader review candidates and writes two related tables:
 
 - Customer table: `AI筛选客户线索`, table ID `tblAHiwa7ip0IkxQ`
 - Evidence table: `AI筛选证据明细`, table ID `tblWuVvYREtAPHGs`
 - Bidirectional link: evidence field `关联客户线索` points to the customer table; customer field `关联证据明细` points back to evidence rows.
 - Base URL: `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld`
+- Review view: `待人工确认`, view ID `vewpP3G8Vp`
+- Follow-up view: `已确认可跟进`, view ID `vew2VrUXAx`
+- High-intent view: `高意向`, view ID `vewaFKp6eO`
+- Ignored view: `已忽略`, view ID `vewroPd49h`
 
 Export result from the current database:
 
 ```json
-{"customers": 10, "evidence": 10}
+{
+  "customer_total": 71,
+  "customer_by_layer": {"高意向": 10, "待人工确认": 61},
+  "evidence_total": 72,
+  "evidence_by_layer": {"高意向": 10, "待人工确认": 62},
+  "evidence_linked": 72
+}
 ```
 
 Verification:
 
 ```text
-Customer records created: 10
-Evidence records created: 10
-Evidence links updated: 10
+High-intent customer records: 10
+Review customer records: 61
+Evidence records: 72
+Evidence links updated: 72
+View counts: 待人工确认=61, 高意向=10, 已确认可跟进=0, 已忽略=0
 .venv/bin/python -m pytest -q
 225 passed, 2 skipped, 1 warning
 ```
 
-The AI screening export is implemented in `services/feishu_ai_workbench.py` and covered by `tests/test_feishu_ai_workbench.py`. The tests verify that resource-only comments, guide-style posts, out-of-scope exam noise, and generic price opinions are not imported as customer leads.
+Manual review uses the `状态` select field. Keep unreviewed candidates as `待确认`; change qualified candidates to `可跟进`; change rejected candidates to `已忽略`. The filtered views move records based on this status.
+
+The strict AI screening export is implemented in `services/feishu_ai_workbench.py` and covered by `tests/test_feishu_ai_workbench.py`. The tests verify that resource-only comments, guide-style posts, out-of-scope exam noise, and generic price opinions are not imported as strict customer leads.
