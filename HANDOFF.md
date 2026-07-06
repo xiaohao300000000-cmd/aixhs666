@@ -2,28 +2,71 @@
 
 ## 当前阶段
 
-V15 Agent 中立运行框架已在 `feat/v15-agent-neutral-runtime` 接通。新增轻量 `PipelineRunner`、`pipeline_runs` 持久化、CLI 和 REST，使框架可以在不依赖 Codex 会话记忆的情况下完成一轮基础采集与分析。完整生产闭环仍因真实小红书 Pipeline Runner 小规模验证、真实飞书凭证和长期无人值守验证未完成而不能写成 100%。
+2026-07-06 当前主线已经从“本地看板/采集框架”推进到“飞书作为人工获客工作台”。当前分支为 `feat/v15-agent-neutral-runtime`，已推送到 GitHub：
 
-2026-07-03 已继续补齐本机可视化启动体验：新增桌面双击入口、中文 `/ops` 看板、真实 MediaCrawler 默认采集、MediaCrawler 依赖自动安装和首次扫码登录引导。普通用户现在可以从桌面图标启动本机服务并打开网页，但真实小红书采集仍需确认登录态、平台风控和本轮运行结果。
-
-2026-07-03 已把产品方向从“数据采集与分析看板”拉回“AI 自动获客”。新增 `leads`、`lead_evidence`、`enrichment_tasks`，支持从历史帖子/评论回填潜在客户，并在 Pipeline 后续增量运行时更新 lead。新增 `/leads` 作为产品主页面，`/ops` 保留为运维页面。
-
-本机已执行：
-
-```bash
-.venv/bin/alembic upgrade head
-.venv/bin/python -m apps.cli --json leads-backfill --rebuild
+```text
+https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-runtime
 ```
 
-真实历史库回填结果：
+最近关键提交：
+
+```text
+8623c66 feat: add feishu system control panel
+9cbd6d0 docs: record feishu manual review views
+60c04f6 feat: export ai-screened leads to feishu base
+081e214 feat: support lark cli feishu workbench sync
+```
+
+当前真实飞书 Base：
+
+```text
+Base token: RVtDb7nGkabAMbsDkA0cvxdOnld
+Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
+```
+
+已创建并验证的飞书表：
+
+| 表 | Table ID | 用途 |
+|---|---|---|
+| `客户跟进表` | `tblRSEpG7v0bM0WD` | 旧的 lead 同步/反馈表 |
+| `AI筛选客户线索` | `tblAHiwa7ip0IkxQ` | 客户汇总、人类审核、状态确认 |
+| `AI筛选证据明细` | `tblWuVvYREtAPHGs` | 原始抓取文本、AI 判断、推荐原因 |
+| `系统控制台` | `tblpqsBvrDMWhaiW` | 人工发指令让系统执行一次 |
+
+当前飞书 AI 筛选结果：
 
 ```json
-{"leads": {"enrichment_tasks_created": 10, "evidence_created": 5, "leads_created": 5, "leads_updated": 0, "needs_enrichment_leads": 5, "qualified_leads": 0}}
+{
+  "customer_total": 71,
+  "customer_by_layer": {"高意向": 10, "待人工确认": 61},
+  "evidence_total": 72,
+  "evidence_linked": 72
+}
 ```
+
+重要视图：
+
+| 视图 | URL |
+|---|---|
+| 待人工确认卡片 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblAHiwa7ip0IkxQ&view=vewdlqeDmH` |
+| 待人工确认表格 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblAHiwa7ip0IkxQ&view=vewpP3G8Vp` |
+| 高意向 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblAHiwa7ip0IkxQ&view=vewaFKp6eO` |
+| 已确认可跟进 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblAHiwa7ip0IkxQ&view=vew2VrUXAx` |
+| 已忽略 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblAHiwa7ip0IkxQ&view=vewroPd49h` |
+| 系统控制台 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblpqsBvrDMWhaiW` |
+
+当前筛选是规则型 AI，不是外部大模型 API。严格筛选逻辑在 `services/feishu_ai_workbench.py` 和 `services/lead_intent.py`：先过滤资料党、攻略号、机构广告、跑偏考试，再按价格、试听、报班、找机构、二刷、提升需求等动作判断 `push` / `confirm`。
 
 ## 当前目标
 
-当前目标是从“模块可用”推进到“AI 自动获客真实闭环”。代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书传输/回调、数据库看板、运行诊断、`/ops` 控制台、Pipeline Runner，以及 `/leads` 获客页面。下一步必须先对本机历史库执行 lead 回填，记录潜在客户、证据、待完善和可跟进数量；再在真实 MediaCrawler 依赖和登录态可用后执行一次小规模 `run-cycle` 验证。
+当前目标是把飞书 Base 固化成“普通人能用的获客工作台”：
+
+1. 人在 `AI筛选客户线索` 里审核候选客户。
+2. 看 `需求摘要` 和 `关联证据明细`，把 `状态` 改成 `可跟进` 或 `已忽略`。
+3. 人在 `系统控制台` 里发指令，系统只在本机执行一次，不自动后台运行。
+4. 后续需要补：把 AI 筛选同步做成正式命令、用大模型二次评分、把卡片视图进一步优化为“需求摘要为主标题”的审核表。
+
+代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书 lark-cli transport、飞书 Base 写入、运行诊断、`/ops` 控制台、Pipeline Runner、`/leads` 获客页面、AI 筛选导出、飞书系统控制台。
 
 本机普通用户入口：
 
@@ -56,6 +99,16 @@ http://127.0.0.1:8000/leads
 python -m apps.cli --json leads-backfill
 ```
 
+飞书系统控制台执行一次：
+
+```bash
+FEISHU_CONTROL_PANEL_BASE_TOKEN=RVtDb7nGkabAMbsDkA0cvxdOnld \
+FEISHU_CONTROL_PANEL_TABLE_ID=tblpqsBvrDMWhaiW \
+python -m apps.cli --json run-control-panel-once
+```
+
+这条命令只检查一次 `系统控制台` 表，不会常驻，也不会自动循环。只有记录的 `开始执行` 被人工改成 `是，开始` 才会处理；处理后会自动改回 `否`。
+
 ## 已确认范围
 
 - 第一阶段平台：小红书
@@ -65,30 +118,40 @@ python -m apps.cli --json leads-backfill
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 用桌面图标启动一次完整本机服务，确认 `/leads` 自动弹出。
-2. 执行 `python -m apps.cli --json leads-backfill --rebuild`，记录历史库真实潜在客户数量、证据数量、待完善数量和可跟进数量。
-3. 打开 `/leads`，确认四个业务桶展示真实客户卡片：今日新发现、待完善信息、可跟进客户、已处理客户。
-4. 在 `/ops` 页面输入 `secret`，点击“启动一轮”，确认真实 MediaCrawler 采集任务被创建和执行。
-5. 记录本轮真实获客数据：新增潜在客户、证据、待完善任务、可跟进客户。
-6. 如看板按钮失败，使用 `python -m apps.cli --json run-cycle --query-id <id> --collection-limit 5` 对照验证。
-7. 配置 Feishu Webhook 或应用凭证并执行真实发送/回调验收。
-8. 运行 Worker 或 Pipeline 小规模长期观察，记录登录态、限流、内存和任务状态。
-9. 更新 `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` 的真实验证结果。
+1. 把 `AI筛选客户线索` 的主字段从 `客户` 优化为更适合卡片展示的字段，或新建一张“客户审核卡片表”，让卡片标题直接显示 `需求摘要`。
+2. 增加正式命令 `feishu-ai-review-sync`：从本地库重新筛选，增量写入 `AI筛选客户线索` / `AI筛选证据明细`，避免以后手工脚本导入。
+3. 对 61 条 `待人工确认` 做人工审核，标记 `可跟进` / `已忽略`，记录误判类型。
+4. 接入大模型二次评分，只对规则初筛出来的候选调用模型，输出“是否值得跟进、原因、建议动作”。
+5. 用 `系统控制台` 执行一次非破坏性真实指令，例如 `查看系统状态`，确认普通用户流程可复现。
+6. 再小规模执行 `找新客户`，记录是否成功采集、是否被平台限制、是否新增候选客户。
+7. 更新 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` 和本交接文件。
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
 ## 当前已知风险
 
-- 真实小红书页面结构已验证一次，但后续仍可能变化
-- `third_party/MediaCrawler/.venv` 不提交到 Git；当前桌面启动器会自动安装，但仍依赖网络和本机 Python 3.12
-- 首次小红书扫码登录后需要在终端按回车，脚本才会继续启动主程序
-- 真实 Pipeline Runner 从看板按钮触发的小规模验证尚未完整记录
-- Docker 未安装，当前使用本机 Homebrew PostgreSQL
-- 飞书真实发送和真实回调尚未验证
-- `pytest -m live` 因未启用 live 登录环境仍为 skipped
+- 飞书 AI 筛选现在是规则型 AI，不是大模型推理；61 条待人工确认里有噪音。
+- `AI筛选客户线索` 当前主字段仍是 `客户`，很多行显示 `未知用户`，卡片体验还不够好。
+- `feishu-ai-review-sync` 尚未做成正式命令；当前 71/72 条是已导入的真实表数据，但后续新增数据不会自动追加到这两张 AI 筛选表。
+- `系统控制台` 是人工触发的一次性命令；没有后台自动轮询，符合用户要求，但需要有人在本机运行命令。
+- `找新客户` 会触发真实采集，仍受小红书登录态、平台风控和 MediaCrawler 运行状态影响。
+- Docker 未安装，当前使用本机 Homebrew PostgreSQL。
+- `pytest -m live` 因未启用 live 登录环境仍为 skipped。
 
-这些风险直接影响 V0 完整真实闭环验收，不能把当前状态写成 100% 完成。
+这些风险直接影响“无人值守全自动获客”验收，但不影响当前“飞书人工工作台 + 人工发指令执行一次”的能力。
 
+
+## 2026-07-06 今日已完成
+
+- 飞书真实 Base 已作为人工获客工作台接通，Base token：`RVtDb7nGkabAMbsDkA0cvxdOnld`。
+- 新增并验证 `AI筛选客户线索`：71 个客户，其中 `高意向=10`、`待人工确认=61`。
+- 新增并验证 `AI筛选证据明细`：72 条证据，全部关联回客户线索。
+- 新增 `待人工确认卡片` 视图，优先展示 `需求摘要`，供普通用户人工审核。
+- 新增 `系统控制台` 表，字段使用普通话：`我要做什么`、`开始执行`、`现在状态`、`结果`、`哪里出错了`。
+- 新增 `run-control-panel-once` 命令，符合用户要求：不自动跑、不常驻，只在人为设置 `开始执行=是，开始` 后执行一次。
+- 真实验证系统控制台：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次，写回 `已完成` 和结果文字。
+- 全量测试通过：`231 passed, 2 skipped, 1 warning`。
+- 当前分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`。
 
 ## 2026-07-03 今日已完成
 
@@ -107,7 +170,7 @@ python -m apps.cli --json leads-backfill
 - 所有上述代码已推送到 GitHub 当前分支 `feat/v15-agent-neutral-runtime`。
 - 本次文档补充也需要提交并推送，具体 HEAD 以 `git log` 和 GitHub 分支历史为准。
 - 新增 AI 自动获客最小闭环代码和页面：`services/lead_generation.py`、`/api/leads`、`/leads`、`leads-backfill`。
-- 新增 lead 相关测试，完整测试已通过：`184 passed, 2 skipped, 1 warning`。
+- 新增 lead 相关测试，当时完整测试已通过：`184 passed, 2 skipped, 1 warning`。当前最新测试结果见 2026-07-06 小节。
 - 已收紧 lead 规则：排除攻略、老师、机构、推广和明确无需求内容；评论只保留报课、课程、机构、价格、试听、老师是否带课等跟进相关问题。
 - 用户人工点击已处理的 3 个 lead 已确认是可跟进真实家长，并已调整为 `qualified`：`请问PET阅读怎么提高呢？`、`老师，线上带PET吗？`、`请问考完pet您给孩子报什么课程了么？`
 - 已重新执行 `leads-backfill --rebuild`，自动队列中的广告/无需求候选已清空；当前 `/api/leads/summary` 为 `qualified=3`、`needs_enrichment=0`、`handled=0`。

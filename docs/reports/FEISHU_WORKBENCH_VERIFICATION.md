@@ -94,6 +94,7 @@ Existing crawled records were screened before writing to Base. The export keeps 
 - Follow-up view: `已确认可跟进`, view ID `vew2VrUXAx`
 - High-intent view: `高意向`, view ID `vewaFKp6eO`
 - Ignored view: `已忽略`, view ID `vewroPd49h`
+- Card review view: `待人工确认卡片`, view ID `vewdlqeDmH`
 
 Export result from the current database:
 
@@ -116,7 +117,7 @@ Evidence records: 72
 Evidence links updated: 72
 View counts: 待人工确认=61, 高意向=10, 已确认可跟进=0, 已忽略=0
 .venv/bin/python -m pytest -q
-225 passed, 2 skipped, 1 warning
+231 passed, 2 skipped, 1 warning
 ```
 
 Manual review uses the `状态` select field. Keep unreviewed candidates as `待确认`; change qualified candidates to `可跟进`; change rejected candidates to `已忽略`. The filtered views move records based on this status.

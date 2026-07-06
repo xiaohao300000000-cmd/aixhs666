@@ -6,21 +6,21 @@
 
 ```text
 代码任务已完成：22 / 22
-真实闭环验收：未通过
+真实闭环验收：部分通过
 
-[██████████████░░░░░░] 70%
+[████████████████░░░░] 80%
 ```
 
 ## 当前状态
 
 | 项目 | 当前值 |
 |---|---|
-| 当前阶段 | V0 真实数据闭环修正 |
-| 当前主任务 | AI 自动获客最小闭环：历史帖子/评论可生成潜在客户、证据和待完善任务，`/leads` 为产品主页面；本机人工确认 3 个真实家长为可跟进，广告/无需求自动候选已清空 |
+| 当前阶段 | 飞书人工获客工作台 |
+| 当前主任务 | 飞书多维表格已作为人工审核台和人工发指令中控台：71 个 AI 初筛客户、72 条证据已入表，系统控制台可由人工触发一次性执行 |
 | 执行会话 | 主控单会话 |
 | 当前分支 | `feat/v15-agent-neutral-runtime` |
 | 阻塞数量 | 3 |
-| 最后更新 | 2026-07-03：新增 AI 自动获客业务对象、历史回填、Pipeline lead 增量接入和 `/leads` 获客页面；收紧规则排除攻略、老师、机构、推广和明确无需求内容；本机当前 3 可跟进真实家长、0 待完善 |
+| 最后更新 | 2026-07-06：飞书 `AI筛选客户线索`、`AI筛选证据明细`、卡片视图和 `系统控制台` 已创建并真实验证；当前分支已推送到 GitHub；全量测试 231 passed, 2 skipped |
 
 ## 阶段进度
 
@@ -115,15 +115,19 @@ gantt
 | V0-B1 | Docker 未安装，Compose 不可用；当前使用 Homebrew PostgreSQL | Docker 环境复现 | 用户/环境 | 已记录替代环境 |
 | V0-B2 | 未配置飞书凭证 | 真实飞书发送与回调验证 | 用户/环境 | 待配置 |
 | V0-B3 | 未完成 4-8 小时长期运行 | 稳定性验收 | 主控/环境 | 待执行 |
-| V15-B1 | 当前副本未发现 MediaCrawler `.venv` 和可见持久登录态 | 真实 Pipeline Runner 小规模验证 | 主控/环境 | 待安装/确认 |
-| V15-B2 | 当前历史库 lead 回填已完成，人工确认 3 个可跟进真实家长；广告误判已修正 | AI 自动获客验收 | 主控/环境 | 后续真实采集继续观察误判率 |
+| V15-B1 | 真实 Pipeline Runner 长期运行尚未完整记录 | 稳定采集验收 | 主控/环境 | 待观察 |
+| V15-B2 | AI 筛选仍是规则型，61 条待人工确认里有噪音 | AI 自动获客质量 | 主控/业务 | 待人工审核和大模型二次评分 |
+| V15-B3 | `feishu-ai-review-sync` 尚未做成正式增量命令 | 新数据进入 AI 筛选表 | 主控 | 待实现 |
 
 ## 最近完成
 
 | 日期 | 任务 | 结果 | 报告 |
 |---|---|---|---|
+| 2026-07-06 | 飞书系统控制台 | 新增 `系统控制台` 表和 `run-control-panel-once`，人工改 `开始执行=是，开始` 后系统只执行一次并写回结果 | `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` |
+| 2026-07-06 | 飞书 AI 筛选工作台 | 71 个客户线索、72 条证据写入 Base；新增待人工确认卡片、高意向、可跟进、已忽略视图 | `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` |
+| 2026-07-06 | 飞书 lark-cli 同步 | `FEISHU_BITABLE_TRANSPORT=lark_cli` 验证可创建/更新客户跟进记录，并可拉回反馈 | `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` |
 | 2026-07-03 | V15 Agent 中立运行框架 | Pipeline Runner/CLI/REST/运行状态接通；自动测试通过；真实平台验证未完成 | `docs/V15_AGENT_NEUTRAL_RUNTIME_REPORT.md` |
-| 2026-07-03 | AI 自动获客最小闭环 | `leads`/证据/待完善任务、历史回填、Pipeline 增量接入、`/leads` 页面完成；真实回填数量待记录 | `docs/superpowers/specs/2026-07-03-ai-leads-business-loop-design.md` |
+| 2026-07-03 | AI 自动获客最小闭环 | `leads`/证据/待完善任务、历史回填、Pipeline 增量接入、`/leads` 页面完成；后续 2026-07-06 已以飞书 AI 筛选工作台承接人工审核 | `docs/superpowers/specs/2026-07-03-ai-leads-business-loop-design.md` |
 | 2026-07-01 | T01 仓库骨架 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T01.md` |
 | 2026-07-01 | T02 核心数据模型 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T02.md` |
 | 2026-07-01 | T03 任务状态机 | ACCEPT，GitHub CI 通过 | `orchestration/reports/T03.md` |
@@ -149,10 +153,11 @@ gantt
 
 ## 下一步
 
-1. 执行 `python -m apps.cli --json leads-backfill --rebuild`，记录潜在客户、证据、待完善和可跟进数量
-2. 打开 `/leads`，确认获客页面展示真实客户卡片
-3. 配置小红书浏览器 profile 并执行真实 Pipeline 小规模验证
-4. 配置飞书 Webhook 或应用凭证
+1. 在 `待人工确认卡片` 视图审核 61 个候选客户，标记 `可跟进` 或 `已忽略`
+2. 新建“客户审核卡片表”或调整主字段，让卡片标题直接显示 `需求摘要`
+3. 实现 `feishu-ai-review-sync`，让新增采集数据可增量进入 AI 筛选表
+4. 对规则初筛后的候选接入大模型二次评分，降低噪音
+5. 用 `系统控制台` 执行一次小规模 `找新客户`，记录采集结果和新增候选质量
 
 
 ## 并发管理
