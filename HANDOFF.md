@@ -68,7 +68,9 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 
 代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书 lark-cli transport、飞书 Base 写入、运行诊断、`/ops` 控制台、Pipeline Runner、`/leads` 获客页面、AI 筛选导出、飞书系统控制台。
 
-2026-07-06 已新增“规则辅助 + LLM 主筛选”手动流程：`python -m apps.cli --json leads-llm-screen` 会读取数据库帖子和评论，默认上下文包含帖子标题、正文、当前评论、父评论，把 LLM 的是否有价值、需求类型、意向强度、判断证据、置信度写入 `lead_screening_results`，并将有价值或不确定结果写入 `leads` / `lead_evidence`。不确定结果使用 `needs_review`，暂不改飞书。
+2026-07-06 已新增“规则辅助 + LLM 主筛选”手动流程：`python -m apps.cli --json leads-llm-screen` 会读取数据库帖子和评论，默认上下文包含帖子标题、正文、当前评论、父评论，把 LLM 的是否有价值、需求类型、意向强度、判断证据、置信度写入 `lead_screening_results`，并将有价值或不确定结果写入 `leads` / `lead_evidence`。不确定结果使用 `needs_review`。
+
+2026-07-06 已新增飞书 LLM 审核闭环：`python -m apps.cli --json feishu-send-llm-reviews --chat-id <oc_xxx> --limit 1` 会把 `lead_screening_results.review_status=needs_review` 的结果发送为飞书交互卡片，保存 `feishu_message_id` 和 `feishu_chat_id`；`POST /feishu/callback/llm-review` 会验签、幂等处理按钮点击，更新 `human_review_status`，并用回调 token 把原卡片更新为“已处理”。已真实发送 `lead_screening_results.id=2` 到飞书消息 `om_x100b6b88a005e0acb1187e9dd6cca8d`；真实点击回调仍需要飞书开发者后台配置公网回调 URL。
 
 本机普通用户入口：
 
@@ -152,7 +154,7 @@ python -m apps.cli --json run-control-panel-once
 - 新增 `系统控制台` 表，字段使用普通话：`我要做什么`、`开始执行`、`现在状态`、`结果`、`哪里出错了`。
 - 新增 `run-control-panel-once` 命令，符合用户要求：不自动跑、不常驻，只在人为设置 `开始执行=是，开始` 后执行一次。
 - 真实验证系统控制台：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次，写回 `已完成` 和结果文字。
-- 全量测试通过：`238 passed, 2 skipped, 1 warning`。
+- 全量测试通过：`245 passed, 2 skipped, 1 warning`。
 - 当前分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`。
 
 ## 2026-07-03 今日已完成

@@ -199,7 +199,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-238 passed, 2 skipped, 1 warning
+245 passed, 2 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -350,6 +350,30 @@ python -m apps.cli --json leads-llm-screen --source content
 ```bash
 python -m apps.cli --json leads-llm-screen --source comment --source-id 123 --reprocess
 ```
+
+LLM 筛选结果发到飞书人工审核：
+
+```bash
+python -m apps.cli --json feishu-send-llm-reviews --chat-id oc_xxx --limit 1
+```
+
+飞书审核卡片只提供三个按钮：`有效`、`无效`、`暂时观察`。点击后回调地址为：
+
+```text
+POST /feishu/callback/llm-review
+```
+
+回调会验签、按事件和分析结果幂等处理，更新 `lead_screening_results.human_review_status`，并用回调 token 把原飞书卡片更新为“已处理”。如果配置了 `FEISHU_LLM_REVIEW_DASHBOARD_URL`，卡片会展示多维表格仪表盘入口文字。
+
+2026-07-06 已真实发送一条 LLM 待审核卡片：
+
+```text
+lead_screening_results.id=2
+feishu_message_id=om_x100b6b88a005e0acb1187e9dd6cca8d
+feishu_chat_id=oc_1623b52748f4cf5cfb6f6e9174008f55
+```
+
+真实人工点击回调需要在飞书开发者后台把回调地址配置到当前 FastAPI 服务的公网地址。
 
 规则调整后需要重算自动生成结果时使用：
 
@@ -502,7 +526,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-run
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`238 passed, 2 skipped, 1 warning`。
+- 当前全量测试：`245 passed, 2 skipped, 1 warning`。
 
 仍未完成或尚未充分验证：
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from apps.worker.main import load_adapter
 from integrations.feishu.bitable import FeishuBitableClient
+from integrations.feishu.im import FeishuIMClient
 from services.agent_runtime import rank_leads_for_workbench, run_agent_cycle
 from services.feishu_control_panel import ControlPanelRecord, LarkCliControlPanelClient, run_control_panel_once
 from services.feishu_workbench import pull_workbench_feedback, sync_workbench_rows
@@ -54,6 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("agent-run", help="Run agent-selected collection and sync-ready prioritization.")
     subparsers.add_parser("feishu-sync", help="Sync prioritized leads to Feishu Bitable.")
     subparsers.add_parser("feishu-pull-feedback", help="Pull Feishu Bitable status changes back into PostgreSQL.")
+    llm_reviews = subparsers.add_parser("feishu-send-llm-reviews", help="Send pending LLM screening reviews as Feishu cards.")
+    llm_reviews.add_argument("--chat-id", default=None, help="Feishu chat id that receives review cards.")
+    llm_reviews.add_argument("--limit", type=int, default=10, help="Maximum cards to send.")
     control_panel = subparsers.add_parser("run-control-panel-once", help="Run one human-started Feishu control panel command.")
     control_panel.add_argument("--base-token", default=None, help="Feishu Base token for the control panel.")
     control_panel.add_argument("--table-id", default=None, help="Feishu table ID for the control panel.")
@@ -118,6 +122,23 @@ def main(argv: list[str] | None = None) -> int:
                 client = FeishuBitableClient()
                 payload = {"feishu_feedback": pull_workbench_feedback(session, client)}
                 session.commit()
+        elif args.command == "feishu-send-llm-reviews":
+            import os
+
+            from integrations.feishu.llm_review import send_pending_llm_review_cards
+
+            chat_id = args.chat_id or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID")
+            if not chat_id:
+                parser.error("feishu-send-llm-reviews requires --chat-id or FEISHU_LLM_REVIEW_CHAT_ID")
+            with SessionLocal() as session:
+                result = send_pending_llm_review_cards(
+                    session,
+                    client=FeishuIMClient(),
+                    chat_id=chat_id,
+                    limit=args.limit,
+                )
+                session.commit()
+                payload = {"feishu_llm_reviews": result}
         elif args.command == "run-control-panel-once":
             payload = {
                 "control_panel": run_control_panel_once(

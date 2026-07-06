@@ -314,6 +314,12 @@ class LeadScreeningResult(TimestampMixin, Base):
     review_status: Mapped[str] = mapped_column(String(50), nullable=False, default="needs_review", server_default="needs_review")
     status_reason: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
+    feishu_message_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_chat_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_card_status: Mapped[str | None] = mapped_column(String(50))
+    human_review_status: Mapped[str | None] = mapped_column(String(50))
+    human_reviewer_id: Mapped[str | None] = mapped_column(String(255))
+    human_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class EnrichmentTask(TimestampMixin, Base):

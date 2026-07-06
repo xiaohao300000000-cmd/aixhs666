@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from apps.api.routes.dashboard import router as dashboard_router
+from apps.api.routes.feishu_callbacks import router as feishu_callbacks_router
 from apps.api.routes.health import router as health_router
 from apps.api.routes.leads import router as leads_router
 from apps.api.routes.ops import router as ops_router
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
     app.include_router(leads_router)
     app.include_router(ops_router)
     app.include_router(ops_api_router)
+    app.include_router(feishu_callbacks_router)
     return app
 
 
