@@ -41,6 +41,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     leads_backfill = subparsers.add_parser("leads-backfill", help="Generate leads from historical contents and comments.")
     leads_backfill.add_argument("--rebuild", action="store_true", help="Delete auto-status leads and regenerate from history.")
+    llm_screen = subparsers.add_parser("leads-llm-screen", help="Screen historical contents and comments with an LLM.")
+    llm_screen.add_argument(
+        "--source",
+        choices=("content", "comment", "all"),
+        default="all",
+        help="Source type to screen.",
+    )
+    llm_screen.add_argument("--source-id", action="append", type=int, dest="source_ids", help="Specific local source id to screen.")
+    llm_screen.add_argument("--limit", type=int, default=None, help="Maximum number of records to screen.")
+    llm_screen.add_argument("--reprocess", action="store_true", help="Re-run records that already have screening results.")
     subparsers.add_parser("agent-run", help="Run agent-selected collection and sync-ready prioritization.")
     subparsers.add_parser("feishu-sync", help="Sync prioritized leads to Feishu Bitable.")
     subparsers.add_parser("feishu-pull-feedback", help="Pull Feishu Bitable status changes back into PostgreSQL.")
@@ -78,6 +88,22 @@ def main(argv: list[str] | None = None) -> int:
                 result = rebuild_auto_leads_from_history(session) if args.rebuild else generate_leads_from_history(session)
                 session.commit()
                 payload = {"leads": result.to_dict()}
+        elif args.command == "leads-llm-screen":
+            from services.llm_lead_screening import OpenAICompatibleLeadScreeningClient, run_llm_lead_screening
+
+            source_types = {"content", "comment"} if args.source == "all" else {args.source}
+            source_ids = set(args.source_ids) if args.source_ids else None
+            with SessionLocal() as session:
+                result = run_llm_lead_screening(
+                    session,
+                    client=OpenAICompatibleLeadScreeningClient(),
+                    source_entity_types=source_types,
+                    source_entity_ids=source_ids,
+                    limit=args.limit,
+                    reprocess=args.reprocess,
+                )
+                session.commit()
+                payload = {"llm_lead_screening": result.to_dict()}
         elif args.command == "agent-run":
             payload = run_agent_cycle(SessionLocal, runner)
         elif args.command == "feishu-sync":

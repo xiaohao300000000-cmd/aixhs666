@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from storage.database import Base
@@ -286,6 +286,34 @@ class LeadEvidence(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     lead: Mapped[Lead] = relationship(back_populates="evidence_items")
+
+
+class LeadScreeningResult(TimestampMixin, Base):
+    __tablename__ = "lead_screening_results"
+    __table_args__ = (
+        UniqueConstraint("source_entity_type", "source_entity_id", name="uq_lead_screening_source"),
+        Index("ix_lead_screening_review_status", "review_status"),
+        Index("ix_lead_screening_profile_id", "public_profile_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_id: Mapped[int | None] = mapped_column(ForeignKey("contents.id", ondelete="SET NULL"))
+    comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id", ondelete="SET NULL"))
+    public_profile_id: Mapped[int | None] = mapped_column(ForeignKey("public_profiles.id", ondelete="SET NULL"))
+    model_name: Mapped[str | None] = mapped_column(String(255))
+    valuable: Mapped[bool | None] = mapped_column(Boolean)
+    demand_type: Mapped[str | None] = mapped_column(String(100))
+    intent_strength: Mapped[str | None] = mapped_column(String(50))
+    confidence: Mapped[int | None] = mapped_column(Integer)
+    judgment_evidence_json: Mapped[list[str] | None] = mapped_column(JSON)
+    context_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    llm_raw_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    review_status: Mapped[str] = mapped_column(String(50), nullable=False, default="needs_review", server_default="needs_review")
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
 
 
 class EnrichmentTask(TimestampMixin, Base):

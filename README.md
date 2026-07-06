@@ -199,7 +199,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-231 passed, 2 skipped, 1 warning
+236 passed, 2 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -299,13 +299,11 @@ http://127.0.0.1:8000/leads
 
 ```text
 帖子/评论
-→ 规则型 AI 初筛真实需求
-→ 过滤资料党、攻略号、机构广告和跑偏考试
-→ 合并同一公开用户的多条证据
-→ 写入飞书客户线索表
-→ 人在飞书卡片视图里确认
-→ 改状态为可跟进或已忽略
-→ 系统控制台按人工指令执行下一步
+→ 规则做去重、垃圾文本过滤和基础字段提取
+→ LLM 根据帖子标题、正文、当前评论、父评论做主判断
+→ 结构化写回数据库
+→ 有价值或不确定的结果进入 leads 和 lead_evidence
+→ 不确定结果标记为 needs_review，等待人工审核
 ```
 
 当前真实飞书筛选结果：
@@ -330,6 +328,27 @@ http://127.0.0.1:8000/leads
 
 ```bash
 python -m apps.cli --json leads-backfill
+```
+
+LLM 主筛选入口：
+
+```bash
+python -m apps.cli --json leads-llm-screen
+```
+
+运行前需要设置 `LLM_LEAD_SCREENING_API_KEY`；默认读取兼容 OpenAI Chat Completions 的接口，也可用 `LLM_LEAD_SCREENING_API_URL` 和 `LLM_LEAD_SCREENING_MODEL` 改成其他兼容服务。
+
+只筛评论或只筛帖子：
+
+```bash
+python -m apps.cli --json leads-llm-screen --source comment
+python -m apps.cli --json leads-llm-screen --source content
+```
+
+只重跑某一条本地记录：
+
+```bash
+python -m apps.cli --json leads-llm-screen --source comment --source-id 123 --reprocess
 ```
 
 规则调整后需要重算自动生成结果时使用：
@@ -483,7 +502,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-run
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`231 passed, 2 skipped, 1 warning`。
+- 当前全量测试：`236 passed, 2 skipped, 1 warning`。
 
 仍未完成或尚未充分验证：
 
