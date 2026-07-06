@@ -199,7 +199,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-245 passed, 2 skipped, 1 warning
+255 passed, 4 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -360,10 +360,14 @@ python -m apps.cli --json lead-flow-once --source comment --limit 1 --chat-id oc
 `lead-flow-once` 每次只推进当前应该做的一步，不做后台无人值守调度：
 
 ```text
-pending_llm -> llm_done -> pending_feishu -> sent -> reviewed
+pending_llm -> screening -> llm_done -> pending_feishu -> sending -> sent -> reviewed
 ```
 
-LLM 步骤只把结果写回 `lead_screening_results.workflow_status=llm_done`，不会直接发飞书。下一次统一流程会把需要人工审核的 `llm_done` 推进到 `pending_feishu`；飞书发送模块只领取 `pending_feishu`，发送成功后写为 `sent`；飞书回调后写为 `reviewed`。失败会记录 `last_error` 并增加 `attempt_count`，重复执行不会重复分析、重复发送或重复回写。
+LLM 步骤会先把记录领取为 `screening`，只把筛选结果写回 `lead_screening_results.workflow_status=llm_done`，不会直接发飞书。下一次统一流程会把需要人工审核的 `llm_done` 推进到 `pending_feishu`；飞书发送模块先把 `pending_feishu` 领取为 `sending`，发送成功后写为 `sent`，普通发送失败恢复为 `pending_feishu`；飞书回调后写为 `reviewed`。`attempt_count` 只在真正领取飞书发送时增加。
+
+如果飞书请求结果不确定，例如请求已经发出后超时，记录会进入 `send_uncertain`，不会被自动重发。`/ops/api/lead-screening/diagnostics` 可以查看 stale `sending`、长期 `pending_llm`、高 `attempt_count` 和 `send_uncertain`；需要人工恢复时，使用受 `OPS_TOKEN` 保护的 `POST /ops/api/lead-screening/{id}/recover`，恢复操作会写入 `lead_screening_manual_recovery` 事件。当前没有实现 exactly-once；飞书发送成功但数据库提交前崩溃时，仍需人工核对。
+
+受控可靠性重放入口是 `python -m scripts.lead_flow_reliability_replay --database-url <postgres_test_url> --reset-test-database`。它只使用 fake LLM 和 fake 飞书，输出 JSON 到 `.runtime/lead-flow-reliability-result.json`。
 
 LLM 筛选结果发到飞书人工审核：
 
@@ -547,7 +551,8 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-run
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`245 passed, 2 skipped, 1 warning`。
+- 当前全量测试：`255 passed, 4 skipped, 1 warning`。
+- 当前 LLM/飞书可靠性链路使用 `screening` 和 `sending` 领取态；`send_uncertain` 用于暴露不能自动重发的不确定发送结果。
 
 仍未完成或尚未充分验证：
 

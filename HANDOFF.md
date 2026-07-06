@@ -74,7 +74,11 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 
 2026-07-07 已完成真实飞书回调验收：公网地址 `https://soft-trains-prove.loca.lt/feishu/callback/llm-review`，飞书应用版本 `1.0.1` 已发布，真实点击 `id=2 有效`、`id=3 无效`、`id=5 暂时观察` 后数据库分别写入 `valid`、`invalid`、`watch`，三张原卡片均更新为“已处理”，`feishu_llm_review_callback` 事件数为 3。失败请求 `screening_result_id=999999` 会在日志输出具体原因。当前真实运行环境没有设置 `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN`，所以这次 live click 未验证签名密钥生效；测试已覆盖启用密钥时的验签路径。详细记录见 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md`。
 
-2026-07-07 已新增最小统一流程编排，不新建业务表，复用 `lead_screening_results` 作为每条帖子/评论的流程记录。新增状态 `pending_llm -> llm_done -> pending_feishu -> sent -> reviewed`，并记录 `attempt_count` / `last_error`。推荐入口是 `python -m apps.cli --json lead-flow-once --source comment --limit 1 --chat-id <oc_xxx>`：每次只推进当前应该做的一步，不做无人值守调度；LLM 完成只写 `llm_done`，飞书发送只领取 `pending_feishu`，回调写 `reviewed`。覆盖测试为 `tests/test_lead_screening_flow.py`。真实库验收使用 `comments.id=1`，生成 `lead_screening_results.id=8`，状态流转为 `llm_done -> pending_feishu -> sent -> reviewed`，最终 `human_review_status=watch`，重复回调事件数保持 1。
+2026-07-07 已新增最小统一流程编排，不新建业务表，复用 `lead_screening_results` 作为每条帖子/评论的流程记录。新增状态 `pending_llm -> screening -> llm_done -> pending_feishu -> sending -> sent -> reviewed`，并记录 `attempt_count` / `last_error`。推荐入口是 `python -m apps.cli --json lead-flow-once --source comment --limit 1 --chat-id <oc_xxx>`：每次只推进当前应该做的一步，不做无人值守调度；LLM 先领取为 `screening`，完成后只写 `llm_done`，飞书发送先把 `pending_feishu` 领取为 `sending`，普通发送失败恢复为 `pending_feishu`，不确定发送结果写为 `send_uncertain`，回调写 `reviewed`。`lead-flow-once` 的 `limit` 表示实际 LLM 处理数量，已有且非 `pending_llm` 的记录不占用 limit。`attempt_count` 只在真正领取飞书发送时增加。覆盖测试为 `tests/test_lead_screening_flow.py`、`tests/test_feishu_llm_review.py`、`tests/test_postgres_task_claiming.py` 和 `tests/test_ops_console.py`。真实库验收使用 `comments.id=1`，生成 `lead_screening_results.id=8`，状态流转为 `llm_done -> pending_feishu -> sent -> reviewed`，最终 `human_review_status=watch`，重复回调事件数保持 1。已知风险：当前只通过领取态 + PostgreSQL `FOR UPDATE SKIP LOCKED` 避免并发重复领取；飞书发送成功但数据库提交前进程崩溃时，仍需人工核对。
+
+2026-07-07 已修复统一流程编排的可靠性风险：`lead-flow-once --limit 1` 不再让已处理记录占用实际处理名额；LLM 和飞书发送在 PostgreSQL 下使用领取态和 `FOR UPDATE SKIP LOCKED`；`/ops/api/lead-screening/diagnostics` 可只读查看 stale `sending`、长期 `pending_llm`、高 `attempt_count` 和 `send_uncertain`；`POST /ops/api/lead-screening/{id}/recover` 可在人工确认后恢复，并写入 `lead_screening_manual_recovery` 事件。相关测试和完整测试均通过，当前结果为 `255 passed, 4 skipped, 1 warning`。
+
+2026-07-07 已完成真实小批量验收：使用本机 PostgreSQL 真实评论和 DeepSeek 测试 key 跑 `leads-llm-screen --source comment --limit 20`，实际尝试 20 条（跳过/过滤不占 limit），18 条成功、2 条 LLM 内容非 JSON 失败；随后只推进 `needs_review` 到 `pending_feishu`，并通过 `lark-cli` 用户态向真实飞书群发送 3 张审核卡片。发送行 `id=11,15,16` 均写入 `sent`、唯一 `feishu_message_id`、`attempt_count=1`，无重复领取或异常发送态。失败重试后剩 1 条 `pending_llm`，错误为 `LLM returned invalid JSON content: ''`，属于带错误信息的可重试状态。`lead-flow-once` JSON 输出现在包含 `workflow_counts` 和 `review_counts`，覆盖 `pending_llm`、`llm_done`、`pending_feishu`、`sending`、`sent`、`reviewed`、`failed` 等统计。
 
 本机普通用户入口：
 
@@ -158,7 +162,7 @@ python -m apps.cli --json run-control-panel-once
 - 新增 `系统控制台` 表，字段使用普通话：`我要做什么`、`开始执行`、`现在状态`、`结果`、`哪里出错了`。
 - 新增 `run-control-panel-once` 命令，符合用户要求：不自动跑、不常驻，只在人为设置 `开始执行=是，开始` 后执行一次。
 - 真实验证系统控制台：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次，写回 `已完成` 和结果文字。
-- 全量测试通过：`245 passed, 2 skipped, 1 warning`。
+- 全量测试通过：`255 passed, 4 skipped, 1 warning`。
 - 当前分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`。
 
 ## 2026-07-03 今日已完成

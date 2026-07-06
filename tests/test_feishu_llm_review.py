@@ -17,9 +17,11 @@ from sqlalchemy.pool import StaticPool
 from apps.api.main import create_app
 from apps.cli import main as cli_main
 from integrations.feishu.llm_review import (
+    FeishuSendUncertainError,
     LLM_REVIEW_EVENT_TYPE,
     apply_llm_review_callback,
     build_llm_review_card,
+    claim_pending_llm_review_cards,
     send_pending_llm_review_cards,
 )
 from integrations.feishu.im import FeishuIMClient, FeishuIMSettings
@@ -39,6 +41,15 @@ class FakeReviewCardClient:
     def update_interactive_card(self, *, token: str, card: dict[str, Any]) -> dict[str, Any]:
         self.updated_cards.append({"token": token, "card": card})
         return {"ok": True}
+
+
+class UncertainReviewCardClient(FakeReviewCardClient):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+    def send_interactive_card(self, *, chat_id: str, card: dict[str, Any]) -> dict[str, str]:
+        raise FeishuSendUncertainError(self.message)
 
 
 @pytest.fixture()
@@ -82,6 +93,48 @@ def test_send_pending_llm_review_card_saves_message_id(factory: sessionmaker[Ses
         assert screening.feishu_chat_id == "oc_review"
         assert screening.feishu_card_status == "sent"
         assert screening.workflow_status == "sent"
+
+
+def test_two_feishu_senders_cannot_claim_the_same_pending_screening(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_pending_screening(factory)
+
+    with factory() as first_session:
+        first_claim = claim_pending_llm_review_cards(first_session, limit=1)
+        first_session.commit()
+
+    with factory() as second_session:
+        second_claim = claim_pending_llm_review_cards(second_session, limit=1)
+        second_session.commit()
+
+    assert [screening.id for screening in first_claim] == [screening_id]
+    assert second_claim == []
+    with factory() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        assert screening is not None
+        assert screening.workflow_status == "sending"
+        assert screening.attempt_count == 1
+
+
+def test_uncertain_feishu_send_result_is_not_requeued(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_pending_screening(factory)
+
+    with factory() as session:
+        result = send_pending_llm_review_cards(
+            session,
+            client=UncertainReviewCardClient("Feishu timeout after request was sent"),
+            chat_id="oc_review",
+            limit=1,
+        )
+        session.commit()
+
+    assert result == {"sent": 0, "skipped": 0, "failed": 1}
+    with factory() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        assert screening is not None
+        assert screening.workflow_status == "send_uncertain"
+        assert screening.attempt_count == 1
+        assert screening.last_error == "Feishu timeout after request was sent"
+        assert screening.feishu_message_id is None
 
 
 def test_llm_review_callback_updates_database_once_and_updates_card(factory: sessionmaker[Session]) -> None:

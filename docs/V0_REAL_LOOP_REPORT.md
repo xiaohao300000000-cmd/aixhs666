@@ -1,8 +1,8 @@
 # V0 Real Data Loop Report
 
-Last updated: 2026-07-02
+Last updated: 2026-07-07
 
-## Current True Status
+## Current True Status As Of 2026-07-02
 
 The repository now contains V0 real-loop code for Xiaohongshu collection, worker execution, database idempotency, Feishu transport/callback handling, database-backed dashboard metrics, PostgreSQL runtime diagnostics, Worker heartbeats, and a native `/ops` HTML console.
 
@@ -29,6 +29,38 @@ Not validated:
 - Docker Compose, because `docker` is not installed.
 - Real Feishu delivery/callback, because credentials are not configured.
 - Long-running Worker for 4-8 hours.
+
+## Current LLM To Feishu Reliability Status As Of 2026-07-07
+
+The current working tree is ahead of this historical V0 report for the LLM lead-screening path. `lead_screening_results.workflow_status` now uses:
+
+```text
+pending_llm -> screening -> llm_done -> pending_feishu -> sending -> sent -> reviewed
+```
+
+Additional terminal/operational states:
+
+- `send_uncertain`: Feishu may have received the request, but local persistence did not prove a safe `sent` state. This state must not be automatically resent.
+- stale `sending`: the row was claimed for Feishu sending but stayed there past the diagnostic timeout. Operators must inspect whether the request was sent before requeueing.
+
+The current reliability implementation is intentionally not exactly-once. PostgreSQL `FOR UPDATE SKIP LOCKED` prevents concurrent duplicate claiming for LLM and Feishu send workers, but it does not prove what happened if the process crashes after Feishu receives a request and before the database commit. Those cases are surfaced through diagnostics and manual recovery:
+
+- `GET /ops/api/lead-screening/diagnostics`
+- `POST /ops/api/lead-screening/{id}/recover` with `OPS_TOKEN`
+
+Manual recovery writes a `lead_screening_manual_recovery` event for traceability. Long-running unattended operation is still not validated by this report.
+
+Live small-batch validation on 2026-07-07:
+
+- Existing PostgreSQL data before the batch: 516 comments, 8 lead screening results, 508 unprocessed comments.
+- Ran real DeepSeek screening on existing comments with `leads-llm-screen --source comment --limit 20`. The command counted actual LLM attempts, not skipped existing rows: 27 candidates scanned, 5 rule-filtered, 2 existing rows skipped, 18 screened, 2 failed, 16 leads/evidence rows created.
+- Advanced only `needs_review` results from `llm_done` to `pending_feishu`.
+- Sent exactly 3 real Feishu review cards through `lark-cli` user IM transport. The sent rows are `lead_screening_results.id` 11, 15, and 16; all have `workflow_status=sent`, unique `feishu_message_id`, `attempt_count=1`, and no `last_error`.
+- Retried the 2 LLM parse failures once. One succeeded and advanced to `pending_feishu`; one remained retryable in `pending_llm` with `last_error="LLM returned invalid JSON content: ''"`.
+- Final flow stats after the batch: `pending_llm=1`, `llm_done=7`, `pending_feishu=13`, `sending=0`, `sent=3`, `reviewed=4`, `send_uncertain=0`, `failed=1`.
+- Diagnostics reported no stale `screening`, stale `sending`, `send_uncertain`, high-attempt, or duplicate Feishu message-id issues.
+
+The remaining `pending_llm` row is not considered stuck: it is explicitly retryable and carries the last LLM parse error. Future invalid JSON responses now record a response preview instead of only the raw JSON parser exception.
 
 Live result file: `orchestration/e2e/live_postgres_result.json`.
 

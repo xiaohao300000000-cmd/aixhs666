@@ -20,8 +20,10 @@ from integrations.feishu.llm_review import (
     LLMReviewAction,
     LLMReviewCallbackError,
     LLMReviewCallbackResult,
+    FeishuSendUncertainError,
     apply_llm_review_callback,
     build_llm_review_card,
+    claim_pending_llm_review_cards,
     send_pending_llm_review_cards,
 )
 from integrations.feishu.phrase_review import (
@@ -64,6 +66,7 @@ __all__ = [
     "FeishuSendResult",
     "FeishuSettings",
     "FeishuSignalAlertPayload",
+    "FeishuSendUncertainError",
     "LLMReviewAction",
     "LLMReviewCallbackError",
     "LLMReviewCallbackResult",
@@ -81,6 +84,7 @@ __all__ = [
     "build_signal_alert_payload",
     "build_signal_alert_payloads",
     "build_webhook_body",
+    "claim_pending_llm_review_cards",
     "parse_callback_action",
     "phrase_review_to_query_request",
     "send_interactive_card",

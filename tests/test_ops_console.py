@@ -16,7 +16,7 @@ from apps.worker.main import WorkerConfig, WorkerRunner
 from collectors import MockPlatformAdapter
 from scheduler import TaskStatus, create_task
 from storage.database import Base, get_session
-from storage.models import CollectionTask, Query, WorkerHeartbeat
+from storage.models import CollectionEvent, CollectionTask, LeadScreeningResult, Query, WorkerHeartbeat
 
 
 @pytest.fixture()
@@ -104,6 +104,53 @@ def test_ops_task_controls_validate_state(api_context: tuple[TestClient, session
     assert retry.status_code == 200
     assert retry.json()["status"] == TaskStatus.RETRY.value
     assert cancel_completed.status_code == 409
+
+
+def test_ops_lead_screening_diagnostics_and_manual_recovery(api_context: tuple[TestClient, sessionmaker[Session]]) -> None:
+    client, SessionLocal = api_context
+    with SessionLocal() as session:
+        screening = LeadScreeningResult(
+            platform="xhs",
+            source_entity_type="comment",
+            source_entity_id=901,
+            review_status="needs_review",
+            workflow_status="sending",
+            attempt_count=3,
+        )
+        session.add(screening)
+        session.commit()
+        screening_id = screening.id
+
+    diagnostics = client.get("/ops/api/lead-screening/diagnostics")
+    rejected = client.post(
+        f"/ops/api/lead-screening/{screening_id}/recover",
+        json={
+            "from_status": "sending",
+            "to_status": "send_uncertain",
+            "reason": "HTTP result unknown after restart",
+            "operator": "ops",
+        },
+    )
+    recovered = client.post(
+        f"/ops/api/lead-screening/{screening_id}/recover",
+        headers={"X-Ops-Token": "secret"},
+        json={
+            "from_status": "sending",
+            "to_status": "send_uncertain",
+            "reason": "HTTP result unknown after restart",
+            "operator": "ops",
+        },
+    )
+
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["counts_by_status"]["sending"] == 1
+    assert rejected.status_code == 401
+    assert recovered.status_code == 200
+    assert recovered.json()["recovered"] is True
+    with SessionLocal() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        assert screening.workflow_status == "send_uncertain"
+        assert session.scalar(select(CollectionEvent).where(CollectionEvent.event_type == "lead_screening_manual_recovery")) is not None
 
 
 def test_worker_writes_heartbeat(tmp_path: Path) -> None:

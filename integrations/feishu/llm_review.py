@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from integrations.feishu.webhook import verify_callback_token
-from services.lead_screening_flow import PENDING_FEISHU, REVIEWED, SENT
+from services.lead_screening_flow import PENDING_FEISHU, REVIEWED, SEND_UNCERTAIN, SENDING, SENT
 from storage.models import CollectionEvent, Lead, LeadEvidence, LeadScreeningResult
 
 
@@ -54,6 +54,10 @@ class LLMReviewCallbackResult:
 
 class LLMReviewCallbackError(ValueError):
     pass
+
+
+class FeishuSendUncertainError(RuntimeError):
+    """Raised when Feishu may have received the request but local state is uncertain."""
 
 
 def build_llm_review_card(screening: LeadScreeningResult) -> dict[str, Any]:
@@ -117,25 +121,21 @@ def send_pending_llm_review_cards(
     screening_ids: set[int] | None = None,
 ) -> dict[str, int]:
     counts = {"sent": 0, "skipped": 0, "failed": 0}
-    statement = (
-        select(LeadScreeningResult)
-        .where(LeadScreeningResult.workflow_status == PENDING_FEISHU)
-        .where(LeadScreeningResult.review_status == "needs_review")
-        .where(LeadScreeningResult.human_review_status.is_(None))
-        .where(LeadScreeningResult.feishu_message_id.is_(None))
-        .order_by(LeadScreeningResult.id.asc())
-    )
-    if screening_ids:
-        statement = statement.where(LeadScreeningResult.id.in_(screening_ids))
-    screenings = session.scalars(statement.limit(limit)).all()
+    screenings = claim_pending_llm_review_cards(session, limit=limit, screening_ids=screening_ids)
     for screening in screenings:
         if screening.id is None:
             counts["skipped"] += 1
             continue
-        screening.attempt_count = (screening.attempt_count or 0) + 1
         try:
             response = client.send_interactive_card(chat_id=chat_id, card=build_llm_review_card(screening))
+        except FeishuSendUncertainError as exc:
+            screening.workflow_status = SEND_UNCERTAIN
+            screening.last_error = str(exc)
+            screening.updated_at = _utc_now()
+            counts["failed"] += 1
+            continue
         except Exception as exc:  # noqa: BLE001 - batch should continue; caller gets failed count.
+            screening.workflow_status = PENDING_FEISHU
             screening.last_error = str(exc)
             screening.updated_at = _utc_now()
             counts["failed"] += 1
@@ -149,6 +149,33 @@ def send_pending_llm_review_cards(
         counts["sent"] += 1
     session.flush()
     return counts
+
+
+def claim_pending_llm_review_cards(
+    session: Session,
+    *,
+    limit: int = 10,
+    screening_ids: set[int] | None = None,
+) -> list[LeadScreeningResult]:
+    statement = (
+        select(LeadScreeningResult)
+        .where(LeadScreeningResult.workflow_status == PENDING_FEISHU)
+        .where(LeadScreeningResult.review_status == "needs_review")
+        .where(LeadScreeningResult.human_review_status.is_(None))
+        .where(LeadScreeningResult.feishu_message_id.is_(None))
+        .order_by(LeadScreeningResult.id.asc())
+        .with_for_update(skip_locked=True)
+    )
+    if screening_ids:
+        statement = statement.where(LeadScreeningResult.id.in_(screening_ids))
+    screenings = session.scalars(statement.limit(limit)).all()
+    for screening in screenings:
+        screening.attempt_count = (screening.attempt_count or 0) + 1
+        screening.workflow_status = SENDING
+        screening.last_error = None
+        screening.updated_at = _utc_now()
+    session.flush()
+    return screenings
 
 
 def apply_llm_review_callback(

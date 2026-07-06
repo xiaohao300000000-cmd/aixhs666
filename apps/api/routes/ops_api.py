@@ -23,6 +23,7 @@ from scheduler import (
     recover_timed_out_tasks,
     schedule_retry,
 )
+from services.lead_screening_flow import diagnose_lead_screening_workflow, recover_stale_lead_screening
 from storage.database import get_session
 from storage.models import (
     CollectionEvent,
@@ -74,6 +75,13 @@ class PipelineRunCreatePayload(BaseModel):
     dry_run: bool = False
     requested_by: str = "rest"
     idempotency_key: str | None = None
+
+
+class LeadScreeningRecoveryPayload(BaseModel):
+    from_status: str
+    to_status: str
+    reason: str = Field(min_length=1, max_length=1000)
+    operator: str = Field(default="ops", min_length=1, max_length=100)
 
 
 def _utc_now() -> datetime:
@@ -447,6 +455,30 @@ def errors(session: SessionDep) -> dict[str, Any]:
             for task in tasks
         ]
     }
+
+
+@router.get("/lead-screening/diagnostics")
+def lead_screening_diagnostics(session: SessionDep) -> dict[str, Any]:
+    return diagnose_lead_screening_workflow(session)
+
+
+@router.post("/lead-screening/{screening_id}/recover")
+def recover_lead_screening(
+    screening_id: int,
+    payload: LeadScreeningRecoveryPayload,
+    session: SessionDep,
+    _: WriteAuth,
+) -> dict[str, Any]:
+    recovered = recover_stale_lead_screening(
+        session,
+        screening_id=screening_id,
+        from_status=payload.from_status,
+        to_status=payload.to_status,
+        reason=payload.reason,
+        operator=payload.operator,
+    )
+    session.commit()
+    return {"recovered": recovered}
 
 
 @router.get("/snapshots/{snapshot_id}")

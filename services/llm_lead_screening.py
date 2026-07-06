@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from intelligence.text_processing import normalize_text
-from services.lead_screening_flow import LLM_DONE, PENDING_LLM
+from services.lead_screening_flow import LLM_DONE, PENDING_LLM, SCREENING
 from storage.models import Comment, Content, Lead, LeadEvidence, LeadScreeningResult, PublicProfile
 
 
@@ -176,7 +176,11 @@ class OpenAICompatibleLeadScreeningClient:
             raise RuntimeError(f"LLM request failed: {exc.reason}") from exc
 
         content = payload["choices"][0]["message"]["content"]
-        raw = json.loads(content)
+        try:
+            raw = json.loads(content)
+        except json.JSONDecodeError as exc:
+            content_preview = str(content)[:200]
+            raise RuntimeError(f"LLM returned invalid JSON content: {content_preview!r}") from exc
         return _decision_from_json(raw, model_name=self.model)
 
 
@@ -193,12 +197,13 @@ def run_llm_lead_screening(
     source_entity_types = source_entity_types or {"content", "comment"}
     counts = {key: 0 for key in LeadScreeningRunResult().to_dict()}
     seen_texts: set[str] = set()
+    attempted = 0
 
     for context in _iter_contexts(
         session,
         source_entity_types=source_entity_types,
         source_entity_ids=source_entity_ids,
-        limit=limit,
+        limit=None,
     ):
         counts["candidates"] += 1
         normalized_source = _normalized_source_text(context)
@@ -210,21 +215,32 @@ def run_llm_lead_screening(
         if not reprocess and existing is not None and existing.workflow_status != PENDING_LLM:
             counts["skipped_existing"] += 1
             continue
+        screening = _ensure_pending_screening(session, context, existing=existing)
+        claimed = _claim_llm_screening(session, screening)
+        if claimed is None:
+            counts["skipped_existing"] += 1
+            continue
 
         try:
             decision = client.screen(context)
         except Exception as exc:  # noqa: BLE001 - keep failed LLM calls visible in DB.
-            _save_failed_screening(session, context, error_message=str(exc))
+            _save_failed_screening(session, context, error_message=str(exc), screening=claimed)
             counts["failed"] += 1
+            attempted += 1
+            if limit is not None and attempted >= limit:
+                break
             continue
 
-        screening = _save_screening_result(session, context, decision)
+        screening = _save_screening_result(session, context, decision, screening=claimed)
         counts["screened"] += 1
         counts[screening.review_status] += 1
         if screening.review_status in {"accepted", "needs_review"} and context.public_profile_id is not None:
             lead, created = _upsert_lead_from_screening(session, context, decision, screening.review_status)
             counts["leads_created" if created else "leads_updated"] += 1
             counts["evidence_created"] += _upsert_evidence(session, lead=lead, context=context, decision=decision)
+        attempted += 1
+        if limit is not None and attempted >= limit:
+            break
 
     session.flush()
     return LeadScreeningRunResult(**counts)
@@ -329,12 +345,86 @@ def _decision_from_json(raw: dict[str, Any], *, model_name: str) -> LLMLeadScree
     )
 
 
+def _ensure_pending_screening(
+    session: Session,
+    context: LeadScreeningContext,
+    *,
+    existing: LeadScreeningResult | None,
+) -> LeadScreeningResult:
+    now = _utc_now()
+    if existing is not None:
+        return existing
+    bind = session.get_bind()
+    if bind.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+
+        inserted_id = session.scalar(
+            insert(LeadScreeningResult)
+            .values(
+                platform=context.platform,
+                source_entity_type=context.source_entity_type,
+                source_entity_id=context.source_entity_id,
+                content_id=context.content_id,
+                comment_id=context.comment_id,
+                public_profile_id=context.public_profile_id,
+                context_json=context.to_prompt_payload(),
+                review_status="needs_review",
+                workflow_status=PENDING_LLM,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(index_elements=["source_entity_type", "source_entity_id"])
+            .returning(LeadScreeningResult.id)
+        )
+        if inserted_id is not None:
+            inserted = session.get(LeadScreeningResult, inserted_id)
+            if inserted is not None:
+                return inserted
+        existing = _existing_screening(session, context)
+        if existing is not None:
+            return existing
+    screening = LeadScreeningResult(
+        platform=context.platform,
+        source_entity_type=context.source_entity_type,
+        source_entity_id=context.source_entity_id,
+        content_id=context.content_id,
+        comment_id=context.comment_id,
+        public_profile_id=context.public_profile_id,
+        context_json=context.to_prompt_payload(),
+        review_status="needs_review",
+        workflow_status=PENDING_LLM,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(screening)
+    session.flush()
+    return screening
+
+
+def _claim_llm_screening(session: Session, screening: LeadScreeningResult) -> LeadScreeningResult | None:
+    claimed = session.scalar(
+        select(LeadScreeningResult)
+        .where(LeadScreeningResult.id == screening.id)
+        .where(LeadScreeningResult.workflow_status == PENDING_LLM)
+        .with_for_update(skip_locked=True)
+    )
+    if claimed is None:
+        return None
+    claimed.workflow_status = SCREENING
+    claimed.last_error = None
+    claimed.updated_at = _utc_now()
+    session.flush()
+    return claimed
+
+
 def _save_screening_result(
     session: Session,
     context: LeadScreeningContext,
     decision: LLMLeadScreeningDecision,
+    *,
+    screening: LeadScreeningResult | None = None,
 ) -> LeadScreeningResult:
-    screening = _existing_screening(session, context)
+    screening = screening or _existing_screening(session, context)
     now = _utc_now()
     if screening is None:
         screening = LeadScreeningResult(
@@ -360,14 +450,19 @@ def _save_screening_result(
     screening.status_reason = decision.reason
     screening.error_message = None
     screening.workflow_status = LLM_DONE
-    screening.attempt_count = (screening.attempt_count or 0) + 1
     screening.last_error = None
     screening.updated_at = now
     return screening
 
 
-def _save_failed_screening(session: Session, context: LeadScreeningContext, *, error_message: str) -> None:
-    screening = _existing_screening(session, context)
+def _save_failed_screening(
+    session: Session,
+    context: LeadScreeningContext,
+    *,
+    error_message: str,
+    screening: LeadScreeningResult | None = None,
+) -> None:
+    screening = screening or _existing_screening(session, context)
     now = _utc_now()
     if screening is None:
         screening = LeadScreeningResult(
@@ -384,7 +479,6 @@ def _save_failed_screening(session: Session, context: LeadScreeningContext, *, e
     screening.review_status = "needs_review"
     screening.error_message = error_message
     screening.workflow_status = PENDING_LLM
-    screening.attempt_count = (screening.attempt_count or 0) + 1
     screening.last_error = error_message
     screening.updated_at = now
 

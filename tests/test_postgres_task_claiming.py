@@ -5,11 +5,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import storage.models  # noqa: F401
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from scheduler import TaskStatus, claim_next_task, create_task
+from integrations.feishu.llm_review import claim_pending_llm_review_cards
+from services.lead_screening_flow import claim_pending_llm_screenings
 from storage.database import Base
+from storage.models import LeadScreeningResult, PublicProfile
 
 
 pytestmark = pytest.mark.postgres
@@ -77,3 +80,85 @@ def test_claim_next_task_uses_postgres_skip_locked(postgres_session_pair) -> Non
     with Session(first_session.get_bind()) as verify:
         tasks = verify.query(type(first_task)).order_by(type(first_task).id).all()
         assert [task.status for task in tasks] == [TaskStatus.PENDING.value, TaskStatus.PENDING.value]
+
+
+def test_claim_pending_llm_screenings_uses_postgres_skip_locked(postgres_session_pair) -> None:
+    first_session, second_session = postgres_session_pair
+    profile = PublicProfile(platform="xhs", platform_user_id="pg-user", display_name="PG 家长")
+    first_session.add(profile)
+    first_session.flush()
+    first_screening = LeadScreeningResult(
+        platform="xhs",
+        source_entity_type="comment",
+        source_entity_id=1,
+        public_profile_id=profile.id,
+        workflow_status="pending_llm",
+    )
+    second_screening = LeadScreeningResult(
+        platform="xhs",
+        source_entity_type="comment",
+        source_entity_id=2,
+        public_profile_id=profile.id,
+        workflow_status="pending_llm",
+    )
+    first_session.add_all([first_screening, second_screening])
+    first_session.commit()
+
+    claimed_by_first = claim_pending_llm_screenings(first_session, limit=1)
+    second_session.execute(text("SET LOCAL statement_timeout = '1000ms'"))
+    claimed_by_second = claim_pending_llm_screenings(second_session, limit=1)
+
+    assert [row.id for row in claimed_by_first] == [first_screening.id]
+    assert [row.id for row in claimed_by_second] == [second_screening.id]
+    assert claimed_by_first[0].workflow_status == "screening"
+    assert claimed_by_second[0].workflow_status == "screening"
+
+    first_session.rollback()
+    second_session.rollback()
+
+    with Session(first_session.get_bind()) as verify:
+        statuses = verify.scalars(select(LeadScreeningResult.workflow_status).order_by(LeadScreeningResult.id)).all()
+        assert statuses == ["pending_llm", "pending_llm"]
+
+
+def test_claim_pending_feishu_reviews_uses_postgres_skip_locked(postgres_session_pair) -> None:
+    first_session, second_session = postgres_session_pair
+    profile = PublicProfile(platform="xhs", platform_user_id="pg-feishu-user", display_name="PG 飞书家长")
+    first_session.add(profile)
+    first_session.flush()
+    first_screening = LeadScreeningResult(
+        platform="xhs",
+        source_entity_type="comment",
+        source_entity_id=11,
+        public_profile_id=profile.id,
+        review_status="needs_review",
+        workflow_status="pending_feishu",
+    )
+    second_screening = LeadScreeningResult(
+        platform="xhs",
+        source_entity_type="comment",
+        source_entity_id=12,
+        public_profile_id=profile.id,
+        review_status="needs_review",
+        workflow_status="pending_feishu",
+    )
+    first_session.add_all([first_screening, second_screening])
+    first_session.commit()
+
+    claimed_by_first = claim_pending_llm_review_cards(first_session, limit=1)
+    second_session.execute(text("SET LOCAL statement_timeout = '1000ms'"))
+    claimed_by_second = claim_pending_llm_review_cards(second_session, limit=1)
+
+    assert [row.id for row in claimed_by_first] == [first_screening.id]
+    assert [row.id for row in claimed_by_second] == [second_screening.id]
+    assert claimed_by_first[0].workflow_status == "sending"
+    assert claimed_by_second[0].workflow_status == "sending"
+    assert claimed_by_first[0].attempt_count == 1
+    assert claimed_by_second[0].attempt_count == 1
+
+    first_session.rollback()
+    second_session.rollback()
+
+    with Session(first_session.get_bind()) as verify:
+        statuses = verify.scalars(select(LeadScreeningResult.workflow_status).order_by(LeadScreeningResult.id)).all()
+        assert statuses == ["pending_feishu", "pending_feishu"]

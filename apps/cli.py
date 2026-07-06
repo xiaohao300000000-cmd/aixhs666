@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
             import os
 
             from integrations.feishu.llm_review import send_pending_llm_review_cards
-            from services.lead_screening_flow import PENDING_FEISHU, advance_llm_done_to_pending_feishu
+            from services.lead_screening_flow import PENDING_FEISHU, advance_llm_done_to_pending_feishu, lead_screening_flow_stats
             from services.llm_lead_screening import OpenAICompatibleLeadScreeningClient, run_llm_lead_screening
             from storage.models import LeadScreeningResult
 
@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
                 advanced = advance_llm_done_to_pending_feishu(session, limit=args.limit)
                 if advanced["advanced"] > 0:
                     session.commit()
-                    payload = {"lead_flow": {"step": "advance_to_pending_feishu", **advanced}}
+                    payload = {"lead_flow": {"step": "advance_to_pending_feishu", **advanced, **lead_screening_flow_stats(session)}}
                 elif _has_pending_feishu(session, LeadScreeningResult, PENDING_FEISHU):
                     chat_id = args.chat_id or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID")
                     if not chat_id:
@@ -177,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
                         limit=args.limit,
                     )
                     session.commit()
-                    payload = {"lead_flow": {"step": "feishu_send", **result}}
+                    payload = {"lead_flow": {"step": "feishu_send", **result, **lead_screening_flow_stats(session)}}
                 else:
                     result = run_llm_lead_screening(
                         session,
@@ -187,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
                         limit=args.limit,
                     )
                     session.commit()
-                    payload = {"lead_flow": {"step": "llm", **result.to_dict()}}
+                    payload = {"lead_flow": {"step": "llm", **result.to_dict(), **lead_screening_flow_stats(session)}}
         elif args.command == "run-control-panel-once":
             payload = {
                 "control_panel": run_control_panel_once(

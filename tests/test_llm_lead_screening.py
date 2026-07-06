@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
@@ -243,6 +244,40 @@ def test_deepseek_api_key_env_is_supported(monkeypatch: pytest.MonkeyPatch) -> N
     assert client.api_key == "deepseek-test-key"
     assert client.api_url == "https://api.deepseek.com/chat/completions"
     assert client.model == "deepseek-v4-flash"
+
+
+def test_openai_compatible_client_reports_invalid_json_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"choices": [{"message": {"content": "not-json"}}]}).encode("utf-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: FakeResponse())
+    client = OpenAICompatibleLeadScreeningClient(api_key="test-key", model="deepseek-v4-flash")
+
+    with pytest.raises(RuntimeError, match="LLM returned invalid JSON content: 'not-json'"):
+        client.screen(
+            LeadScreeningContext(
+                source_entity_type="comment",
+                source_entity_id=1,
+                platform="xhs",
+                content_id=1,
+                comment_id=1,
+                public_profile_id=1,
+                post_title="PET 讨论",
+                post_body="家长交流",
+                current_comment="价格多少？",
+                parent_comment="",
+                author_display_name="家长",
+                profile_region="",
+                profile_bio="",
+            )
+        )
 
 
 def _seed_comment_thread(factory: sessionmaker[Session]) -> int:
