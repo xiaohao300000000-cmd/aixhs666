@@ -363,17 +363,24 @@ python -m apps.cli --json feishu-send-llm-reviews --chat-id oc_xxx --limit 1
 POST /feishu/callback/llm-review
 ```
 
-回调会验签、按事件和分析结果幂等处理，更新 `lead_screening_results.human_review_status`，并用回调 token 把原飞书卡片更新为“已处理”。如果配置了 `FEISHU_LLM_REVIEW_DASHBOARD_URL`，卡片会展示多维表格仪表盘入口文字。
+回调在配置 `FEISHU_ENCRYPT_KEY` 后会校验飞书签名，在配置 `FEISHU_VERIFICATION_TOKEN` 后会校验 verification token；随后按事件和分析结果幂等处理，更新 `lead_screening_results.human_review_status`，并用回调 token 把原飞书卡片更新为“已处理”。如果配置了 `FEISHU_LLM_REVIEW_DASHBOARD_URL`，卡片会展示多维表格仪表盘入口文字。
 
-2026-07-06 已真实发送一条 LLM 待审核卡片：
+2026-07-07 已完成一次真实飞书回调验收：
 
 ```text
-lead_screening_results.id=2
-feishu_message_id=om_x100b6b88a005e0acb1187e9dd6cca8d
+公网 HTTPS: https://soft-trains-prove.loca.lt/feishu/callback/llm-review
+飞书应用版本: 1.0.1 已发布
+id=2 点击“有效” -> human_review_status=valid
+id=3 点击“无效” -> human_review_status=invalid
+id=5 点击“暂时观察” -> human_review_status=watch
+callback_events=3
+feishu_message_id(id=2)=om_x100b6b8b226fd0a0b3bb325753227a5
+feishu_message_id(id=3)=om_x100b6b8b22755ca4b15a8242fc9d1de
+feishu_message_id(id=5)=om_x100b6b8b221faca0b2adeec32f61761
 feishu_chat_id=oc_1623b52748f4cf5cfb6f6e9174008f55
 ```
 
-真实人工点击回调需要在飞书开发者后台把回调地址配置到当前 FastAPI 服务的公网地址。
+本次真实运行环境未设置 `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN`，所以真实点击没有启用签名密钥校验；签名校验路径由 `tests/test_feishu_llm_review.py` 覆盖。详细验收记录见 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md`。
 
 规则调整后需要重算自动生成结果时使用：
 

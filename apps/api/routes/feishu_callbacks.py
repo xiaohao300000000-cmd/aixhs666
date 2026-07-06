@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Annotated, Any
 
@@ -13,6 +14,7 @@ from storage.database import SessionLocal
 
 
 router = APIRouter(prefix="/feishu/callback", tags=["feishu-callbacks"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/llm-review")
@@ -29,16 +31,20 @@ async def llm_review_callback(
         nonce=x_lark_request_nonce,
         signature=x_lark_signature,
     ):
+        logger.warning("Feishu LLM review callback rejected: invalid signature")
         raise HTTPException(status_code=401, detail="invalid Feishu signature")
     try:
         payload = json.loads(body.decode("utf-8"))
     except json.JSONDecodeError as exc:
+        logger.warning("Feishu LLM review callback rejected: invalid JSON payload")
         raise HTTPException(status_code=400, detail="invalid JSON payload") from exc
     if not isinstance(payload, dict):
+        logger.warning("Feishu LLM review callback rejected: invalid payload type")
         raise HTTPException(status_code=400, detail="invalid payload")
 
     if payload.get("type") == "url_verification":
         if not verify_callback_token(payload, os.getenv("FEISHU_VERIFICATION_TOKEN")):
+            logger.warning("Feishu LLM review callback rejected: invalid verification token")
             raise HTTPException(status_code=401, detail="invalid Feishu verification token")
         return {"challenge": payload.get("challenge")}
 
@@ -51,6 +57,7 @@ async def llm_review_callback(
                 verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
             )
         except LLMReviewCallbackError as exc:
+            logger.warning("Feishu LLM review callback rejected: %s", exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         session.commit()
     return {

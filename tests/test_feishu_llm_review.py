@@ -181,10 +181,13 @@ def test_build_llm_review_card_has_exactly_three_business_buttons(factory: sessi
     with factory() as session:
         card = build_llm_review_card(session.get(LeadScreeningResult, screening_id))
 
-    action_blocks = [element for element in card["elements"] if element.get("tag") == "action"]
-    assert len(action_blocks) == 1
-    button_labels = [button["text"]["content"] for button in action_blocks[0]["actions"]]
+    assert card["schema"] == "2.0"
+    buttons = [element for element in card["body"]["elements"] if element.get("tag") == "button"]
+    assert len(buttons) == 3
+    button_labels = [button["text"]["content"] for button in buttons]
     assert button_labels == ["有效", "无效", "暂时观察"]
+    assert [button["behaviors"][0]["type"] for button in buttons] == ["callback", "callback", "callback"]
+    assert [button["behaviors"][0]["value"]["action"] for button in buttons] == ["valid", "invalid", "watch"]
 
 
 def test_feishu_send_llm_reviews_cli_sends_pending_cards(

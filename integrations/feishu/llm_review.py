@@ -62,34 +62,26 @@ def build_llm_review_card(screening: LeadScreeningResult) -> dict[str, Any]:
     dashboard_url = os.getenv("FEISHU_LLM_REVIEW_DASHBOARD_URL", "").strip()
     dashboard_line = f"\n\n**多维表格仪表盘**：{dashboard_url}" if dashboard_url else ""
     return {
-        "config": {"wide_screen_mode": True},
+        "schema": "2.0",
+        "config": {"update_multi": True, "width_mode": "default"},
         "header": {
             "template": _header_template(screening),
             "title": {"tag": "plain_text", "content": "LLM 客户线索审核"},
         },
-        "elements": [
-            {"tag": "markdown", "content": f"**原文**\n{_quote(original)}"},
-            {
-                "tag": "div",
-                "fields": [
-                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**分析ID**：{screening.id}"}},
-                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**AI判断**：{screening.demand_type or '未知'}"}},
-                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**意向等级**：{screening.intent_strength or '未知'}"}},
-                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**置信度**：{screening.confidence or 0}%"}},
-                ],
-            },
-            {"tag": "markdown", "content": f"**上下文摘要**\n{_context_summary(context)}{dashboard_line}"},
-            {"tag": "markdown", "content": f"**证据**\n{_evidence_markdown(evidence)}"},
-            {"tag": "markdown", "content": f"**AI说明**\n{screening.status_reason or _raw_reason(screening) or '无'}"},
-            {
-                "tag": "action",
-                "actions": [
-                    _button("有效", LLMReviewAction.VALID, screening.id, "primary"),
-                    _button("无效", LLMReviewAction.INVALID, screening.id, "danger"),
-                    _button("暂时观察", LLMReviewAction.WATCH, screening.id, "default"),
-                ],
-            },
-        ],
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 16px 12px",
+            "elements": [
+                {"tag": "markdown", "content": f"**原文**\n{_quote(original)}"},
+                {"tag": "markdown", "content": _metadata_markdown(screening)},
+                {"tag": "markdown", "content": f"**上下文摘要**\n{_context_summary(context)}{dashboard_line}"},
+                {"tag": "markdown", "content": f"**证据**\n{_evidence_markdown(evidence)}"},
+                {"tag": "markdown", "content": f"**AI说明**\n{screening.status_reason or _raw_reason(screening) or '无'}"},
+                _button("有效", LLMReviewAction.VALID, screening.id, "primary_filled"),
+                _button("无效", LLMReviewAction.INVALID, screening.id, "danger"),
+                _button("暂时观察", LLMReviewAction.WATCH, screening.id, "default"),
+            ],
+        },
     }
 
 
@@ -99,7 +91,9 @@ def build_processed_llm_review_card(screening: LeadScreeningResult, *, action: L
         "template": "green" if action == LLMReviewAction.VALID else "grey",
         "title": {"tag": "plain_text", "content": "LLM 客户线索审核 - 已处理"},
     }
-    card["elements"] = [
+    body = card.setdefault("body", {})
+    elements = body.get("elements") if isinstance(body.get("elements"), list) else []
+    body["elements"] = [
         {
             "tag": "markdown",
             "content": (
@@ -108,7 +102,7 @@ def build_processed_llm_review_card(screening: LeadScreeningResult, *, action: L
                 f"**分析ID**：{screening.id}"
             ),
         },
-        *[element for element in card["elements"] if element.get("tag") != "action"],
+        *[element for element in elements if element.get("tag") != "button"],
     ]
     return card
 
@@ -316,12 +310,25 @@ def _nested_value(data: dict[str, Any], path: tuple[str, ...]) -> Any:
 
 
 def _button(label: str, action: LLMReviewAction, screening_id: int | None, button_type: str) -> dict[str, Any]:
+    value = {"screening_result_id": screening_id, "action": action.value}
     return {
         "tag": "button",
         "text": {"tag": "plain_text", "content": label},
-        "value": {"screening_result_id": screening_id, "action": action.value},
+        "behaviors": [{"type": "callback", "value": value}],
         "type": button_type,
+        "width": "fill",
     }
+
+
+def _metadata_markdown(screening: LeadScreeningResult) -> str:
+    return "\n".join(
+        [
+            f"**分析ID**：{screening.id}",
+            f"**AI判断**：{screening.demand_type or '未知'}",
+            f"**意向等级**：{screening.intent_strength or '未知'}",
+            f"**置信度**：{screening.confidence or 0}%",
+        ]
+    )
 
 
 def _header_template(screening: LeadScreeningResult) -> str:

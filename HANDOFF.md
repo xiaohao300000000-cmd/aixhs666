@@ -70,7 +70,9 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 
 2026-07-06 已新增“规则辅助 + LLM 主筛选”手动流程：`python -m apps.cli --json leads-llm-screen` 会读取数据库帖子和评论，默认上下文包含帖子标题、正文、当前评论、父评论，把 LLM 的是否有价值、需求类型、意向强度、判断证据、置信度写入 `lead_screening_results`，并将有价值或不确定结果写入 `leads` / `lead_evidence`。不确定结果使用 `needs_review`。
 
-2026-07-06 已新增飞书 LLM 审核闭环：`python -m apps.cli --json feishu-send-llm-reviews --chat-id <oc_xxx> --limit 1` 会把 `lead_screening_results.review_status=needs_review` 的结果发送为飞书交互卡片，保存 `feishu_message_id` 和 `feishu_chat_id`；`POST /feishu/callback/llm-review` 会验签、幂等处理按钮点击，更新 `human_review_status`，并用回调 token 把原卡片更新为“已处理”。已真实发送 `lead_screening_results.id=2` 到飞书消息 `om_x100b6b88a005e0acb1187e9dd6cca8d`；真实点击回调仍需要飞书开发者后台配置公网回调 URL。
+2026-07-06 已新增飞书 LLM 审核闭环：`python -m apps.cli --json feishu-send-llm-reviews --chat-id <oc_xxx> --limit 1` 会把 `lead_screening_results.review_status=needs_review` 的结果发送为飞书交互卡片，保存 `feishu_message_id` 和 `feishu_chat_id`；`POST /feishu/callback/llm-review` 会在配置 `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` 后校验飞书签名和 token，幂等处理按钮点击，更新 `human_review_status`，并用回调 token 把原卡片更新为“已处理”。
+
+2026-07-07 已完成真实飞书回调验收：公网地址 `https://soft-trains-prove.loca.lt/feishu/callback/llm-review`，飞书应用版本 `1.0.1` 已发布，真实点击 `id=2 有效`、`id=3 无效`、`id=5 暂时观察` 后数据库分别写入 `valid`、`invalid`、`watch`，三张原卡片均更新为“已处理”，`feishu_llm_review_callback` 事件数为 3。失败请求 `screening_result_id=999999` 会在日志输出具体原因。当前真实运行环境没有设置 `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN`，所以这次 live click 未验证签名密钥生效；测试已覆盖启用密钥时的验签路径。详细记录见 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md`。
 
 本机普通用户入口：
 
