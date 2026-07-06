@@ -12,6 +12,7 @@ from apps.cli import main as cli_main
 from services.llm_lead_screening import (
     LeadScreeningContext,
     LLMLeadScreeningDecision,
+    OpenAICompatibleLeadScreeningClient,
     run_llm_lead_screening,
 )
 from storage.database import Base
@@ -219,6 +220,29 @@ def test_llm_screening_cli_writes_database_results(
     with factory() as session:
         assert session.scalar(select(LeadScreeningResult)).demand_type == "price"
         assert session.scalar(select(Lead)).status == "qualified"
+
+
+def test_deepseek_base_url_is_normalized_to_chat_completions_endpoint() -> None:
+    client = OpenAICompatibleLeadScreeningClient(
+        api_key="test-key",
+        api_url="https://api.deepseek.com",
+        model="deepseek-v4-flash",
+    )
+
+    assert client.api_url == "https://api.deepseek.com/chat/completions"
+    assert client.model == "deepseek-v4-flash"
+
+
+def test_deepseek_api_key_env_is_supported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_LEAD_SCREENING_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-test-key")
+
+    client = OpenAICompatibleLeadScreeningClient()
+
+    assert client.api_key == "deepseek-test-key"
+    assert client.api_url == "https://api.deepseek.com/chat/completions"
+    assert client.model == "deepseek-v4-flash"
 
 
 def _seed_comment_thread(factory: sessionmaker[Session]) -> int:

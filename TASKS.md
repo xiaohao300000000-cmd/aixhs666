@@ -19,7 +19,7 @@
 | 飞书 AI 筛选工作台 | DONE：`AI筛选客户线索` 71 条、`AI筛选证据明细` 72 条已写入 Base，证据已双向关联，卡片视图已创建 |
 | 飞书系统控制台 | DONE：`系统控制台` 表已创建，`run-control-panel-once` 只在人为设置 `开始执行=是，开始` 后执行一次并写回结果 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
-| 自动测试通过 | DONE：`pytest -q` 为 236 passed, 2 skipped |
+| 自动测试通过 | DONE：`pytest -q` 为 238 passed, 2 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
@@ -32,7 +32,7 @@ V15 本机自动测试结果：
 
 ```text
 .venv/bin/python -m pytest -q
-236 passed, 2 skipped, 1 warning
+238 passed, 2 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
 1 skipped, 170 deselected, 1 warning

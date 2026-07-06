@@ -18,7 +18,8 @@ from storage.models import Comment, Content, Lead, LeadEvidence, LeadScreeningRe
 
 REVIEW_CONFIDENCE_THRESHOLD = 0.65
 HIGH_CONFIDENCE_THRESHOLD = 0.75
-DEFAULT_MODEL_NAME = "gpt-4o-mini"
+DEFAULT_MODEL_NAME = "deepseek-v4-flash"
+DEFAULT_API_URL = "https://api.deepseek.com"
 JUNK_TEXTS = {"哈哈", "哈哈哈", "蹲", "蹲蹲", "dd", "1", "mark", "收藏", "路过", "看看"}
 SPAM_WORDS = ("私信领取", "加我领取", "资料包", "求资料", "求分享", "无偿分享", "领资料")
 REGION_KEYWORDS = ("福州", "厦门", "泉州", "上海", "北京", "广州", "深圳", "杭州", "南京", "苏州")
@@ -115,12 +116,17 @@ class OpenAICompatibleLeadScreeningClient:
         api_url: str | None = None,
         timeout_seconds: int = 60,
     ) -> None:
-        self.api_key = api_key or os.getenv("LLM_LEAD_SCREENING_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.api_key = (
+            api_key
+            or os.getenv("LLM_LEAD_SCREENING_API_KEY")
+            or os.getenv("DEEPSEEK_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
         self.model = model or os.getenv("LLM_LEAD_SCREENING_MODEL", DEFAULT_MODEL_NAME)
-        self.api_url = api_url or os.getenv("LLM_LEAD_SCREENING_API_URL", "https://api.openai.com/v1/chat/completions")
+        self.api_url = _chat_completions_url(api_url or os.getenv("LLM_LEAD_SCREENING_API_URL", DEFAULT_API_URL))
         self.timeout_seconds = timeout_seconds
         if not self.api_key:
-            raise RuntimeError("LLM_LEAD_SCREENING_API_KEY or OPENAI_API_KEY is required")
+            raise RuntimeError("LLM_LEAD_SCREENING_API_KEY, DEEPSEEK_API_KEY, or OPENAI_API_KEY is required")
 
     def screen(self, context: LeadScreeningContext) -> LLMLeadScreeningDecision:
         body = {
@@ -574,6 +580,13 @@ def _confidence_to_float(value: Any) -> float:
 
 def _confidence_to_score(value: float) -> int:
     return int(round(_confidence_to_float(value) * 100))
+
+
+def _chat_completions_url(api_url: str) -> str:
+    normalized = api_url.rstrip("/")
+    if normalized.endswith("/chat/completions"):
+        return normalized
+    return f"{normalized}/chat/completions"
 
 
 def _utc_now() -> datetime:

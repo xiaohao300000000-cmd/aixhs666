@@ -152,7 +152,7 @@ python -m apps.cli --json run-control-panel-once
 - 新增 `系统控制台` 表，字段使用普通话：`我要做什么`、`开始执行`、`现在状态`、`结果`、`哪里出错了`。
 - 新增 `run-control-panel-once` 命令，符合用户要求：不自动跑、不常驻，只在人为设置 `开始执行=是，开始` 后执行一次。
 - 真实验证系统控制台：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次，写回 `已完成` 和结果文字。
-- 全量测试通过：`236 passed, 2 skipped, 1 warning`。
+- 全量测试通过：`238 passed, 2 skipped, 1 warning`。
 - 当前分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`。
 
 ## 2026-07-03 今日已完成

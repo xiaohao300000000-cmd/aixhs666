@@ -199,7 +199,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-236 passed, 2 skipped, 1 warning
+238 passed, 2 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -336,7 +336,7 @@ LLM 主筛选入口：
 python -m apps.cli --json leads-llm-screen
 ```
 
-运行前需要设置 `LLM_LEAD_SCREENING_API_KEY`；默认读取兼容 OpenAI Chat Completions 的接口，也可用 `LLM_LEAD_SCREENING_API_URL` 和 `LLM_LEAD_SCREENING_MODEL` 改成其他兼容服务。
+运行前需要设置 `DEEPSEEK_API_KEY` 或 `LLM_LEAD_SCREENING_API_KEY`。默认使用 DeepSeek 的 OpenAI 兼容接口：`LLM_LEAD_SCREENING_API_URL=https://api.deepseek.com`、`LLM_LEAD_SCREENING_MODEL=deepseek-v4-flash`。如果传入的是基础地址，系统会自动请求 `/chat/completions`。
 
 只筛评论或只筛帖子：
 
@@ -502,7 +502,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-run
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`236 passed, 2 skipped, 1 warning`。
+- 当前全量测试：`238 passed, 2 skipped, 1 warning`。
 
 仍未完成或尚未充分验证：
 
