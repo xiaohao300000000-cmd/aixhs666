@@ -351,6 +351,20 @@ python -m apps.cli --json leads-llm-screen --source content
 python -m apps.cli --json leads-llm-screen --source comment --source-id 123 --reprocess
 ```
 
+统一流程入口：
+
+```bash
+python -m apps.cli --json lead-flow-once --source comment --limit 1 --chat-id oc_xxx
+```
+
+`lead-flow-once` 每次只推进当前应该做的一步，不做后台无人值守调度：
+
+```text
+pending_llm -> llm_done -> pending_feishu -> sent -> reviewed
+```
+
+LLM 步骤只把结果写回 `lead_screening_results.workflow_status=llm_done`，不会直接发飞书。下一次统一流程会把需要人工审核的 `llm_done` 推进到 `pending_feishu`；飞书发送模块只领取 `pending_feishu`，发送成功后写为 `sent`；飞书回调后写为 `reviewed`。失败会记录 `last_error` 并增加 `attempt_count`，重复执行不会重复分析、重复发送或重复回写。
+
 LLM 筛选结果发到飞书人工审核：
 
 ```bash

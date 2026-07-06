@@ -5,6 +5,8 @@ import json
 import sys
 from typing import Any
 
+from sqlalchemy import select
+
 from apps.worker.main import load_adapter
 from integrations.feishu.bitable import FeishuBitableClient
 from integrations.feishu.im import FeishuIMClient
@@ -58,6 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
     llm_reviews = subparsers.add_parser("feishu-send-llm-reviews", help="Send pending LLM screening reviews as Feishu cards.")
     llm_reviews.add_argument("--chat-id", default=None, help="Feishu chat id that receives review cards.")
     llm_reviews.add_argument("--limit", type=int, default=10, help="Maximum cards to send.")
+    lead_flow = subparsers.add_parser("lead-flow-once", help="Run one lead screening workflow step.")
+    lead_flow.add_argument("--chat-id", default=None, help="Feishu chat id that receives review cards.")
+    lead_flow.add_argument("--limit", type=int, default=1, help="Maximum records to move in this step.")
+    lead_flow.add_argument(
+        "--source",
+        choices=("content", "comment", "all"),
+        default="all",
+        help="Source type to screen when the next step is LLM.",
+    )
+    lead_flow.add_argument("--source-id", action="append", type=int, dest="source_ids", help="Specific local source id to screen.")
     control_panel = subparsers.add_parser("run-control-panel-once", help="Run one human-started Feishu control panel command.")
     control_panel.add_argument("--base-token", default=None, help="Feishu Base token for the control panel.")
     control_panel.add_argument("--table-id", default=None, help="Feishu table ID for the control panel.")
@@ -139,6 +151,43 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 session.commit()
                 payload = {"feishu_llm_reviews": result}
+        elif args.command == "lead-flow-once":
+            import os
+
+            from integrations.feishu.llm_review import send_pending_llm_review_cards
+            from services.lead_screening_flow import PENDING_FEISHU, advance_llm_done_to_pending_feishu
+            from services.llm_lead_screening import OpenAICompatibleLeadScreeningClient, run_llm_lead_screening
+            from storage.models import LeadScreeningResult
+
+            source_types = {"content", "comment"} if args.source == "all" else {args.source}
+            source_ids = set(args.source_ids) if args.source_ids else None
+            with SessionLocal() as session:
+                advanced = advance_llm_done_to_pending_feishu(session, limit=args.limit)
+                if advanced["advanced"] > 0:
+                    session.commit()
+                    payload = {"lead_flow": {"step": "advance_to_pending_feishu", **advanced}}
+                elif _has_pending_feishu(session, LeadScreeningResult, PENDING_FEISHU):
+                    chat_id = args.chat_id or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID")
+                    if not chat_id:
+                        parser.error("lead-flow-once requires --chat-id or FEISHU_LLM_REVIEW_CHAT_ID when sending Feishu cards")
+                    result = send_pending_llm_review_cards(
+                        session,
+                        client=FeishuIMClient(),
+                        chat_id=chat_id,
+                        limit=args.limit,
+                    )
+                    session.commit()
+                    payload = {"lead_flow": {"step": "feishu_send", **result}}
+                else:
+                    result = run_llm_lead_screening(
+                        session,
+                        client=OpenAICompatibleLeadScreeningClient(),
+                        source_entity_types=source_types,
+                        source_entity_ids=source_ids,
+                        limit=args.limit,
+                    )
+                    session.commit()
+                    payload = {"lead_flow": {"step": "llm", **result.to_dict()}}
         elif args.command == "run-control-panel-once":
             payload = {
                 "control_panel": run_control_panel_once(
@@ -167,6 +216,10 @@ def _emit(payload: dict[str, Any], *, as_json: bool, stream: Any | None = None) 
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True), file=stream)
         return
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), file=stream)
+
+
+def _has_pending_feishu(session: Any, model: Any, status: str) -> bool:
+    return session.scalar(select(model.id).where(model.workflow_status == status).limit(1)) is not None
 
 
 def _build_control_panel_actions(runner: PipelineRunner) -> dict[str, Any]:

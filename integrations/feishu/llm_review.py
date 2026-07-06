@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from integrations.feishu.webhook import verify_callback_token
+from services.lead_screening_flow import PENDING_FEISHU, REVIEWED, SENT
 from storage.models import CollectionEvent, Lead, LeadEvidence, LeadScreeningResult
 
 
@@ -113,28 +114,37 @@ def send_pending_llm_review_cards(
     client: LLMReviewCardClient,
     chat_id: str,
     limit: int = 10,
+    screening_ids: set[int] | None = None,
 ) -> dict[str, int]:
     counts = {"sent": 0, "skipped": 0, "failed": 0}
-    screenings = session.scalars(
+    statement = (
         select(LeadScreeningResult)
+        .where(LeadScreeningResult.workflow_status == PENDING_FEISHU)
         .where(LeadScreeningResult.review_status == "needs_review")
         .where(LeadScreeningResult.human_review_status.is_(None))
         .where(LeadScreeningResult.feishu_message_id.is_(None))
         .order_by(LeadScreeningResult.id.asc())
-        .limit(limit)
-    ).all()
+    )
+    if screening_ids:
+        statement = statement.where(LeadScreeningResult.id.in_(screening_ids))
+    screenings = session.scalars(statement.limit(limit)).all()
     for screening in screenings:
         if screening.id is None:
             counts["skipped"] += 1
             continue
+        screening.attempt_count = (screening.attempt_count or 0) + 1
         try:
             response = client.send_interactive_card(chat_id=chat_id, card=build_llm_review_card(screening))
-        except Exception:  # noqa: BLE001 - batch should continue; caller gets failed count.
+        except Exception as exc:  # noqa: BLE001 - batch should continue; caller gets failed count.
+            screening.last_error = str(exc)
+            screening.updated_at = _utc_now()
             counts["failed"] += 1
             continue
         screening.feishu_message_id = response.get("message_id")
         screening.feishu_chat_id = response.get("chat_id") or chat_id
         screening.feishu_card_status = "sent"
+        screening.workflow_status = SENT
+        screening.last_error = None
         screening.updated_at = _utc_now()
         counts["sent"] += 1
     session.flush()
@@ -159,6 +169,9 @@ def apply_llm_review_callback(
     existing = _existing_callback_event(session, action.callback_id)
     prior = _existing_result_review_event(session, action.screening_result_id)
     if existing is not None or screening.human_review_status is not None or prior is not None:
+        if screening.human_review_status is not None and screening.workflow_status != REVIEWED:
+            screening.workflow_status = REVIEWED
+            screening.updated_at = now or _utc_now()
         event_id = existing.id if existing is not None else prior.id if prior is not None else None
         return LLMReviewCallbackResult(
             applied=False,
@@ -175,6 +188,8 @@ def apply_llm_review_callback(
     screening.feishu_message_id = screening.feishu_message_id or action.message_id
     screening.feishu_chat_id = screening.feishu_chat_id or action.chat_id
     screening.feishu_card_status = "processed"
+    screening.workflow_status = REVIEWED
+    screening.last_error = None
     screening.updated_at = occurred_at
     _update_related_lead(session, screening, action.action)
     event = _record_review_event(session, action=action, occurred_at=occurred_at)

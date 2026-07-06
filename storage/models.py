@@ -293,6 +293,7 @@ class LeadScreeningResult(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("source_entity_type", "source_entity_id", name="uq_lead_screening_source"),
         Index("ix_lead_screening_review_status", "review_status"),
+        Index("ix_lead_screening_workflow_status", "workflow_status"),
         Index("ix_lead_screening_profile_id", "public_profile_id"),
     )
 
@@ -314,6 +315,9 @@ class LeadScreeningResult(TimestampMixin, Base):
     review_status: Mapped[str] = mapped_column(String(50), nullable=False, default="needs_review", server_default="needs_review")
     status_reason: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
+    workflow_status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending_llm", server_default="pending_llm")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
     feishu_message_id: Mapped[str | None] = mapped_column(String(255))
     feishu_chat_id: Mapped[str | None] = mapped_column(String(255))
     feishu_card_status: Mapped[str | None] = mapped_column(String(50))

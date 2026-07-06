@@ -81,6 +81,7 @@ def test_send_pending_llm_review_card_saves_message_id(factory: sessionmaker[Ses
         assert screening.feishu_message_id == "om_review_1"
         assert screening.feishu_chat_id == "oc_review"
         assert screening.feishu_card_status == "sent"
+        assert screening.workflow_status == "sent"
 
 
 def test_llm_review_callback_updates_database_once_and_updates_card(factory: sessionmaker[Session]) -> None:
@@ -266,6 +267,7 @@ def _seed_pending_screening(factory: sessionmaker[Session], *, with_lead: bool =
             llm_raw_json={"reason": "语境不足，需要人工确认"},
             review_status="needs_review",
             status_reason="置信度不足，需要人工确认",
+            workflow_status="pending_feishu",
         )
         session.add(screening)
         session.flush()

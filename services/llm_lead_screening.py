@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from intelligence.text_processing import normalize_text
+from services.lead_screening_flow import LLM_DONE, PENDING_LLM
 from storage.models import Comment, Content, Lead, LeadEvidence, LeadScreeningResult, PublicProfile
 
 
@@ -205,7 +206,8 @@ def run_llm_lead_screening(
             counts["filtered"] += 1
             continue
         seen_texts.add(normalized_source)
-        if not reprocess and _existing_screening(session, context) is not None:
+        existing = _existing_screening(session, context)
+        if not reprocess and existing is not None and existing.workflow_status != PENDING_LLM:
             counts["skipped_existing"] += 1
             continue
 
@@ -357,6 +359,9 @@ def _save_screening_result(
     screening.review_status = review_status
     screening.status_reason = decision.reason
     screening.error_message = None
+    screening.workflow_status = LLM_DONE
+    screening.attempt_count = (screening.attempt_count or 0) + 1
+    screening.last_error = None
     screening.updated_at = now
     return screening
 
@@ -378,6 +383,9 @@ def _save_failed_screening(session: Session, context: LeadScreeningContext, *, e
     screening.context_json = context.to_prompt_payload()
     screening.review_status = "needs_review"
     screening.error_message = error_message
+    screening.workflow_status = PENDING_LLM
+    screening.attempt_count = (screening.attempt_count or 0) + 1
+    screening.last_error = error_message
     screening.updated_at = now
 
 
