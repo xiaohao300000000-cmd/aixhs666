@@ -195,6 +195,26 @@ python -m apps.worker --once
 
 默认 `WORKER_ADAPTER=mediacrawler`。该后端通过 `MEDIACRAWLER_HOME` 指向项目内 `third_party/MediaCrawler`，运行其小红书 search 模式并读取 JSONL 输出。MediaCrawler 一次 search 会同时补详情和评论，适配层会缓存这些输出，后续 detail/comment 任务优先复用缓存。
 
+飞书客户跟进表同步：
+
+```bash
+python -m apps.cli --json feishu-sync
+python -m apps.cli --json feishu-pull-feedback
+```
+
+真实同步默认走开放平台应用凭证；如果应用身份没有 Base 写权限，但本机已经安装并授权 `lark-cli`，可改用用户态 CLI：
+
+```bash
+FEISHU_ENABLED=true
+FEISHU_SYNC_DRY_RUN=false
+FEISHU_BITABLE_TRANSPORT=lark_cli
+FEISHU_BITABLE_APP_TOKEN=<base_token>
+FEISHU_LEADS_TABLE_ID=<table_id>
+python -m apps.cli --json feishu-sync
+```
+
+当前已验证的客户跟进表是 `RVtDb7nGkabAMbsDkA0cvxdOnld / tblRSEpG7v0bM0WD`。
+
 登录态固化方式：
 
 - 默认 `MEDIACRAWLER_ENABLE_CDP_MODE=true`

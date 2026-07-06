@@ -46,6 +46,112 @@ def test_bitable_settings_from_env_reads_table(monkeypatch) -> None:
     assert settings.table_id == "tbl123"
 
 
+def test_bitable_settings_from_env_can_select_lark_cli_transport(monkeypatch) -> None:
+    monkeypatch.setenv("FEISHU_ENABLED", "true")
+    monkeypatch.setenv("FEISHU_BITABLE_TRANSPORT", "lark_cli")
+    monkeypatch.setenv("FEISHU_BITABLE_APP_TOKEN", "base_token")
+    monkeypatch.setenv("FEISHU_LEADS_TABLE_ID", "tbl123")
+    monkeypatch.setenv("FEISHU_LARK_CLI_BIN", "/opt/homebrew/bin/lark-cli")
+
+    settings = FeishuBitableSettings.from_env()
+
+    assert settings.enabled is True
+    assert settings.transport == "lark_cli"
+    assert settings.lark_cli_bin == "/opt/homebrew/bin/lark-cli"
+
+
+def test_bitable_client_uses_lark_cli_for_record_upsert() -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    def runner(args: list[str], stdin: str | None = None) -> str:
+        calls.append((args, stdin))
+        return '{"ok":true,"data":{"record":{"record_id":"rec_cli_1"}}}'
+
+    client = FeishuBitableClient(
+        settings=FeishuBitableSettings(
+            enabled=True,
+            app_id=None,
+            app_secret=None,
+            app_token="base_token",
+            table_id="tbl123",
+            transport="lark_cli",
+            lark_cli_bin="lark-cli",
+        ),
+        http_client=_FailingClient(),
+        command_runner=runner,
+    )
+
+    result = client.upsert_record(None, {"客户": "福州家长", "状态": "新发现"})
+
+    assert result.dry_run is False
+    assert result.record_id == "rec_cli_1"
+    assert calls == [
+        (
+            [
+                "lark-cli",
+                "base",
+                "+record-upsert",
+                "--base-token",
+                "base_token",
+                "--table-id",
+                "tbl123",
+                "--json",
+                '{"客户":"福州家长","状态":"新发现"}',
+                "--as",
+                "user",
+            ],
+            None,
+        )
+    ]
+
+
+def test_bitable_client_uses_lark_cli_for_record_list() -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    def runner(args: list[str], stdin: str | None = None) -> str:
+        calls.append((args, stdin))
+        return '{"ok":true,"data":{"records":[{"record_id":"rec1","fields":{"状态":"新发现"}}]}}'
+
+    client = FeishuBitableClient(
+        settings=FeishuBitableSettings(
+            enabled=True,
+            app_id=None,
+            app_secret=None,
+            app_token="base_token",
+            table_id="tbl123",
+            page_size=17,
+            transport="lark_cli",
+            lark_cli_bin="lark-cli",
+        ),
+        http_client=_FailingClient(),
+        command_runner=runner,
+    )
+
+    records = client.list_records()
+
+    assert records == [{"record_id": "rec1", "fields": {"状态": "新发现"}}]
+    assert calls == [
+        (
+            [
+                "lark-cli",
+                "base",
+                "+record-list",
+                "--base-token",
+                "base_token",
+                "--table-id",
+                "tbl123",
+                "--limit",
+                "17",
+                "--format",
+                "json",
+                "--as",
+                "user",
+            ],
+            None,
+        )
+    ]
+
+
 def test_bitable_settings_from_env_forces_dry_run_when_requested(monkeypatch) -> None:
     monkeypatch.setenv("FEISHU_ENABLED", "true")
     monkeypatch.setenv("FEISHU_SYNC_DRY_RUN", "true")
@@ -330,6 +436,53 @@ def test_pull_feedback_updates_manual_status(factory) -> None:
         assert lead.updated_at is not None
         assert lead.last_feedback_at == lead.updated_at
         assert lead.updated_at > original_updated_at
+
+
+class FakeCliSelectListClient:
+    settings = FeishuBitableSettings(
+        enabled=True,
+        app_id=None,
+        app_secret=None,
+        app_token="app",
+        table_id="tbl",
+        transport="lark_cli",
+    )
+
+    def list_records(self):
+        return [{"record_id": "rec1", "fields": {"状态": ["可跟进"], "负责人": "小王", "备注": "CLI 单选"}}]
+
+
+def test_pull_feedback_accepts_lark_cli_select_values(factory) -> None:
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="u2", display_name="客户")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="needs_enrichment")
+        session.add(lead)
+        session.flush()
+        session.add(
+            FeishuBitableRecord(
+                local_entity_type="lead",
+                local_entity_id=lead.id,
+                app_token="app",
+                table_id="tbl",
+                record_id="rec1",
+                last_sync_status="synced",
+            )
+        )
+        session.commit()
+
+    with factory() as session:
+        result = pull_workbench_feedback(session, FakeCliSelectListClient())
+        session.commit()
+
+    assert result["updated"] == 1
+    with factory() as session:
+        lead = session.get(Lead, 1)
+        assert lead is not None
+        assert lead.status == "qualified"
+        assert lead.owner_name == "小王"
+        assert lead.operator_note == "CLI 单选"
 
 
 def test_workbench_sync_result_exposes_dict_for_cli() -> None:

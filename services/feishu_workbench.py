@@ -98,7 +98,7 @@ def pull_workbench_feedback(session: Session, client: FeishuBitableClient) -> di
     for record in records:
         record_id = str(record.get("record_id") or "")
         fields = record.get("fields") or {}
-        status_label = fields.get("状态")
+        status_label = _single_cell_text(fields.get("状态"))
         mapping = session.scalar(
             select(FeishuBitableRecord).where(
                 FeishuBitableRecord.app_token == app_token,
@@ -114,8 +114,8 @@ def pull_workbench_feedback(session: Session, client: FeishuBitableClient) -> di
             skipped += 1
             continue
         lead.status = STATUS_FROM_FEISHU[str(status_label)]
-        lead.owner_name = fields.get("负责人") or lead.owner_name
-        lead.operator_note = fields.get("备注") or lead.operator_note
+        lead.owner_name = _single_cell_text(fields.get("负责人")) or lead.owner_name
+        lead.operator_note = _single_cell_text(fields.get("备注")) or lead.operator_note
         now = datetime.now(UTC)
         lead.last_feedback_at = now
         lead.updated_at = now
@@ -124,6 +124,16 @@ def pull_workbench_feedback(session: Session, client: FeishuBitableClient) -> di
         updated += 1
     session.flush()
     return {"updated": updated, "skipped": skipped}
+
+
+def _single_cell_text(value: Any) -> str | None:
+    if isinstance(value, list):
+        if not value:
+            return None
+        return _single_cell_text(value[0])
+    if value is None:
+        return None
+    return str(value)
 
 
 def _get_or_create_mapping(

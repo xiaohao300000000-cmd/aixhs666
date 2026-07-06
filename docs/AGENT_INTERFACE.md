@@ -29,6 +29,26 @@ python -m apps.cli --json insights --latest
 
 所有命令支持 `--json`。没有 `--json` 时也输出可读 JSON 摘要。
 
+飞书客户跟进表同步：
+
+```bash
+python -m apps.cli --json feishu-sync
+python -m apps.cli --json feishu-pull-feedback
+```
+
+默认飞书 Bitable 传输使用开放平台应用凭证。若应用身份缺少 Base 写权限，但本机 `lark-cli` 已用用户身份授权，可切换到用户态 CLI 传输：
+
+```bash
+FEISHU_ENABLED=true
+FEISHU_SYNC_DRY_RUN=false
+FEISHU_BITABLE_TRANSPORT=lark_cli
+FEISHU_BITABLE_APP_TOKEN=RVtDb7nGkabAMbsDkA0cvxdOnld
+FEISHU_LEADS_TABLE_ID=tblRSEpG7v0bM0WD
+python -m apps.cli --json feishu-sync
+```
+
+`lark_cli` 模式调用 `lark-cli base +record-upsert/list --as user`，复用当前机器的飞书 CLI 登录态，不要求 `FEISHU_APP_SECRET`。
+
 ## REST
 
 写操作仍使用 Ops Token：
@@ -150,6 +170,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 5. 读取 `result_data.insight.candidate_queries` 和 `recommended_actions`。
 6. 使用既有 `/ops/api/queries/{query_id}/priority`、`enable`、`disable` 调整策略。
 7. 对失败运行调用 `retry-run` 或 `POST /pipeline/runs/{run_id}/retry`。
+8. 需要同步人工工作台时调用 `feishu-sync`；需要回收“状态/负责人/备注”人工反馈时调用 `feishu-pull-feedback`。
 
 ## 错误处理
 
