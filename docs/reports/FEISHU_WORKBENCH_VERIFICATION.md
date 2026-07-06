@@ -122,3 +122,42 @@ View counts: 待人工确认=61, 高意向=10, 已确认可跟进=0, 已忽略=0
 Manual review uses the `状态` select field. Keep unreviewed candidates as `待确认`; change qualified candidates to `可跟进`; change rejected candidates to `已忽略`. The filtered views move records based on this status.
 
 The strict AI screening export is implemented in `services/feishu_ai_workbench.py` and covered by `tests/test_feishu_ai_workbench.py`. The tests verify that resource-only comments, guide-style posts, out-of-scope exam noise, and generic price opinions are not imported as strict customer leads.
+
+## System Control Panel
+
+The Base now includes a human-triggered control table. It does not run automatically; the local command only checks once and exits.
+
+- Table: `系统控制台`, table ID `tblpqsBvrDMWhaiW`
+- Main view: `Grid View`, view ID `vewmXNa34q`
+- Ready view: `准备执行`, view ID `vewwu7dpln`
+- Completed view: `已经完成`, view ID `vewxelCCMG`
+- Error view: `出错了`, view ID `vewWxrGtL3`
+- URL: `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblpqsBvrDMWhaiW`
+
+User-facing fields avoid implementation terms:
+
+- `指令名称`
+- `我要做什么`
+- `开始执行`
+- `现在状态`
+- `要找什么`
+- `最多看多少条`
+- `结果`
+- `哪里出错了`
+- `开始时间`
+- `完成时间`
+- `系统记录编号`
+
+Execution command:
+
+```bash
+FEISHU_CONTROL_PANEL_BASE_TOKEN=RVtDb7nGkabAMbsDkA0cvxdOnld \
+FEISHU_CONTROL_PANEL_TABLE_ID=tblpqsBvrDMWhaiW \
+python -m apps.cli --json run-control-panel-once
+```
+
+Verification used the sample row `查看系统状态（示例）`. With `开始执行=否`, the command returned no work. After setting `开始执行=是，开始`, one command run completed one record and wrote:
+
+```text
+系统正常。现在有 163 篇内容、516 条评论、641 个用户。
+```

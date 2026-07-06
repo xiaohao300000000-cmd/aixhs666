@@ -215,6 +215,16 @@ python -m apps.cli --json feishu-sync
 
 当前已验证的客户跟进表是 `RVtDb7nGkabAMbsDkA0cvxdOnld / tblRSEpG7v0bM0WD`。
 
+飞书系统控制台：
+
+```bash
+FEISHU_CONTROL_PANEL_BASE_TOKEN=RVtDb7nGkabAMbsDkA0cvxdOnld
+FEISHU_CONTROL_PANEL_TABLE_ID=tblpqsBvrDMWhaiW
+python -m apps.cli --json run-control-panel-once
+```
+
+这条命令只检查一次 `系统控制台` 表，不会后台常驻，也不会自动循环。只有表里有人把 `开始执行` 改成 `是，开始` 的记录才会被处理；处理后系统会把 `开始执行` 改回 `否`，并写入 `现在状态`、`结果` 或 `哪里出错了`。
+
 登录态固化方式：
 
 - 默认 `MEDIACRAWLER_ENABLE_CDP_MODE=true`
