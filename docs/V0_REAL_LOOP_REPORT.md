@@ -64,7 +64,7 @@ The remaining `pending_llm` row is not considered stuck: it is explicitly retrya
 
 ## Current Qualification Policy Status As Of 2026-07-07
 
-The lead-screening flow now has a minimal configurable qualification layer on top of saved LLM results. It does not call DeepSeek, does not send Feishu cards, and does not change the Feishu callback state machine.
+The lead-screening flow now has a minimal configurable qualification layer on top of saved LLM results. The qualification engine itself does not call DeepSeek, does not send Feishu cards, and does not change the Feishu callback state machine; successful LLM screening rows also persist default education Campaign `qualification_*` fields.
 
 Implemented:
 
@@ -73,7 +73,7 @@ Implemented:
   - `configs/campaigns/education_fuzhou_offline.json`
   - `configs/campaigns/ielts_nationwide_online.json`
   - `configs/campaigns/automotive_xiamen_local.json`
-- `services/qualification.py` for read-only qualification decisions and optional persistence to `lead_screening_results.qualification_*`.
+- `services/qualification.py` for qualification decisions and persistence to independent `lead_screening_results.qualification_*` fields.
 - `scripts.validate_campaign_config` for config validation.
 - `scripts.validate_qualification_offline` for aggregate-only offline validation over existing `lead_screening_results`.
 - `docs/QUALIFICATION_ARCHITECTURE_AUDIT.md` for hard-coded business assumptions and IP/location evidence audit.

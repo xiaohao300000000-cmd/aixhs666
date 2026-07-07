@@ -82,6 +82,8 @@ def test_llm_screening_uses_post_comment_and_parent_context(factory: sessionmake
         assert screening.intent_strength == "high"
         assert screening.confidence == 86
         assert screening.judgment_evidence_json == ["当前评论询问价格和试听"]
+        assert screening.qualification_policy_version == "education_fuzhou_offline_v1"
+        assert screening.qualification_decision == "qualified"
 
         lead = session.scalar(select(Lead))
         assert lead is not None

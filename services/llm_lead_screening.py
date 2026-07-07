@@ -7,6 +7,7 @@ import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 
 from sqlalchemy import select
@@ -21,6 +22,9 @@ REVIEW_CONFIDENCE_THRESHOLD = 0.65
 HIGH_CONFIDENCE_THRESHOLD = 0.75
 DEFAULT_MODEL_NAME = "deepseek-v4-flash"
 DEFAULT_API_URL = "https://api.deepseek.com"
+DEFAULT_QUALIFICATION_CAMPAIGN_CONFIG = (
+    Path(__file__).resolve().parents[1] / "configs" / "campaigns" / "education_fuzhou_offline.json"
+)
 JUNK_TEXTS = {"哈哈", "哈哈哈", "蹲", "蹲蹲", "dd", "1", "mark", "收藏", "路过", "看看"}
 SPAM_WORDS = ("私信领取", "加我领取", "资料包", "求资料", "求分享", "无偿分享", "领资料")
 REGION_KEYWORDS = ("福州", "厦门", "泉州", "上海", "北京", "广州", "深圳", "杭州", "南京", "苏州")
@@ -232,6 +236,7 @@ def run_llm_lead_screening(
             continue
 
         screening = _save_screening_result(session, context, decision, screening=claimed)
+        _apply_default_qualification(session, screening)
         counts["screened"] += 1
         counts[screening.review_status] += 1
         if screening.review_status in {"accepted", "needs_review"} and context.public_profile_id is not None:
@@ -453,6 +458,21 @@ def _save_screening_result(
     screening.last_error = None
     screening.updated_at = now
     return screening
+
+
+def _apply_default_qualification(session: Session, screening: LeadScreeningResult) -> None:
+    from platform_config.loader import load_campaign_config
+    from services.qualification import (
+        apply_qualification_result,
+        location_evidence_from_screening,
+        qualify_screening_result,
+    )
+
+    campaign_config_path = os.getenv("LEAD_QUALIFICATION_CAMPAIGN_CONFIG") or DEFAULT_QUALIFICATION_CAMPAIGN_CONFIG
+    campaign = load_campaign_config(campaign_config_path)
+    evidence = location_evidence_from_screening(screening, session=session)
+    result = qualify_screening_result(screening, campaign, location_evidence=evidence)
+    apply_qualification_result(screening, result)
 
 
 def _save_failed_screening(
