@@ -5,10 +5,14 @@ import logging
 import os
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
 from integrations.feishu.im import FeishuIMClient
-from integrations.feishu.llm_review import LLMReviewCallbackError, apply_llm_review_callback
+from integrations.feishu.llm_review import (
+    LLMReviewCallbackError,
+    apply_llm_review_callback,
+    update_llm_review_card_from_callback,
+)
 from integrations.feishu.webhook import verify_callback_token, verify_webhook_signature
 from storage.database import SessionLocal
 
@@ -20,6 +24,7 @@ logger = logging.getLogger(__name__)
 @router.post("/llm-review")
 async def llm_review_callback(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_lark_request_timestamp: Annotated[str | None, Header()] = None,
     x_lark_request_nonce: Annotated[str | None, Header()] = None,
     x_lark_signature: Annotated[str | None, Header()] = None,
@@ -53,13 +58,14 @@ async def llm_review_callback(
             result = apply_llm_review_callback(
                 session,
                 payload,
-                client=FeishuIMClient(),
+                client=None,
                 verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
             )
         except LLMReviewCallbackError as exc:
             logger.warning("Feishu LLM review callback rejected: %s", exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         session.commit()
+    background_tasks.add_task(_update_llm_review_card, payload)
     return {
         "code": 0,
         "msg": "success",
@@ -68,6 +74,19 @@ async def llm_review_callback(
         "screening_result_id": result.screening_result_id,
         "human_review_status": result.human_review_status,
     }
+
+
+def _update_llm_review_card(payload: dict[str, Any]) -> None:
+    with SessionLocal() as session:
+        try:
+            update_llm_review_card_from_callback(
+                session,
+                payload,
+                client=FeishuIMClient(),
+                verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
+            )
+        except Exception:
+            logger.exception("Feishu LLM review card update failed after callback was applied")
 
 
 def _verify_signature(

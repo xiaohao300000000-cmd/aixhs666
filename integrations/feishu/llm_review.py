@@ -183,7 +183,7 @@ def apply_llm_review_callback(
     session: Session,
     payload: dict[str, Any],
     *,
-    client: LLMReviewCardClient,
+    client: LLMReviewCardClient | None,
     verification_token: str | None = None,
     now: datetime | None = None,
 ) -> LLMReviewCallbackResult:
@@ -221,7 +221,7 @@ def apply_llm_review_callback(
     screening.updated_at = occurred_at
     _update_related_lead(session, screening, action.action)
     event = _record_review_event(session, action=action, occurred_at=occurred_at)
-    if action.update_token:
+    if client is not None and action.update_token:
         client.update_interactive_card(
             token=action.update_token,
             card=build_processed_llm_review_card(screening, action=action.action, reviewer_id=action.reviewer_id),
@@ -233,6 +233,28 @@ def apply_llm_review_callback(
         screening_result_id=action.screening_result_id,
         human_review_status=action.action.value,
     )
+
+
+def update_llm_review_card_from_callback(
+    session: Session,
+    payload: dict[str, Any],
+    *,
+    client: LLMReviewCardClient,
+    verification_token: str | None = None,
+) -> bool:
+    if not verify_callback_token(payload, verification_token):
+        raise LLMReviewCallbackError("invalid Feishu verification token")
+    action = parse_llm_review_callback_action(payload)
+    if not action.update_token:
+        return False
+    screening = session.get(LeadScreeningResult, action.screening_result_id)
+    if screening is None:
+        raise LLMReviewCallbackError(f"screening result not found: {action.screening_result_id}")
+    client.update_interactive_card(
+        token=action.update_token,
+        card=build_processed_llm_review_card(screening, action=action.action, reviewer_id=action.reviewer_id),
+    )
+    return True
 
 
 def parse_llm_review_callback_action(payload: dict[str, Any]) -> LLMReviewCallbackAction:

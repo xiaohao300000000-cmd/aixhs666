@@ -52,6 +52,11 @@ class UncertainReviewCardClient(FakeReviewCardClient):
         raise FeishuSendUncertainError(self.message)
 
 
+class FailingUpdateReviewCardClient(FakeReviewCardClient):
+    def update_interactive_card(self, *, token: str, card: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("Feishu card update timed out")
+
+
 @pytest.fixture()
 def factory() -> Iterator[sessionmaker[Session]]:
     engine = create_engine(
@@ -277,6 +282,32 @@ def test_fastapi_llm_review_callback_verifies_signature_and_applies(
     assert response.json()["applied"] is True
     with factory() as session:
         assert session.get(LeadScreeningResult, screening_id).human_review_status == "watch"
+
+
+def test_fastapi_llm_review_callback_returns_success_when_card_update_fails(
+    factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    screening_id = _seed_pending_screening(factory)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.SessionLocal", factory)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.FeishuIMClient", FailingUpdateReviewCardClient)
+    monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
+    payload = _review_payload("evt-route", screening_id, "valid")
+
+    response = TestClient(create_app()).post(
+        "/feishu/callback/llm-review",
+        content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["applied"] is True
+    with factory() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        assert screening is not None
+        assert screening.workflow_status == "reviewed"
+        assert screening.human_review_status == "valid"
+        assert screening.feishu_card_status == "processed"
 
 
 def test_build_llm_review_card_has_exactly_three_business_buttons(factory: sessionmaker[Session]) -> None:
