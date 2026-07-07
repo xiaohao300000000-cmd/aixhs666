@@ -28,6 +28,7 @@ def test_mediacrawler_search_runs_command_and_maps_outputs(tmp_path: Path) -> No
     assert page.items[0].platform_content_id == "note-001"
     assert page.items[0].platform_author_id == "creator-hash-001"
     assert page.items[0].content_type == "note"
+    assert page.items[0].region_text == "福建"
     assert page.items[0].like_count == 31_000
     assert page.items[0].collect_count == 56_000
     assert page.items[0].url == "https://www.xiaohongshu.com/explore/note-001"
@@ -56,14 +57,37 @@ def test_mediacrawler_detail_comments_and_profile_reuse_cached_search_output(tmp
 
     assert detail.title == "不报班通过KET，考前1个月做什么"
     assert detail.body_text == "完整正文"
+    assert detail.region_text == "福建"
     assert detail.tags == ("KET", "英语培训")
     assert detail.image_urls == ("https://img.example/1.jpg", "https://img.example/2.jpg")
     assert comments.items[0].platform_comment_id == "comment-001"
+    assert comments.items[0].region_text == "福州"
     assert comments.cursor.has_more is True
     assert next_comments.items[0].platform_comment_id == "comment-002"
     assert next_comments.cursor.has_more is False
     assert profile.platform_user_id == "creator-hash-001"
     assert profile.display_name == "北***爸"
+    assert profile.region_text == "福建"
+
+
+def test_mediacrawler_maps_alternate_public_region_fields(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    cached_run = config.output_root / "cached-run" / "xhs" / "jsonl"
+    cached_run.mkdir(parents=True)
+    content = _sample_content("note-001")
+    content.pop("ip_location")
+    content["ipLocation"] = "厦门"
+    comment = _sample_comment("comment-001", note_id="note-001")
+    comment.pop("ip_location")
+    comment["region"] = "泉州"
+    _write_jsonl(cached_run / "search_contents_2026-07-02.jsonl", [content])
+    _write_jsonl(cached_run / "search_comments_2026-07-02.jsonl", [comment])
+
+    adapter = MediaCrawlerXiaohongshuAdapter(config=config, runner=_unexpected_runner)
+
+    assert adapter.get_content("note-001").region_text == "厦门"
+    assert adapter.get_profile("creator-hash-001").region_text == "厦门"
+    assert adapter.list_comments("note-001").items[0].region_text == "泉州"
 
 
 def test_mediacrawler_proxy_and_pagination_flags_are_passed(tmp_path: Path) -> None:
@@ -177,6 +201,7 @@ def _sample_content(note_id: str) -> dict[str, Any]:
         "time": 1719407007000,
         "creator_hash": "creator-hash-001",
         "nickname": "北***爸",
+        "ip_location": "福建",
         "liked_count": "3.1万",
         "collected_count": "5.6万",
         "comment_count": "165",
@@ -197,6 +222,7 @@ def _sample_comment(comment_id: str, *, note_id: str) -> dict[str, Any]:
         "content": "写得特别实在",
         "creator_hash": "commenter-hash-001",
         "nickname": "X***姐",
+        "ip_location": "福州",
         "sub_comment_count": "27",
         "pictures": "",
         "parent_comment_id": "",

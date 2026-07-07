@@ -304,7 +304,7 @@ class MediaCrawlerXiaohongshuAdapter:
                     display_name=_clean_str(item.get("nickname")),
                     profile_url=None,
                     bio=None,
-                    region_text=None,
+                    region_text=_public_region_text(item),
                     public_contact_text=None,
                 )
 
@@ -327,7 +327,7 @@ class MediaCrawlerXiaohongshuAdapter:
                         display_name=_clean_str(item.get("nickname")),
                         profile_url=None,
                         bio=None,
-                        region_text=None,
+                        region_text=_public_region_text(item),
                         public_contact_text=None,
                     ),
                 )
@@ -350,7 +350,7 @@ def _search_result_from_content(item: dict[str, Any], *, rank_position: int, res
         body_text=_clean_str(item.get("desc")),
         published_at=_datetime_from_ms(item.get("time")),
         url=_safe_note_url(note_id),
-        region_text=None,
+        region_text=_public_region_text(item),
         like_count=_parse_count(item.get("liked_count")),
         comment_count=_parse_count(item.get("comment_count")),
         collect_count=_parse_count(item.get("collected_count")),
@@ -370,7 +370,7 @@ def _content_from_item(item: dict[str, Any]) -> CollectedContent:
         body_text=_clean_str(item.get("desc")),
         published_at=_datetime_from_ms(item.get("time")),
         url=_safe_note_url(note_id),
-        region_text=None,
+        region_text=_public_region_text(item),
         like_count=_parse_count(item.get("liked_count")),
         comment_count=_parse_count(item.get("comment_count")),
         collect_count=_parse_count(item.get("collected_count")),
@@ -390,7 +390,7 @@ def _comment_from_item(item: dict[str, Any]) -> CollectedComment:
         published_at=_datetime_from_ms(item.get("create_time")),
         like_count=_parse_count(item.get("like_count")),
         reply_count=_parse_count(item.get("sub_comment_count")),
-        region_text=None,
+        region_text=_public_region_text(item),
     )
 
 
@@ -420,6 +420,14 @@ def _clean_str(value: Any) -> str | None:
         return None
     stripped = str(value).strip()
     return stripped or None
+
+
+def _public_region_text(item: dict[str, Any]) -> str | None:
+    for key in ("ip_location", "ipLocation", "location", "region", "ip_location_text", "ip_location_name"):
+        value = _clean_str(item.get(key))
+        if value is not None:
+            return value
+    return None
 
 
 def _content_type(item: dict[str, Any]) -> str:
