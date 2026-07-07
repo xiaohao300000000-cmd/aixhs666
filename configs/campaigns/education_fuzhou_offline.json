@@ -1,0 +1,32 @@
+{
+  "campaign_id": "education_fuzhou_offline",
+  "name": "福州线下 KET/PET 教育",
+  "domain_id": "education",
+  "enabled": true,
+  "platforms": ["xhs"],
+  "service_mode": "offline",
+  "source_strategy": {
+    "type": "existing_database_results",
+    "default_source": "comment"
+  },
+  "qualification_policy": {
+    "minimum_intent_score": 65,
+    "maximum_signal_age_days": 90,
+    "allowed_personas": ["parent", "student_guardian"],
+    "excluded_personas": ["provider", "teacher_seller"],
+    "location_policy": {
+      "required": true,
+      "target_countries": ["中国"],
+      "target_provinces": ["福建"],
+      "target_cities": ["福州"],
+      "nearby_regions": [],
+      "allow_nationwide": false,
+      "allow_overseas": false,
+      "unknown_action": "needs_review",
+      "conflict_action": "needs_review",
+      "non_match_action": "reject"
+    },
+    "manual_review_conditions": ["model_uncertain", "location_unknown", "location_conflicting", "insufficient_evidence"]
+  },
+  "version": "education_fuzhou_offline_v1"
+}

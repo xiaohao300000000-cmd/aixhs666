@@ -1,0 +1,32 @@
+{
+  "campaign_id": "automotive_xiamen_local",
+  "name": "厦门本地买车需求",
+  "domain_id": "automotive",
+  "enabled": true,
+  "platforms": ["xhs"],
+  "service_mode": "offline",
+  "source_strategy": {
+    "type": "config_validation_only",
+    "default_source": "comment"
+  },
+  "qualification_policy": {
+    "minimum_intent_score": 70,
+    "maximum_signal_age_days": 60,
+    "allowed_personas": ["buyer", "family_buyer"],
+    "excluded_personas": ["dealer", "broker"],
+    "location_policy": {
+      "required": true,
+      "target_countries": ["中国"],
+      "target_provinces": ["福建"],
+      "target_cities": ["厦门"],
+      "nearby_regions": ["泉州", "漳州"],
+      "allow_nationwide": false,
+      "allow_overseas": false,
+      "unknown_action": "needs_review",
+      "conflict_action": "needs_review",
+      "non_match_action": "lower_priority"
+    },
+    "manual_review_conditions": ["model_uncertain", "location_unknown", "location_conflicting", "insufficient_evidence"]
+  },
+  "version": "automotive_xiamen_local_v1"
+}

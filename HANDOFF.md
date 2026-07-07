@@ -80,6 +80,8 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 
 2026-07-07 已完成真实小批量验收：使用本机 PostgreSQL 真实评论和 DeepSeek 测试 key 跑 `leads-llm-screen --source comment --limit 20`，实际尝试 20 条（跳过/过滤不占 limit），18 条成功、2 条 LLM 内容非 JSON 失败；随后只推进 `needs_review` 到 `pending_feishu`，并通过 `lark-cli` 用户态向真实飞书群发送 3 张审核卡片。发送行 `id=11,15,16` 均写入 `sent`、唯一 `feishu_message_id`、`attempt_count=1`，无重复领取或异常发送态。失败重试后剩 1 条 `pending_llm`，错误为 `LLM returned invalid JSON content: ''`，属于带错误信息的可重试状态。`lead-flow-once` JSON 输出现在包含 `workflow_counts` 和 `review_counts`，覆盖 `pending_llm`、`llm_done`、`pending_feishu`、`sending`、`sent`、`reviewed`、`failed` 等统计。
 
+2026-07-07 已新增可配置线索资格层：`platform_config/` 定义 `CampaignConfig`、`QualificationPolicy`、`LocationPolicy`、位置证据和可解释资格结果；新增三份配置 `education_fuzhou_offline`、`ielts_nationwide_online`、`automotive_xiamen_local`。`services/qualification.py` 可在不重新调用 DeepSeek、不发送飞书的情况下，对已保存 `lead_screening_results` 做离线资格判断，并把独立 `qualification_*` 字段写回模型。IP/地区审计见 `docs/QUALIFICATION_ARCHITECTURE_AUDIT.md`：当前主库 `public_profiles.region_text=0/641`、`contents.region_text=0/163`，历史评论此前没有 `region_text` 字段；本次新增可空 `comments.region_text` 和迁移 `0013_comment_region_text`，未来适配器提供公开 IP 属地时可结构化保存，历史空值不会被当作外地。离线验证结果已生成到 `.runtime/qualification-validation-result.json`，只含聚合计数不含真实评论全文或个人信息；福州线下教育配置结果为 `total_records=28, qualified=0, rejected=12, needs_review=16, location_unknown=27, location_not_matched=1`，全国线上雅思配置结果为 `total_records=28, qualified=5, rejected=12, needs_review=11, location_not_required=28`。
+
 本机普通用户入口：
 
 ```text
@@ -162,7 +164,7 @@ python -m apps.cli --json run-control-panel-once
 - 新增 `系统控制台` 表，字段使用普通话：`我要做什么`、`开始执行`、`现在状态`、`结果`、`哪里出错了`。
 - 新增 `run-control-panel-once` 命令，符合用户要求：不自动跑、不常驻，只在人为设置 `开始执行=是，开始` 后执行一次。
 - 真实验证系统控制台：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次，写回 `已完成` 和结果文字。
-- 全量测试通过：`255 passed, 4 skipped, 1 warning`。
+- 全量测试通过：`275 passed, 4 skipped, 1 warning`。
 - 当前分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`。
 
 ## 2026-07-03 今日已完成

@@ -20,7 +20,7 @@
 | 执行会话 | 主控单会话 |
 | 当前分支 | `feat/v15-agent-neutral-runtime` |
 | 阻塞数量 | 3 |
-| 最后更新 | 2026-07-07：统一 LLM/飞书流程修复 `limit` 实际处理计数，增加 LLM `screening` 领取态、飞书 `sending` 领取态和 `send_uncertain` 人工核对状态；真实 DeepSeek 小批量和 3 张飞书审核卡片已验收；全量测试 255 passed, 4 skipped |
+| 最后更新 | 2026-07-07：新增可配置 Campaign 资格层、LocationPolicy/IP 属地证据模型和离线资格验证；统一 LLM/飞书流程真实小批量已验收；全量测试 275 passed, 4 skipped |
 
 ## 阶段进度
 

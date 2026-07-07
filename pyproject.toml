@@ -32,6 +32,7 @@ include = [
     "storage*",
     "intelligence*",
     "integrations*",
+    "platform_config*",
     "services*",
 ]
 

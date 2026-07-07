@@ -60,6 +60,7 @@ EXPECTED_COLUMNS = {
         "author_profile_id",
         "body_text",
         "published_at",
+        "region_text",
         "like_count",
         "reply_count",
         "first_seen_at",

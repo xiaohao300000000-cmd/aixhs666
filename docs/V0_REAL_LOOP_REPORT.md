@@ -62,6 +62,60 @@ Live small-batch validation on 2026-07-07:
 
 The remaining `pending_llm` row is not considered stuck: it is explicitly retryable and carries the last LLM parse error. Future invalid JSON responses now record a response preview instead of only the raw JSON parser exception.
 
+## Current Qualification Policy Status As Of 2026-07-07
+
+The lead-screening flow now has a minimal configurable qualification layer on top of saved LLM results. It does not call DeepSeek, does not send Feishu cards, and does not change the Feishu callback state machine.
+
+Implemented:
+
+- `platform_config/` Pydantic models for Campaign, Qualification Policy, Location Policy, Location Evidence, location result, and qualification result.
+- JSON Campaign configs:
+  - `configs/campaigns/education_fuzhou_offline.json`
+  - `configs/campaigns/ielts_nationwide_online.json`
+  - `configs/campaigns/automotive_xiamen_local.json`
+- `services/qualification.py` for read-only qualification decisions and optional persistence to `lead_screening_results.qualification_*`.
+- `scripts.validate_campaign_config` for config validation.
+- `scripts.validate_qualification_offline` for aggregate-only offline validation over existing `lead_screening_results`.
+- `docs/QUALIFICATION_ARCHITECTURE_AUDIT.md` for hard-coded business assumptions and IP/location evidence audit.
+- Alembic migrations:
+  - `0012_qualification_results`
+  - `0013_comment_region_text`
+
+IP/location audit result:
+
+- Existing live PostgreSQL data has no populated `public_profiles.region_text` or `contents.region_text`.
+- Historical `comments` previously had no `region_text` column.
+- The main MediaCrawler path intentionally does not preserve IP location; Playwright parser fixtures can parse `ip_location` / `ipLocation`.
+- Future publicly exposed comment IP/location values can now be saved in nullable `comments.region_text`.
+- Historical empty location values are treated as `unknown`, not as non-local.
+
+Offline validation on saved real screening results:
+
+```text
+education_fuzhou_offline:
+  total_records=28
+  qualified=0
+  rejected=12
+  needs_review=16
+  location_matched=0
+  location_not_matched=1
+  location_unknown=27
+  location_conflicting=0
+  no_location_evidence=27
+  ip_only_evidence=0
+
+ielts_nationwide_online:
+  total_records=28
+  qualified=5
+  rejected=12
+  needs_review=11
+  location_not_required=28
+  no_location_evidence=27
+  ip_only_evidence=0
+```
+
+This proves the same saved records produce different location qualification outcomes under local offline and nationwide online Campaign policies. It does not claim the existing education data is semantically suitable for IELTS.
+
 Live result file: `orchestration/e2e/live_postgres_result.json`.
 
 Current live PostgreSQL counts: 6 queries, 7 search tasks, 95 comment tasks, 114 contents, 309 comments, 403 public profiles, 121 discovery relations, 118 snapshots, 102 completed tasks, 0 pending, 0 retry, 0 partial, 0 failed.

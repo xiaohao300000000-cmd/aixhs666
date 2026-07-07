@@ -1,0 +1,32 @@
+{
+  "campaign_id": "ielts_nationwide_online",
+  "name": "全国线上雅思",
+  "domain_id": "ielts",
+  "enabled": true,
+  "platforms": ["xhs"],
+  "service_mode": "online",
+  "source_strategy": {
+    "type": "existing_database_results",
+    "default_source": "comment"
+  },
+  "qualification_policy": {
+    "minimum_intent_score": 65,
+    "maximum_signal_age_days": 90,
+    "allowed_personas": ["student", "adult_learner", "parent"],
+    "excluded_personas": ["provider", "teacher_seller"],
+    "location_policy": {
+      "required": false,
+      "target_countries": [],
+      "target_provinces": [],
+      "target_cities": [],
+      "nearby_regions": [],
+      "allow_nationwide": true,
+      "allow_overseas": true,
+      "unknown_action": "accept",
+      "conflict_action": "accept",
+      "non_match_action": "accept"
+    },
+    "manual_review_conditions": ["model_uncertain", "insufficient_evidence"]
+  },
+  "version": "ielts_nationwide_online_v1"
+}

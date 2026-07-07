@@ -383,6 +383,7 @@ def _apply_comment_fields(
     stored.author_profile_id = None if author_profile is None else author_profile.id
     stored.body_text = collected.body_text
     stored.published_at = collected.published_at
+    stored.region_text = collected.region_text
     stored.like_count = collected.like_count
     stored.reply_count = collected.reply_count
     stored.last_seen_at = seen_at

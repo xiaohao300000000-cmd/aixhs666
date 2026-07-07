@@ -77,6 +77,16 @@ def test_comment_ingest_deduplicates_and_updates_mutable_fields(session: Session
     assert updated.last_seen_at == last_seen
 
 
+def test_comment_ingest_persists_region_text_when_adapter_provides_it(session: Session) -> None:
+    adapter = MockPlatformAdapter()
+    content = ingest_content(session, adapter.get_content("note-ai-001"), now=datetime(2026, 1, 1, tzinfo=UTC))
+    comment = replace(adapter.list_comments(content.platform_content_id).items[0], region_text="福州")
+
+    stored = ingest_comment(session, comment, now=datetime(2026, 1, 2, tzinfo=UTC))
+
+    assert stored.region_text == "福州"
+
+
 def test_profile_ingest_deduplicates_and_updates_profile_fields(session: Session) -> None:
     adapter = MockPlatformAdapter()
     profile = adapter.get_profile("user-author-001")

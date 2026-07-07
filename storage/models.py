@@ -94,6 +94,7 @@ class Comment(TimestampMixin, Base):
     author_profile_id: Mapped[int | None] = mapped_column(ForeignKey("public_profiles.id", ondelete="SET NULL"))
     body_text: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    region_text: Mapped[str | None] = mapped_column(String(255))
     like_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     reply_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -324,6 +325,13 @@ class LeadScreeningResult(TimestampMixin, Base):
     human_review_status: Mapped[str | None] = mapped_column(String(50))
     human_reviewer_id: Mapped[str | None] = mapped_column(String(255))
     human_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    qualification_decision: Mapped[str | None] = mapped_column(String(50))
+    qualification_reason_codes_json: Mapped[list[str] | None] = mapped_column(JSON)
+    qualification_human_reason: Mapped[str | None] = mapped_column(Text)
+    qualification_confidence: Mapped[int | None] = mapped_column(Integer)
+    qualification_evidence_ids_json: Mapped[list[str] | None] = mapped_column(JSON)
+    qualification_policy_version: Mapped[str | None] = mapped_column(String(255))
+    qualification_location_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class EnrichmentTask(TimestampMixin, Base):
