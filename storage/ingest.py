@@ -5,10 +5,10 @@ from typing import TypeAlias
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from collectors import CollectedComment, CollectedContent, CollectedProfile, CollectedSearchResult
-from storage.models import Comment, Content, DiscoveryRelation, PublicProfile, Query
+from storage.models import CollectionEvent, Comment, Content, DiscoveryRelation, PublicProfile, Query
 
 
 CollectedContentLike: TypeAlias = CollectedContent | CollectedSearchResult
@@ -342,7 +342,7 @@ def _apply_profile_fields(profile: PublicProfile, collected: CollectedProfile, *
     profile.display_name = collected.display_name
     profile.profile_url = collected.profile_url
     profile.bio = collected.bio
-    profile.region_text = collected.region_text
+    _apply_region_text(profile, collected.region_text, entity_type="public_profile")
     profile.public_contact_text = collected.public_contact_text
     profile.last_seen_at = seen_at
     profile.updated_at = seen_at
@@ -361,7 +361,7 @@ def _apply_content_fields(
     content.body_text = collected.body_text
     content.published_at = collected.published_at
     content.url = collected.url
-    content.region_text = collected.region_text
+    _apply_region_text(content, collected.region_text, entity_type="content")
     content.like_count = collected.like_count
     content.comment_count = collected.comment_count
     content.collect_count = collected.collect_count
@@ -383,8 +383,54 @@ def _apply_comment_fields(
     stored.author_profile_id = None if author_profile is None else author_profile.id
     stored.body_text = collected.body_text
     stored.published_at = collected.published_at
-    stored.region_text = collected.region_text
+    _apply_region_text(stored, collected.region_text, entity_type="comment")
     stored.like_count = collected.like_count
     stored.reply_count = collected.reply_count
     stored.last_seen_at = seen_at
     stored.updated_at = seen_at
+
+
+def _apply_region_text(entity: PublicProfile | Content | Comment, incoming_value: str | None, *, entity_type: str) -> bool:
+    incoming = _clean_region_text(incoming_value)
+    existing = _clean_region_text(entity.region_text)
+    if incoming is None:
+        return False
+    if existing is None:
+        entity.region_text = incoming
+        return True
+    if existing == incoming:
+        return False
+    _record_region_text_conflict(entity, entity_type=entity_type, existing=existing, incoming=incoming)
+    return False
+
+
+def _record_region_text_conflict(
+    entity: PublicProfile | Content | Comment,
+    *,
+    entity_type: str,
+    existing: str,
+    incoming: str,
+) -> None:
+    session = object_session(entity)
+    entity_id = entity.id
+    if session is None or entity_id is None:
+        return
+    session.add(
+        CollectionEvent(
+            event_type="region_text_conflict",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            event_data={
+                "field": "region_text",
+                "existing_region_text": existing,
+                "incoming_region_text": incoming,
+            },
+        )
+    )
+
+
+def _clean_region_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None

@@ -133,6 +133,7 @@ def test_claim_pending_feishu_reviews_uses_postgres_skip_locked(postgres_session
         public_profile_id=profile.id,
         review_status="needs_review",
         workflow_status="pending_feishu",
+        qualification_decision="needs_review",
     )
     second_screening = LeadScreeningResult(
         platform="xhs",
@@ -141,6 +142,7 @@ def test_claim_pending_feishu_reviews_uses_postgres_skip_locked(postgres_session
         public_profile_id=profile.id,
         review_status="needs_review",
         workflow_status="pending_feishu",
+        qualification_decision="needs_review",
     )
     first_session.add_all([first_screening, second_screening])
     first_session.commit()

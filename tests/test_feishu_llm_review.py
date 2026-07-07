@@ -95,6 +95,55 @@ def test_send_pending_llm_review_card_saves_message_id(factory: sessionmaker[Ses
         assert screening.workflow_status == "sent"
 
 
+def test_send_pending_llm_review_card_can_send_qualified_qualification(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_pending_screening(factory, review_status="accepted", qualification_decision="qualified")
+    client = FakeReviewCardClient()
+
+    with factory() as session:
+        result = send_pending_llm_review_cards(session, client=client, chat_id="oc_review", limit=1)
+        session.commit()
+
+    assert result == {"sent": 1, "skipped": 0, "failed": 0}
+    assert len(client.sent_cards) == 1
+    with factory() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        assert screening.workflow_status == "sent"
+
+
+def test_send_pending_llm_review_card_skips_rejected_qualification(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_pending_screening(factory, qualification_decision="rejected")
+    client = FakeReviewCardClient()
+
+    with factory() as session:
+        result = send_pending_llm_review_cards(session, client=client, chat_id="oc_review", limit=1)
+        session.commit()
+
+    assert result == {"sent": 0, "skipped": 0, "failed": 0}
+    assert client.sent_cards == []
+    with factory() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        assert screening.workflow_status == "pending_feishu"
+
+
+def test_build_llm_review_card_includes_qualification_location_and_source_url(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_pending_screening(factory, qualification_decision="needs_review")
+
+    with factory() as session:
+        card = build_llm_review_card(session.get(LeadScreeningResult, screening_id))
+
+    card_text = json.dumps(card, ensure_ascii=False)
+    assert "资格判断" in card_text
+    assert "needs_review" in card_text
+    assert "地区原始值" in card_text
+    assert "福建" in card_text
+    assert "标准化地区" in card_text
+    assert "province=福建, city=无" in card_text
+    assert "Campaign地区匹配" in card_text
+    assert "province_matched_city_missing" in card_text
+    assert "原始链接" in card_text
+    assert "https://www.xiaohongshu.com/explore/note-1" in card_text
+
+
 def test_two_feishu_senders_cannot_claim_the_same_pending_screening(factory: sessionmaker[Session]) -> None:
     screening_id = _seed_pending_screening(factory)
 
@@ -294,7 +343,13 @@ def test_feishu_im_lark_cli_transport_sends_and_updates_cards() -> None:
     assert calls[1][0][:4] == ["lark-cli", "api", "POST", "/open-apis/interactive/v1/card/update"]
 
 
-def _seed_pending_screening(factory: sessionmaker[Session], *, with_lead: bool = False) -> int:
+def _seed_pending_screening(
+    factory: sessionmaker[Session],
+    *,
+    with_lead: bool = False,
+    review_status: str = "needs_review",
+    qualification_decision: str = "needs_review",
+) -> int:
     with factory() as session:
         profile = PublicProfile(platform="xhs", platform_user_id="user-1", display_name="福州家长")
         session.add(profile)
@@ -316,11 +371,43 @@ def _seed_pending_screening(factory: sessionmaker[Session], *, with_lead: bool =
                 "post_body": "孩子压线，家长在讨论暑假冲刺。",
                 "current_comment": "PET 冲刺班多少钱，可以试听吗？",
                 "parent_comment": "福州哪家机构靠谱？",
+                "source_url": "https://www.xiaohongshu.com/explore/note-1",
             },
             llm_raw_json={"reason": "语境不足，需要人工确认"},
-            review_status="needs_review",
+            review_status=review_status,
             status_reason="置信度不足，需要人工确认",
             workflow_status="pending_feishu",
+            qualification_decision=qualification_decision,
+            qualification_reason_codes_json=["location_unknown"],
+            qualification_human_reason=f"{qualification_decision}: 地区未知",
+            qualification_confidence=48,
+            qualification_policy_version="education_fuzhou_offline_v1",
+            qualification_location_json={
+                "resolved_location": {
+                    "country": "中国",
+                    "province": "福建",
+                    "city": None,
+                    "district": None,
+                    "raw_value": "福建",
+                    "source": "ip_region",
+                },
+                "match_status": "unknown",
+                "reason": "province_matched_city_missing",
+                "confidence": 0.85,
+                "evidence": [
+                    {
+                        "source": "ip_region",
+                        "raw_value": "福建",
+                        "normalized_country": "中国",
+                        "normalized_province": "福建",
+                        "normalized_city": None,
+                        "normalized_district": None,
+                        "confidence": 0.85,
+                        "observed_at": "2026-07-07T00:00:00Z",
+                        "evidence_text": "comment.region_text",
+                    }
+                ],
+            },
         )
         session.add(screening)
         session.flush()

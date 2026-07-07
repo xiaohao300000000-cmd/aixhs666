@@ -19,7 +19,7 @@ from storage import (
     stable_text_hash,
 )
 from storage.database import Base
-from storage.models import Comment, Content, DiscoveryRelation, PublicProfile, Query
+from storage.models import CollectionEvent, Comment, Content, DiscoveryRelation, PublicProfile, Query
 from storage.text_hash import normalize_text_for_hash
 
 
@@ -87,6 +87,74 @@ def test_comment_ingest_persists_region_text_when_adapter_provides_it(session: S
     assert stored.region_text == "福州"
 
 
+def test_region_text_empty_update_does_not_overwrite_existing_value(session: Session) -> None:
+    adapter = MockPlatformAdapter()
+    content = ingest_content(
+        session,
+        replace(adapter.get_content("note-ai-001"), region_text="福建"),
+        now=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    comment = replace(adapter.list_comments(content.platform_content_id).items[0], region_text="福州")
+    stored_comment = ingest_comment(session, comment, now=datetime(2026, 1, 2, tzinfo=UTC))
+    profile = ingest_profile(
+        session,
+        CollectedProfile(
+            platform="xhs",
+            platform_user_id="profile-region-user",
+            display_name="家长",
+            profile_url=None,
+            bio=None,
+            region_text="上海",
+            public_contact_text=None,
+        ),
+        now=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+
+    ingest_content(session, replace(adapter.get_content("note-ai-001"), region_text=None), now=datetime(2026, 1, 4, tzinfo=UTC))
+    ingest_comment(session, replace(comment, region_text=None), now=datetime(2026, 1, 5, tzinfo=UTC))
+    ingest_profile(
+        session,
+        CollectedProfile(
+            platform="xhs",
+            platform_user_id="profile-region-user",
+            display_name="家长",
+            profile_url=None,
+            bio=None,
+            region_text=None,
+            public_contact_text=None,
+        ),
+        now=datetime(2026, 1, 6, tzinfo=UTC),
+    )
+
+    assert content.region_text == "福建"
+    assert stored_comment.region_text == "福州"
+    assert profile.region_text == "上海"
+
+
+def test_region_text_conflict_does_not_overwrite_and_records_event(session: Session) -> None:
+    adapter = MockPlatformAdapter()
+    content = ingest_content(
+        session,
+        replace(adapter.get_content("note-ai-001"), region_text="福建"),
+        now=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    updated = ingest_content(
+        session,
+        replace(adapter.get_content("note-ai-001"), region_text="上海"),
+        now=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    assert updated.id == content.id
+    assert updated.region_text == "福建"
+    event = session.scalar(select(CollectionEvent).where(CollectionEvent.event_type == "region_text_conflict"))
+    assert event is not None
+    assert event.entity_type == "content"
+    assert event.entity_id == content.id
+    assert event.event_data["existing_region_text"] == "福建"
+    assert event.event_data["incoming_region_text"] == "上海"
+
+
 def test_profile_ingest_deduplicates_and_updates_profile_fields(session: Session) -> None:
     adapter = MockPlatformAdapter()
     profile = adapter.get_profile("user-author-001")
@@ -102,7 +170,7 @@ def test_profile_ingest_deduplicates_and_updates_profile_fields(session: Session
             display_name="Updated Lab",
             profile_url=profile.profile_url,
             bio="Updated profile text.",
-            region_text="Shenzhen",
+            region_text=profile.region_text,
             public_contact_text="new@example.invalid",
         ),
         now=last_seen,
@@ -112,7 +180,7 @@ def test_profile_ingest_deduplicates_and_updates_profile_fields(session: Session
     assert session.scalars(select(PublicProfile)).all() == [stored]
     assert updated.display_name == "Updated Lab"
     assert updated.bio == "Updated profile text."
-    assert updated.region_text == "Shenzhen"
+    assert updated.region_text == profile.region_text
     assert updated.public_contact_text == "new@example.invalid"
     assert updated.first_seen_at == first_seen
     assert updated.last_seen_at == last_seen

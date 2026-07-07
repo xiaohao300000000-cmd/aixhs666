@@ -62,15 +62,15 @@ class MediaCrawlerConfig:
     @classmethod
     def from_env(cls) -> "MediaCrawlerConfig":
         default_home = Path(__file__).resolve().parents[2] / "third_party" / "MediaCrawler"
-        home = Path(os.getenv("MEDIACRAWLER_HOME", str(default_home))).expanduser()
-        python_executable = Path(
+        home = _absolute_path(Path(os.getenv("MEDIACRAWLER_HOME", str(default_home))).expanduser())
+        python_executable = _absolute_path(Path(
             os.getenv("MEDIACRAWLER_PYTHON", str(home / ".venv" / "bin" / "python"))
-        ).expanduser()
+        ).expanduser())
         log_dir_raw = _empty_to_none(os.getenv("MEDIACRAWLER_LOG_DIR", ".runtime/mediacrawler-logs"))
         return cls(
             home=home,
             python_executable=python_executable,
-            output_root=Path(os.getenv("MEDIACRAWLER_OUTPUT_ROOT", ".runtime/mediacrawler-runs")).expanduser(),
+            output_root=_absolute_path(Path(os.getenv("MEDIACRAWLER_OUTPUT_ROOT", ".runtime/mediacrawler-runs")).expanduser()),
             login_type=os.getenv("MEDIACRAWLER_LOGIN_TYPE", "qrcode"),
             headless=_env_bool("MEDIACRAWLER_HEADLESS", default=False),
             get_comments=_env_bool("MEDIACRAWLER_GET_COMMENTS", default=True),
@@ -80,7 +80,7 @@ class MediaCrawlerConfig:
             timeout_seconds=int(os.getenv("MEDIACRAWLER_TIMEOUT_SECONDS", "600")),
             assume_has_more=_env_bool("MEDIACRAWLER_ASSUME_HAS_MORE", default=False),
             proxy_server=_empty_to_none(os.getenv("MEDIACRAWLER_PROXY_SERVER")),
-            log_dir=Path(log_dir_raw).expanduser() if log_dir_raw else None,
+            log_dir=_absolute_path(Path(log_dir_raw).expanduser()) if log_dir_raw else None,
             enable_cdp_mode=_env_bool("MEDIACRAWLER_ENABLE_CDP_MODE", default=True),
             cdp_connect_existing=_env_bool("MEDIACRAWLER_CDP_CONNECT_EXISTING", default=False),
             cdp_debug_port=int(os.getenv("MEDIACRAWLER_CDP_DEBUG_PORT", "9222")),
@@ -192,7 +192,7 @@ class MediaCrawlerXiaohongshuAdapter:
         ).resolve()
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        crawler_count = max(20, limit)
+        crawler_count = max(1, limit)
         command = [
             str(self.config.python_executable),
             "main.py",
@@ -420,6 +420,10 @@ def _clean_str(value: Any) -> str | None:
         return None
     stripped = str(value).strip()
     return stripped or None
+
+
+def _absolute_path(path: Path) -> Path:
+    return path if path.is_absolute() else Path.cwd() / path
 
 
 def _public_region_text(item: dict[str, Any]) -> str | None:

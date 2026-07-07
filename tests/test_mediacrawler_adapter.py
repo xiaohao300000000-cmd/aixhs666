@@ -35,6 +35,7 @@ def test_mediacrawler_search_runs_command_and_maps_outputs(tmp_path: Path) -> No
     assert "secret-token" not in (config.log_dir / next(config.log_dir.iterdir()).name).read_text(encoding="utf-8")
     assert calls[0][calls[0].index("--keywords") + 1] == "KET 没过怎么办"
     assert calls[0][calls[0].index("--get_comment") + 1] == "true"
+    assert calls[0][calls[0].index("--crawler_max_notes_count") + 1] == "20"
     assert Path(calls[0][calls[0].index("--save_data_path") + 1]).is_absolute()
 
 
@@ -106,6 +107,7 @@ def test_mediacrawler_proxy_and_pagination_flags_are_passed(tmp_path: Path) -> N
 
     command = commands[0]
     assert command[command.index("--start") + 1] == "2"
+    assert command[command.index("--crawler_max_notes_count") + 1] == "1"
     assert command[command.index("--enable_ip_proxy") + 1] == "true"
     assert command[command.index("--static_proxy_url") + 1] == "http://127.0.0.1:7897"
     assert page.cursor.has_more is True
@@ -126,6 +128,22 @@ def test_worker_defaults_to_mediacrawler_adapter(monkeypatch: Any) -> None:
     adapter = load_adapter("xhs")
 
     assert isinstance(adapter, MediaCrawlerXiaohongshuAdapter)
+
+
+def test_mediacrawler_config_from_env_resolves_relative_paths(monkeypatch: Any) -> None:
+    monkeypatch.setenv("MEDIACRAWLER_HOME", "third_party/MediaCrawler")
+    monkeypatch.setenv("MEDIACRAWLER_PYTHON", "third_party/MediaCrawler/.venv/bin/python")
+    monkeypatch.setenv("MEDIACRAWLER_OUTPUT_ROOT", ".runtime/mediacrawler-runs")
+    monkeypatch.setenv("MEDIACRAWLER_LOG_DIR", ".runtime/mediacrawler-logs")
+
+    config = MediaCrawlerConfig.from_env()
+
+    assert config.home.is_absolute()
+    assert config.python_executable.is_absolute()
+    assert str(config.python_executable).endswith("third_party/MediaCrawler/.venv/bin/python")
+    assert config.output_root.is_absolute()
+    assert config.log_dir is not None
+    assert config.log_dir.is_absolute()
 
 
 def test_mediacrawler_login_state_environment_is_passed(tmp_path: Path) -> None:

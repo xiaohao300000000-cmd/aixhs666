@@ -28,7 +28,7 @@ def advance_llm_done_to_pending_feishu(
     statement = (
         select(LeadScreeningResult)
         .where(LeadScreeningResult.workflow_status == LLM_DONE)
-        .where(LeadScreeningResult.review_status == "needs_review")
+        .where(LeadScreeningResult.qualification_decision.in_(("qualified", "needs_review")))
         .where(LeadScreeningResult.human_review_status.is_(None))
         .where(LeadScreeningResult.feishu_message_id.is_(None))
         .order_by(LeadScreeningResult.id.asc())

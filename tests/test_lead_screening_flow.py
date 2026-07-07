@@ -129,6 +129,7 @@ def test_failures_record_last_error_and_attempt_count(factory: sessionmaker[Sess
         assert screening.attempt_count == 0
         assert screening.last_error == "LLM temporarily unavailable"
         screening.workflow_status = "pending_feishu"
+        screening.qualification_decision = "needs_review"
         session.commit()
 
     with factory() as session:

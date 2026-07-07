@@ -81,6 +81,7 @@ def build_llm_review_card(screening: LeadScreeningResult) -> dict[str, Any]:
                 {"tag": "markdown", "content": _metadata_markdown(screening)},
                 {"tag": "markdown", "content": f"**上下文摘要**\n{_context_summary(context)}{dashboard_line}"},
                 {"tag": "markdown", "content": f"**证据**\n{_evidence_markdown(evidence)}"},
+                {"tag": "markdown", "content": _qualification_markdown(screening, context)},
                 {"tag": "markdown", "content": f"**AI说明**\n{screening.status_reason or _raw_reason(screening) or '无'}"},
                 _button("有效", LLMReviewAction.VALID, screening.id, "primary_filled"),
                 _button("无效", LLMReviewAction.INVALID, screening.id, "danger"),
@@ -160,7 +161,7 @@ def claim_pending_llm_review_cards(
     statement = (
         select(LeadScreeningResult)
         .where(LeadScreeningResult.workflow_status == PENDING_FEISHU)
-        .where(LeadScreeningResult.review_status == "needs_review")
+        .where(LeadScreeningResult.qualification_decision.in_(("qualified", "needs_review")))
         .where(LeadScreeningResult.human_review_status.is_(None))
         .where(LeadScreeningResult.feishu_message_id.is_(None))
         .order_by(LeadScreeningResult.id.asc())
@@ -371,6 +372,38 @@ def _metadata_markdown(screening: LeadScreeningResult) -> str:
             f"**置信度**：{screening.confidence or 0}%",
         ]
     )
+
+
+def _qualification_markdown(screening: LeadScreeningResult, context: dict[str, Any]) -> str:
+    location = screening.qualification_location_json or {}
+    resolved = location.get("resolved_location") if isinstance(location.get("resolved_location"), dict) else {}
+    raw_value = resolved.get("raw_value") or _first_location_raw(location)
+    normalized = (
+        f"province={resolved.get('province') or '无'}, "
+        f"city={resolved.get('city') or '无'}"
+    )
+    lines = [
+        "**资格判断**",
+        f"- decision：{screening.qualification_decision or '未知'}",
+        f"- reason：{screening.qualification_human_reason or '无'}",
+        f"- 地区原始值：{raw_value or '无'}",
+        f"- 标准化地区：{normalized}",
+        f"- Campaign地区匹配：{location.get('match_status') or '未知'} / {location.get('reason') or '无'}",
+    ]
+    source_url = str(context.get("source_url") or "").strip()
+    if source_url:
+        lines.append(f"- 原始链接：{source_url}")
+    return "\n".join(lines)
+
+
+def _first_location_raw(location: dict[str, Any]) -> str | None:
+    evidence = location.get("evidence")
+    if not isinstance(evidence, list):
+        return None
+    for item in evidence:
+        if isinstance(item, dict) and item.get("raw_value"):
+            return str(item["raw_value"])
+    return None
 
 
 def _header_template(screening: LeadScreeningResult) -> str:

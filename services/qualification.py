@@ -14,6 +14,7 @@ from platform_config.models import (
     QualificationDecision,
     QualificationResult,
 )
+from services.location_normalization import normalize_location_text
 from storage.models import Comment, Content, LeadScreeningResult, PublicProfile
 
 
@@ -202,6 +203,8 @@ def summarize_qualification_results(
         "location_not_required": 0,
         "no_location_evidence": 0,
         "ip_only_evidence": 0,
+        "province_only": 0,
+        "city_level": 0,
     }
     rows = session.scalars(select(LeadScreeningResult).order_by(LeadScreeningResult.id.asc())).all()
     for screening in rows:
@@ -214,6 +217,10 @@ def summarize_qualification_results(
             counts["no_location_evidence"] += 1
         if evidence and all(item.source.value == "ip_region" for item in evidence):
             counts["ip_only_evidence"] += 1
+        if any(item.normalized_province and item.normalized_city is None for item in evidence):
+            counts["province_only"] += 1
+        if any(item.normalized_city for item in evidence):
+            counts["city_level"] += 1
     return counts
 
 
@@ -319,69 +326,29 @@ def _structured_location_evidence(session: Session, screening: LeadScreeningResu
     return evidence
 
 
-_CITY_TO_PROVINCE = {
-    "北京": "北京",
-    "上海": "上海",
-    "广州": "广东",
-    "深圳": "广东",
-    "杭州": "浙江",
-    "南京": "江苏",
-    "苏州": "江苏",
-    "成都": "四川",
-    "重庆": "重庆",
-    "武汉": "湖北",
-    "西安": "陕西",
-    "福州": "福建",
-    "厦门": "福建",
-    "泉州": "福建",
-    "漳州": "福建",
-    "天津": "天津",
-    "郑州": "河南",
-    "长沙": "湖南",
-    "合肥": "安徽",
-    "青岛": "山东",
-    "宁波": "浙江",
-    "佛山": "广东",
-    "东莞": "广东",
-}
-_PROVINCES = {"中国", "福建", "上海", "北京", "广东", "浙江", "江苏", "四川", "重庆", "湖北", "陕西", "天津", "河南", "湖南", "安徽", "山东"}
-
-
 def _evidence_from_text(source: str, text: str, *, observed_at: datetime, evidence_text: str) -> list[LocationEvidence]:
-    values: list[LocationEvidence] = []
-    for city, province in _CITY_TO_PROVINCE.items():
-        if city in text:
-            values.append(
-                LocationEvidence(
-                    source=source,
-                    raw_value=city,
-                    normalized_country="中国",
-                    normalized_province=province,
-                    normalized_city=city,
-                    normalized_district=None,
-                    confidence=0.65 if source in {"content_text", "comment_text"} else 0.85,
-                    observed_at=observed_at,
-                    evidence_text=evidence_text,
-                )
-            )
-    if values:
-        return values
-    for province in _PROVINCES:
-        if province != "中国" and province in text:
-            values.append(
-                LocationEvidence(
-                    source=source,
-                    raw_value=province,
-                    normalized_country="中国",
-                    normalized_province=province,
-                    normalized_city=None,
-                    normalized_district=None,
-                    confidence=0.55 if source in {"content_text", "comment_text"} else 0.8,
-                    observed_at=observed_at,
-                    evidence_text=evidence_text,
-                )
-            )
-    return values
+    location = normalize_location_text(text)
+    if location.is_unknown:
+        return []
+    return [
+        LocationEvidence(
+            source=source,
+            raw_value=location.raw_value,
+            normalized_country=location.normalized_country,
+            normalized_province=location.normalized_province,
+            normalized_city=location.normalized_city,
+            normalized_district=location.normalized_district,
+            confidence=_location_confidence(source, city_level=location.normalized_city is not None),
+            observed_at=observed_at,
+            evidence_text=evidence_text,
+        )
+    ]
+
+
+def _location_confidence(source: str, *, city_level: bool) -> float:
+    if source in {"content_text", "comment_text"}:
+        return 0.65 if city_level else 0.55
+    return 0.85 if city_level else 0.8
 
 
 def _dedupe_evidence(evidence: list[LocationEvidence]) -> list[LocationEvidence]:

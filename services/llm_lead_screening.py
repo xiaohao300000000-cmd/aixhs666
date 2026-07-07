@@ -49,6 +49,7 @@ class LeadScreeningContext:
     author_display_name: str
     profile_region: str
     profile_bio: str
+    source_url: str = ""
 
     def to_prompt_payload(self) -> dict[str, Any]:
         return {
@@ -61,6 +62,7 @@ class LeadScreeningContext:
             "author_display_name": self.author_display_name,
             "profile_region": self.profile_region,
             "profile_bio": self.profile_bio,
+            "source_url": self.source_url,
         }
 
 
@@ -308,6 +310,7 @@ def _content_context(content: Content) -> LeadScreeningContext:
         author_display_name=(profile.display_name if profile else "") or "",
         profile_region=(profile.region_text if profile else "") or "",
         profile_bio=(profile.bio if profile else "") or "",
+        source_url=content.url or "",
     )
 
 
@@ -329,6 +332,7 @@ def _comment_context(comment: Comment) -> LeadScreeningContext:
         author_display_name=(profile.display_name if profile else "") or "",
         profile_region=(profile.region_text if profile else "") or "",
         profile_bio=(profile.bio if profile else "") or "",
+        source_url=(content.url if content else "") or "",
     )
 
 
