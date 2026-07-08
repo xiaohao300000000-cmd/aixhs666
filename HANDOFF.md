@@ -26,7 +26,7 @@ d54f793 feat: harden xhs location evidence workflow
 
 ```text
 .venv/bin/pytest -q
-297 passed, 4 skipped, 1 warning
+301 passed, 4 skipped, 1 warning
 ```
 
 GitHub 更新规则已调整：后续默认在 `main` 上提交和推送，除非明确需要新功能分支。当前工作区只允许保留本地未跟踪笔记，不得把密钥、cookie、Webhook、数据库密码或完整用户隐私数据提交到仓库。
@@ -99,6 +99,8 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 
 2026-07-09 已完成当前主线整理和发送链路降风险：`feat/v15-agent-neutral-runtime` 已快进合并到 `main` 并推送；CLI/API 入口支持加载本地 `.env`，测试进程默认跳过本机 `.env` 避免环境污染；飞书跟进话术审批卡的“发送”按钮现在只审批入库为 `approved_to_send`，不再在飞书回调线程里直接打开小红书发送。真实小红书发送被隔离到 `send_approved_outreach()`，后续应由独立 worker 或人工触发入口处理。当前小红书私信真实发送因本机浏览器/网络环境无法稳定打开小红书页面而搁置，用户明确要求不要改 Clash；不要为了完成发送而恢复回调内直接发送或修改系统代理配置。
 
+2026-07-09 已新增正式飞书 AI 筛选工作台增量同步命令：`python -m apps.cli --json feishu-ai-review-sync`。该命令读取 `lead_screening_results` 中 DeepSeek 已产出的 `accepted` / `needs_review`，增量写入 `AI筛选客户线索` 和 `AI筛选证据明细` 两张飞书表；复用 `feishu_bitable_records` 保存映射，重复执行会更新原记录，不重复创建。默认表 ID 为 `tblAHiwa7ip0IkxQ` 和 `tblWuVvYREtAPHGs`，可用 `FEISHU_AI_REVIEW_CUSTOMER_TABLE_ID` / `FEISHU_AI_REVIEW_EVIDENCE_TABLE_ID` 覆盖。为兼容现有 Base 字段，DeepSeek、Campaign 和地区信息写入现有字段，不要求先新增字段。
+
 本机普通用户入口：
 
 ```text
@@ -152,7 +154,7 @@ python -m apps.cli --json run-control-panel-once
 1. 先不做新的小红书采集；继续用旧数据验证 DeepSeek、Campaign、飞书审核和话术审批闭环。
 2. 为 `approved_to_send` 增加受控发送入口或 worker，但在浏览器/网络问题解决前不要真实触发小红书发送。
 3. 把 `AI筛选客户线索` 的主字段从 `客户` 优化为更适合卡片展示的字段，或新建一张“客户审核卡片表”，让卡片标题直接显示 `需求摘要`。
-4. 增加正式命令 `feishu-ai-review-sync`：从本地库重新筛选，增量写入 `AI筛选客户线索` / `AI筛选证据明细`，避免以后手工脚本导入。
+4. 把 `feishu-ai-review-sync` 挂到飞书 `系统控制台` 或后续 worker，让它可以被普通用户显式触发。
 5. 对 61 条 `待人工确认` 做人工审核，标记 `可跟进` / `已忽略`，记录误判类型。
 6. 用 `系统控制台` 执行一次非破坏性真实指令，例如 `查看系统状态`，确认普通用户流程可复现。
 7. 更新 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md`，补充 2026-07-09 之后的真实点击和审批状态。
@@ -163,7 +165,7 @@ python -m apps.cli --json run-control-panel-once
 
 - 飞书 Base 旧工作台里仍有规则型 AI 结果；61 条待人工确认里有噪音。
 - `AI筛选客户线索` 当前主字段仍是 `客户`，很多行显示 `未知用户`，卡片体验还不够好。
-- `feishu-ai-review-sync` 尚未做成正式命令；当前 71/72 条是已导入的真实表数据，但后续新增数据不会自动追加到这两张 AI 筛选表。
+- `feishu-ai-review-sync` 已做成正式命令；当前还需要本机命令显式触发，尚未挂入飞书系统控制台或常驻 worker。
 - `系统控制台` 是人工触发的一次性命令；没有后台自动轮询，符合用户要求，但需要有人在本机运行命令。
 - `找新客户` 会触发真实采集，仍受小红书登录态、平台风控和 MediaCrawler 运行状态影响；当前用户要求先不做采集。
 - 小红书真实私信发送暂时搁置：Safari/Chrome/Playwright 在当前 VPN/网络环境下无法稳定打开小红书，用户要求不要改 Clash。飞书话术审批按钮只能写入 `approved_to_send`，不能伪造成已发送。
@@ -180,7 +182,8 @@ python -m apps.cli --json run-control-panel-once
 - CLI/API 入口加载本地 `.env`；pytest 进程默认跳过本机 `.env`，避免真实配置污染单元测试。
 - 飞书话术审批卡“发送”按钮改为审批入库，不再在回调线程里直接执行小红书发送。
 - 新增 `send_approved_outreach()` 作为后续独立发送入口；发送失败会记录 `failed`、`last_error` 和 `attempt_count`。
-- 全量测试通过：`297 passed, 4 skipped, 1 warning`。
+- 新增 `feishu-ai-review-sync`，DeepSeek 新结果可增量同步到 `AI筛选客户线索` / `AI筛选证据明细`。
+- 全量测试通过：`301 passed, 4 skipped, 1 warning`。
 
 ## 2026-07-06 今日已完成
 

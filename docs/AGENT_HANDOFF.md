@@ -101,11 +101,11 @@ git worktree list
 已完成任务：T01-T22；DeepSeek 筛选、Campaign 资格判断、飞书 LLM 审核、飞书话术审批入库
 进行中任务：用旧数据继续验证真实闭环；暂不做新的小红书采集
 活跃 Worker：无长期常驻 worker
-待验收：approved_to_send 后的受控小红书发送入口；feishu-ai-review-sync；长期稳定运行
+待验收：approved_to_send 后的受控小红书发送入口；feishu-ai-review-sync 挂入控制台/worker；长期稳定运行
 阻塞：当前浏览器/网络环境无法稳定打开小红书私信页，用户要求不要改 Clash
 文件锁：无
 下一步：先完善旧数据闭环和飞书审核/审批体验，再恢复真实发送
-最后一次全量测试：.venv/bin/pytest -q -> 297 passed, 4 skipped, 1 warning
+最后一次全量测试：.venv/bin/pytest -q -> 301 passed, 4 skipped, 1 warning
 ```
 
 接手时不要以旧功能分支为主线。除非用户明确要求新分支，默认在 `main` 上继续提交并推送。

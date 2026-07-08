@@ -32,7 +32,7 @@
 
 - GitHub 主分支：`main`
 - 最新提交：`f4e24c9 fix: defer outreach sending after approval`
-- 完整测试：`297 passed, 4 skipped, 1 warning`
+- 完整测试：`301 passed, 4 skipped, 1 warning`
 - 当前不再把新更新只推到功能分支；主线代码已合并并推送到 `origin/main`。
 - 小红书真实私信发送暂时搁置：当前本机浏览器/网络环境无法稳定打开小红书私信页，且用户要求不要改 Clash。飞书“发送”按钮已改为只审批入库为 `approved_to_send`，不再在飞书回调线程里直接触发小红书发送。后续等浏览器/网络问题解决后，再通过独立发送入口或 worker 执行真实发送。
 
@@ -207,7 +207,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-297 passed, 4 skipped, 1 warning
+301 passed, 4 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -237,6 +237,21 @@ python -m apps.cli --json feishu-sync
 ```
 
 当前已验证的客户跟进表是 `RVtDb7nGkabAMbsDkA0cvxdOnld / tblRSEpG7v0bM0WD`。
+
+飞书 AI 筛选工作台增量同步：
+
+```bash
+python -m apps.cli --json feishu-ai-review-sync
+```
+
+该命令把本地 `lead_screening_results` 中 DeepSeek 已产出的 `accepted` / `needs_review` 结果增量写入飞书 `AI筛选客户线索` 和 `AI筛选证据明细` 两张表。它复用 `feishu_bitable_records` 保存本地记录到飞书记录的映射，重复执行会更新原记录，不会重复创建。默认表 ID：
+
+```text
+FEISHU_AI_REVIEW_CUSTOMER_TABLE_ID=tblAHiwa7ip0IkxQ
+FEISHU_AI_REVIEW_EVIDENCE_TABLE_ID=tblWuVvYREtAPHGs
+```
+
+为兼容当前已经创建好的 Base 字段，DeepSeek、Campaign 和地区信息会写入现有字段，例如 `为什么推荐`、`AI判断`、`置信度`、`证据标题`，不会要求先新增飞书字段。飞书连接方式仍沿用 `FEISHU_ENABLED`、`FEISHU_SYNC_DRY_RUN`、`FEISHU_BITABLE_TRANSPORT` 和 `FEISHU_BITABLE_APP_TOKEN`。
 
 飞书系统控制台：
 
@@ -565,18 +580,19 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 - 新增 `FEISHU_BITABLE_TRANSPORT=lark_cli`，使用本机 `lark-cli` 用户身份写飞书 Base。
 - 创建 `AI筛选客户线索` 和 `AI筛选证据明细` 两张多维表格。
 - 将现有抓取数据先过规则型 AI 初筛，再写入飞书；当前 71 个客户、72 条证据。
+- 新增 `python -m apps.cli --json feishu-ai-review-sync`，后续 DeepSeek 新结果可增量进入这两张飞书表。
 - 新增待人工确认卡片视图，让人工优先看 `需求摘要`。
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`297 passed, 4 skipped, 1 warning`。
+- 当前全量测试：`301 passed, 4 skipped, 1 warning`。
 - 当前 LLM/飞书可靠性链路使用 `screening` 和 `sending` 领取态；`send_uncertain` 用于暴露不能自动重发的不确定发送结果。
 - 当前跟进话术审批卡已改为“审批入库”和“真实小红书发送”分离，飞书按钮不再直接触发小红书浏览器发送。
 
 仍未完成或尚未充分验证：
 
 - `AI筛选客户线索` 的主字段仍是 `客户`，卡片标题还不够适合普通人阅读。
-- `feishu-ai-review-sync` 尚未做成正式增量命令，新采集数据不会自动进入 AI 筛选表。
+- `feishu-ai-review-sync` 已做成正式增量命令；它仍需要由本机命令、控制台动作或后续 worker 显式触发，不是后台常驻自动循环。
 - AI 筛选仍是规则型，61 条待人工确认里需要人工审核和后续大模型二次评分。
 - 小红书真实私信发送因本机浏览器/网络环境问题暂时搁置；不要在未解决前恢复“飞书回调里直接发送”的实现。
 - 长期无人值守运行仍未完成。

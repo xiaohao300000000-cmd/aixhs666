@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     llm_screen.add_argument("--reprocess", action="store_true", help="Re-run records that already have screening results.")
     subparsers.add_parser("agent-run", help="Run agent-selected collection and sync-ready prioritization.")
     subparsers.add_parser("feishu-sync", help="Sync prioritized leads to Feishu Bitable.")
+    ai_review_sync = subparsers.add_parser("feishu-ai-review-sync", help="Sync DeepSeek screening results to Feishu AI review tables.")
+    ai_review_sync.add_argument("--limit", type=int, default=None, help="Maximum screening results to sync.")
     subparsers.add_parser("feishu-pull-feedback", help="Pull Feishu Bitable status changes back into PostgreSQL.")
     llm_reviews = subparsers.add_parser("feishu-send-llm-reviews", help="Send pending LLM screening reviews as Feishu cards.")
     llm_reviews.add_argument("--chat-id", default=None, help="Feishu chat id that receives review cards.")
@@ -142,6 +144,13 @@ def main(argv: list[str] | None = None) -> int:
                 result = sync_workbench_rows(session, client, rows)
                 session.commit()
                 payload = {"feishu_sync": result.__dict__}
+        elif args.command == "feishu-ai-review-sync":
+            from services.feishu_ai_review_sync import sync_feishu_ai_review_rows
+
+            with SessionLocal() as session:
+                result = sync_feishu_ai_review_rows(session, limit=args.limit)
+                session.commit()
+                payload = {"feishu_ai_review_sync": result.to_dict()}
         elif args.command == "feishu-pull-feedback":
             with SessionLocal() as session:
                 client = FeishuBitableClient()
