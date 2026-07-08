@@ -55,6 +55,13 @@ class OutreachCallbackResult:
     status: str
 
 
+@dataclass(frozen=True, slots=True)
+class OutreachSendResult:
+    applied: bool
+    outreach_id: int
+    status: str
+
+
 class OutreachCallbackError(ValueError):
     pass
 
@@ -170,7 +177,7 @@ def build_processed_outreach_card(
     reviewer_id: str | None,
 ) -> dict[str, Any]:
     title = "小红书私信话术审批 - 已发送" if status == "sent" else "小红书私信话术审批 - 已处理"
-    template = "green" if status == "sent" else "grey"
+    template = "green" if status == "sent" else "blue" if status == "approved_to_send" else "grey"
     text = outreach.final_text or outreach.generated_text
     return {
         "schema": "2.0",
@@ -201,7 +208,6 @@ def apply_outreach_callback(
     payload: dict[str, Any],
     *,
     card_client: OutreachCardClient | None,
-    xhs_sender: XiaohongshuMessageSender,
     verification_token: str | None = None,
     now: datetime | None = None,
 ) -> OutreachCallbackResult:
@@ -213,7 +219,7 @@ def apply_outreach_callback(
         raise OutreachCallbackError(f"outreach message not found: {action.outreach_id}")
 
     existing = _existing_callback_event(session, action.callback_id)
-    if existing is not None or outreach.status in {"sent", "skipped"}:
+    if existing is not None or outreach.status in {"approved_to_send", "sent", "skipped"}:
         return OutreachCallbackResult(
             applied=False,
             duplicate=True,
@@ -244,35 +250,61 @@ def apply_outreach_callback(
     if not profile_url:
         raise OutreachCallbackError("target Xiaohongshu profile URL is missing")
 
-    outreach.status = "sending"
+    outreach.status = "approved_to_send"
     outreach.final_text = final_text
     outreach.reviewer_id = action.reviewer_id
     outreach.reviewed_at = occurred_at
+    outreach.feishu_message_id = outreach.feishu_message_id or action.message_id
+    outreach.feishu_chat_id = outreach.feishu_chat_id or action.chat_id
+    outreach.feishu_card_status = "processed"
+    outreach.last_error = None
+    outreach.updated_at = occurred_at
+    event = _record_event(session, action=action, status="approved_to_send", occurred_at=occurred_at)
+    _update_card(card_client, action, outreach, status="approved_to_send")
+    return OutreachCallbackResult(True, False, event.id, outreach.id, outreach.status)
+
+
+def send_approved_outreach(
+    session: Session,
+    *,
+    outreach_id: int,
+    xhs_sender: XiaohongshuMessageSender,
+    now: datetime | None = None,
+) -> OutreachSendResult:
+    outreach = session.get(LeadOutreachMessage, outreach_id)
+    if outreach is None:
+        raise OutreachCallbackError(f"outreach message not found: {outreach_id}")
+    if outreach.status == "sent":
+        return OutreachSendResult(applied=False, outreach_id=outreach.id, status=outreach.status)
+    if outreach.status not in {"approved_to_send", "failed"}:
+        return OutreachSendResult(applied=False, outreach_id=outreach.id, status=outreach.status)
+    final_text = (outreach.final_text or outreach.generated_text or "").strip()
+    profile_url = (outreach.target_profile_url or "").strip()
+    if not final_text:
+        raise OutreachCallbackError("outreach message text is empty")
+    if not profile_url:
+        raise OutreachCallbackError("target Xiaohongshu profile URL is missing")
+
+    occurred_at = now or _utc_now()
+    outreach.status = "sending"
     outreach.attempt_count = (outreach.attempt_count or 0) + 1
     outreach.updated_at = occurred_at
     session.flush()
-
     try:
         xhs_sender.send_message(profile_url=profile_url, text=final_text)
-    except Exception as exc:  # noqa: BLE001 - callback should persist retry-visible failure.
+    except Exception as exc:  # noqa: BLE001 - worker should persist retry-visible failure.
         outreach.status = "failed"
         outreach.last_error = str(exc)
         outreach.feishu_card_status = "failed"
         outreach.updated_at = occurred_at
-        event = _record_event(session, action=action, status="failed", occurred_at=occurred_at, error=str(exc))
-        _update_card(card_client, action, outreach, status="failed")
-        return OutreachCallbackResult(True, False, event.id, outreach.id, outreach.status)
+        return OutreachSendResult(applied=True, outreach_id=outreach.id, status=outreach.status)
 
     outreach.status = "sent"
     outreach.sent_at = occurred_at
     outreach.last_error = None
-    outreach.feishu_message_id = outreach.feishu_message_id or action.message_id
-    outreach.feishu_chat_id = outreach.feishu_chat_id or action.chat_id
     outreach.feishu_card_status = "processed"
     outreach.updated_at = occurred_at
-    event = _record_event(session, action=action, status="sent", occurred_at=occurred_at)
-    _update_card(card_client, action, outreach, status="sent")
-    return OutreachCallbackResult(True, False, event.id, outreach.id, outreach.status)
+    return OutreachSendResult(applied=True, outreach_id=outreach.id, status=outreach.status)
 
 
 def parse_outreach_callback_action(payload: dict[str, Any]) -> OutreachCallbackAction:
@@ -421,7 +453,12 @@ def _first_location_raw(location: dict[str, Any]) -> str | None:
 
 
 def _status_label(status: str) -> str:
-    return {"sent": "已发送", "skipped": "已跳过", "failed": "发送失败"}.get(status, status)
+    return {
+        "approved_to_send": "待发送",
+        "sent": "已发送",
+        "skipped": "已跳过",
+        "failed": "发送失败",
+    }.get(status, status)
 
 
 def _callback_id(payload: dict[str, Any], *, action: str, target_id: str) -> str:

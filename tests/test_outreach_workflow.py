@@ -12,6 +12,7 @@ from integrations.feishu.outreach import (
     apply_outreach_callback,
     build_outreach_approval_card,
     create_outreach_for_valid_screening,
+    send_approved_outreach,
 )
 from services.outreach_generation import OutreachDraft
 from storage.database import Base
@@ -108,7 +109,7 @@ def test_valid_screening_creates_outreach_card_once(factory: sessionmaker[Sessio
         assert saved.feishu_message_id == "om_outreach_1"
 
 
-def test_outreach_callback_sends_edited_text_and_updates_card(factory: sessionmaker[Session]) -> None:
+def test_outreach_callback_approves_edited_text_without_sending_xhs(factory: sessionmaker[Session]) -> None:
     screening_id = _seed_valid_screening(factory)
     card_client = FakeCardClient()
     xhs_sender = FakeXhsSender()
@@ -129,25 +130,22 @@ def test_outreach_callback_sends_edited_text_and_updates_card(factory: sessionma
             session,
             _outreach_payload(outreach_id, "您好，孩子现在几年级？"),
             card_client=card_client,
-            xhs_sender=xhs_sender,
             verification_token="token",
         )
         session.commit()
 
     assert result.applied is True
-    assert result.status == "sent"
-    assert xhs_sender.sent == [
-        {"profile_url": "https://www.xiaohongshu.com/user/profile/u1", "text": "您好，孩子现在几年级？"}
-    ]
+    assert result.status == "approved_to_send"
+    assert xhs_sender.sent == []
     assert len(card_client.updated_cards) == 1
-    assert "已发送" in str(card_client.updated_cards[0]["card"])
+    assert "待发送" in str(card_client.updated_cards[0]["card"])
 
     with factory() as session:
         saved = session.get(LeadOutreachMessage, outreach_id)
         assert saved is not None
-        assert saved.status == "sent"
+        assert saved.status == "approved_to_send"
         assert saved.final_text == "您好，孩子现在几年级？"
-        assert saved.sent_at is not None
+        assert saved.sent_at is None
 
 
 def test_outreach_callback_is_idempotent(factory: sessionmaker[Session]) -> None:
@@ -170,14 +168,12 @@ def test_outreach_callback_is_idempotent(factory: sessionmaker[Session]) -> None
             session,
             _outreach_payload(outreach_id, "第一条"),
             card_client=FakeCardClient(),
-            xhs_sender=xhs_sender,
             verification_token="token",
         )
         duplicate = apply_outreach_callback(
             session,
             _outreach_payload(outreach_id, "第二条"),
             card_client=FakeCardClient(),
-            xhs_sender=xhs_sender,
             verification_token="token",
         )
         session.commit()
@@ -185,10 +181,10 @@ def test_outreach_callback_is_idempotent(factory: sessionmaker[Session]) -> None
     assert first.applied is True
     assert duplicate.applied is False
     assert duplicate.duplicate is True
-    assert xhs_sender.sent == [{"profile_url": "https://www.xiaohongshu.com/user/profile/u1", "text": "第一条"}]
+    assert xhs_sender.sent == []
 
 
-def test_outreach_callback_records_send_failure(factory: sessionmaker[Session]) -> None:
+def test_send_approved_outreach_records_send_failure(factory: sessionmaker[Session]) -> None:
     screening_id = _seed_valid_screening(factory)
     card_client = FakeCardClient()
 
@@ -204,18 +200,22 @@ def test_outreach_callback_records_send_failure(factory: sessionmaker[Session]) 
         outreach_id = outreach.id
 
     with factory() as session:
-        result = apply_outreach_callback(
+        approval = apply_outreach_callback(
             session,
             _outreach_payload(outreach_id, "失败测试"),
             card_client=card_client,
-            xhs_sender=FailingXhsSender(),
             verification_token="token",
+        )
+        result = send_approved_outreach(
+            session,
+            outreach_id=outreach_id,
+            xhs_sender=FailingXhsSender(),
         )
         session.commit()
 
+    assert approval.status == "approved_to_send"
     assert result.applied is True
     assert result.status == "failed"
-    assert "发送失败" in str(card_client.updated_cards[-1]["card"])
 
     with factory() as session:
         saved = session.get(LeadOutreachMessage, outreach_id)
@@ -226,7 +226,7 @@ def test_outreach_callback_records_send_failure(factory: sessionmaker[Session]) 
         assert saved.last_error == "xhs send failed"
 
 
-def test_outreach_callback_persists_failure_when_card_update_fails(factory: sessionmaker[Session]) -> None:
+def test_outreach_callback_persists_approval_when_card_update_fails(factory: sessionmaker[Session]) -> None:
     screening_id = _seed_valid_screening(factory)
 
     with factory() as session:
@@ -245,20 +245,18 @@ def test_outreach_callback_persists_failure_when_card_update_fails(factory: sess
             session,
             _outreach_payload(outreach_id, "失败测试"),
             card_client=FailingUpdateCardClient(),
-            xhs_sender=FailingXhsSender(),
             verification_token="token",
         )
         session.commit()
 
     assert result.applied is True
-    assert result.status == "failed"
+    assert result.status == "approved_to_send"
 
     with factory() as session:
         saved = session.get(LeadOutreachMessage, outreach_id)
         assert saved is not None
-        assert saved.status == "failed"
+        assert saved.status == "approved_to_send"
         assert saved.last_error is not None
-        assert "xhs send failed" in saved.last_error
         assert "card update failed" in saved.last_error
 
 

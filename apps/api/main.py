@@ -1,5 +1,10 @@
 from fastapi import FastAPI
 
+from runtime_env import load_dotenv
+
+
+load_dotenv()
+
 from apps.api.routes.dashboard import router as dashboard_router
 from apps.api.routes.feishu_callbacks import router as feishu_callbacks_router
 from apps.api.routes.health import router as health_router

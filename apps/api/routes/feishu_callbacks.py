@@ -7,7 +7,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
-from collectors.xiaohongshu.dm import XiaohongshuDirectMessageSender
 from integrations.feishu.im import FeishuIMClient
 from integrations.feishu.llm_review import (
     LLMReviewCallbackError,
@@ -124,26 +123,21 @@ def _create_outreach_after_valid_review(screening_result_id: int, payload: dict[
 
 
 def _apply_outreach_callback(payload: dict[str, Any]) -> None:
-    sender = XiaohongshuDirectMessageSender()
-    try:
-        with SessionLocal() as session:
-            try:
-                apply_outreach_callback(
-                    session,
-                    payload,
-                    card_client=FeishuIMClient(),
-                    xhs_sender=sender,
-                    verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
-                )
-                session.commit()
-            except OutreachCallbackError:
-                session.rollback()
-                logger.exception("Feishu outreach callback rejected")
-            except Exception:
-                session.rollback()
-                logger.exception("Feishu outreach callback processing failed")
-    finally:
-        sender.close()
+    with SessionLocal() as session:
+        try:
+            apply_outreach_callback(
+                session,
+                payload,
+                card_client=FeishuIMClient(),
+                verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
+            )
+            session.commit()
+        except OutreachCallbackError:
+            session.rollback()
+            logger.exception("Feishu outreach callback rejected")
+        except Exception:
+            session.rollback()
+            logger.exception("Feishu outreach callback processing failed")
 
 
 def _chat_id_from_payload(payload: dict[str, Any]) -> str | None:

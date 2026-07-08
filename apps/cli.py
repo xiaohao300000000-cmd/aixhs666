@@ -5,17 +5,25 @@ import json
 import sys
 from typing import Any
 
-from sqlalchemy import select
+from runtime_env import load_dotenv
 
-from apps.worker.main import load_adapter
-from integrations.feishu.bitable import FeishuBitableClient
-from integrations.feishu.im import FeishuIMClient
-from services.agent_runtime import rank_leads_for_workbench, run_agent_cycle
-from services.feishu_control_panel import ControlPanelRecord, LarkCliControlPanelClient, run_control_panel_once
-from services.feishu_workbench import pull_workbench_feedback, sync_workbench_rows
-from services.lead_generation import generate_leads_from_history, rebuild_auto_leads_from_history
-from services.pipeline_runner import PipelineRunError, PipelineRunner
-from storage.database import SessionLocal
+
+ControlPanelRecord: Any = None
+FeishuBitableClient: Any = None
+FeishuIMClient: Any = None
+LarkCliControlPanelClient: Any = None
+PipelineRunError: Any = None
+PipelineRunner: Any = None
+SessionLocal: Any = None
+generate_leads_from_history: Any = None
+load_adapter: Any = None
+pull_workbench_feedback: Any = None
+rank_leads_for_workbench: Any = None
+rebuild_auto_leads_from_history: Any = None
+run_agent_cycle: Any = None
+run_control_panel_once: Any = None
+select: Any = None
+sync_workbench_rows: Any = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
+    _load_runtime_dependencies()
     parser = build_parser()
     args = parser.parse_args(argv)
     runner = PipelineRunner(session_factory=SessionLocal, adapter_factory=lambda: load_adapter("xhs"))
@@ -232,6 +242,65 @@ def main(argv: list[str] | None = None) -> int:
 
     _emit(payload, as_json=args.json)
     return 0
+
+
+def _load_runtime_dependencies() -> None:
+    global ControlPanelRecord
+    global FeishuBitableClient
+    global FeishuIMClient
+    global LarkCliControlPanelClient
+    global PipelineRunError
+    global PipelineRunner
+    global SessionLocal
+    global generate_leads_from_history
+    global load_adapter
+    global pull_workbench_feedback
+    global rank_leads_for_workbench
+    global rebuild_auto_leads_from_history
+    global run_agent_cycle
+    global run_control_panel_once
+    global select
+    global sync_workbench_rows
+
+    from sqlalchemy import select as sqlalchemy_select
+
+    from apps.worker.main import load_adapter as worker_load_adapter
+    from integrations.feishu.bitable import FeishuBitableClient as BitableClient
+    from integrations.feishu.im import FeishuIMClient as IMClient
+    from services.agent_runtime import rank_leads_for_workbench as rank_rows
+    from services.agent_runtime import run_agent_cycle as run_cycle
+    from services.feishu_control_panel import ControlPanelRecord as PanelRecord
+    from services.feishu_control_panel import LarkCliControlPanelClient as PanelClient
+    from services.feishu_control_panel import run_control_panel_once as run_control_once
+    from services.feishu_workbench import pull_workbench_feedback as pull_feedback
+    from services.feishu_workbench import sync_workbench_rows as sync_rows
+    from services.lead_generation import generate_leads_from_history as generate_leads
+    from services.lead_generation import rebuild_auto_leads_from_history as rebuild_leads
+    from services.pipeline_runner import PipelineRunError as RunError
+    from services.pipeline_runner import PipelineRunner as Runner
+    from storage.database import SessionLocal as session_factory
+
+    _set_runtime_dependency("ControlPanelRecord", PanelRecord)
+    _set_runtime_dependency("FeishuBitableClient", BitableClient)
+    _set_runtime_dependency("FeishuIMClient", IMClient)
+    _set_runtime_dependency("LarkCliControlPanelClient", PanelClient)
+    _set_runtime_dependency("PipelineRunError", RunError)
+    _set_runtime_dependency("PipelineRunner", Runner)
+    _set_runtime_dependency("SessionLocal", session_factory)
+    _set_runtime_dependency("generate_leads_from_history", generate_leads)
+    _set_runtime_dependency("load_adapter", worker_load_adapter)
+    _set_runtime_dependency("pull_workbench_feedback", pull_feedback)
+    _set_runtime_dependency("rank_leads_for_workbench", rank_rows)
+    _set_runtime_dependency("rebuild_auto_leads_from_history", rebuild_leads)
+    _set_runtime_dependency("run_agent_cycle", run_cycle)
+    _set_runtime_dependency("run_control_panel_once", run_control_once)
+    _set_runtime_dependency("select", sqlalchemy_select)
+    _set_runtime_dependency("sync_workbench_rows", sync_rows)
+
+
+def _set_runtime_dependency(name: str, value: Any) -> None:
+    if globals().get(name) is None:
+        globals()[name] = value
 
 
 def _emit(payload: dict[str, Any], *, as_json: bool, stream: Any | None = None) -> None:
