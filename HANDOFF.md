@@ -2,20 +2,34 @@
 
 ## 当前阶段
 
-2026-07-06 当前主线已经从“本地看板/采集框架”推进到“飞书作为人工获客工作台”。当前分支为 `feat/v15-agent-neutral-runtime`，已推送到 GitHub：
+2026-07-09 当前主线已经从“本地看板/采集框架”推进到“DeepSeek 筛选 + Campaign 资格判断 + 飞书人工审核/话术审批工作台”。当前正式分支为 `main`，已推送到 GitHub：
 
 ```text
-https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-runtime
+https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 ```
 
 最近关键提交：
 
 ```text
+f4e24c9 fix: defer outreach sending after approval
+bab7d35 feat: allow xhs browser engine selection
+4d3be93 feat: add feishu-approved outreach sending
+d54f793 feat: harden xhs location evidence workflow
+8abcfc6 fix: map mediacrawler public ip regions
 8623c66 feat: add feishu system control panel
 9cbd6d0 docs: record feishu manual review views
 60c04f6 feat: export ai-screened leads to feishu base
 081e214 feat: support lark cli feishu workbench sync
 ```
+
+最新完整测试：
+
+```text
+.venv/bin/pytest -q
+297 passed, 4 skipped, 1 warning
+```
+
+GitHub 更新规则已调整：后续默认在 `main` 上提交和推送，除非明确需要新功能分支。当前工作区只允许保留本地未跟踪笔记，不得把密钥、cookie、Webhook、数据库密码或完整用户隐私数据提交到仓库。
 
 当前真实飞书 Base：
 
@@ -55,16 +69,17 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 | 已忽略 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblAHiwa7ip0IkxQ&view=vewroPd49h` |
 | 系统控制台 | `https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblpqsBvrDMWhaiW` |
 
-当前筛选是规则型 AI，不是外部大模型 API。严格筛选逻辑在 `services/feishu_ai_workbench.py` 和 `services/lead_intent.py`：先过滤资料党、攻略号、机构广告、跑偏考试，再按价格、试听、报班、找机构、二刷、提升需求等动作判断 `push` / `confirm`。
+当前筛选链路包含规则初筛、DeepSeek 主筛选和 Campaign 资格判断。旧的飞书 Base 工作台仍保留规则型 AI 结果；`lead_screening_results` 是当前 LLM/审核/资格判断/发送编排的主记录。
 
 ## 当前目标
 
-当前目标是把飞书 Base 固化成“普通人能用的获客工作台”：
+当前目标是把飞书固化成“普通人能用的获客工作台”：
 
 1. 人在 `AI筛选客户线索` 里审核候选客户。
 2. 看 `需求摘要` 和 `关联证据明细`，把 `状态` 改成 `可跟进` 或 `已忽略`。
 3. 人在 `系统控制台` 里发指令，系统只在本机执行一次，不自动后台运行。
-4. 后续需要补：把 AI 筛选同步做成正式命令、用大模型二次评分、把卡片视图进一步优化为“需求摘要为主标题”的审核表。
+4. 对 `有效` 线索生成跟进话术审批卡；人工在飞书里确认话术。
+5. 后续需要补：把 AI 筛选同步做成正式命令、把卡片视图进一步优化为“需求摘要为主标题”的审核表、恢复可控的小红书真实发送。
 
 代码侧已具备 MediaCrawler 主采集器、Worker、数据库并发/幂等修复、飞书 lark-cli transport、飞书 Base 写入、运行诊断、`/ops` 控制台、Pipeline Runner、`/leads` 获客页面、AI 筛选导出、飞书系统控制台。
 
@@ -76,11 +91,13 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 
 2026-07-07 已新增最小统一流程编排，不新建业务表，复用 `lead_screening_results` 作为每条帖子/评论的流程记录。新增状态 `pending_llm -> screening -> llm_done -> pending_feishu -> sending -> sent -> reviewed`，并记录 `attempt_count` / `last_error`。推荐入口是 `python -m apps.cli --json lead-flow-once --source comment --limit 1 --chat-id <oc_xxx>`：每次只推进当前应该做的一步，不做无人值守调度；LLM 先领取为 `screening`，完成后只写 `llm_done`，飞书发送先把 `pending_feishu` 领取为 `sending`，普通发送失败恢复为 `pending_feishu`，不确定发送结果写为 `send_uncertain`，回调写 `reviewed`。`lead-flow-once` 的 `limit` 表示实际 LLM 处理数量，已有且非 `pending_llm` 的记录不占用 limit。`attempt_count` 只在真正领取飞书发送时增加。覆盖测试为 `tests/test_lead_screening_flow.py`、`tests/test_feishu_llm_review.py`、`tests/test_postgres_task_claiming.py` 和 `tests/test_ops_console.py`。真实库验收使用 `comments.id=1`，生成 `lead_screening_results.id=8`，状态流转为 `llm_done -> pending_feishu -> sent -> reviewed`，最终 `human_review_status=watch`，重复回调事件数保持 1。已知风险：当前只通过领取态 + PostgreSQL `FOR UPDATE SKIP LOCKED` 避免并发重复领取；飞书发送成功但数据库提交前进程崩溃时，仍需人工核对。
 
-2026-07-07 已修复统一流程编排的可靠性风险：`lead-flow-once --limit 1` 不再让已处理记录占用实际处理名额；LLM 和飞书发送在 PostgreSQL 下使用领取态和 `FOR UPDATE SKIP LOCKED`；`/ops/api/lead-screening/diagnostics` 可只读查看 stale `sending`、长期 `pending_llm`、高 `attempt_count` 和 `send_uncertain`；`POST /ops/api/lead-screening/{id}/recover` 可在人工确认后恢复，并写入 `lead_screening_manual_recovery` 事件。相关测试和完整测试均通过，当前结果为 `255 passed, 4 skipped, 1 warning`。
+2026-07-07 已修复统一流程编排的可靠性风险：`lead-flow-once --limit 1` 不再让已处理记录占用实际处理名额；LLM 和飞书发送在 PostgreSQL 下使用领取态和 `FOR UPDATE SKIP LOCKED`；`/ops/api/lead-screening/diagnostics` 可只读查看 stale `sending`、长期 `pending_llm`、高 `attempt_count` 和 `send_uncertain`；`POST /ops/api/lead-screening/{id}/recover` 可在人工确认后恢复，并写入 `lead_screening_manual_recovery` 事件。相关测试和完整测试当时通过，结果为 `255 passed, 4 skipped, 1 warning`。当前最新测试结果见 2026-07-09 小节。
 
 2026-07-07 已完成真实小批量验收：使用本机 PostgreSQL 真实评论和 DeepSeek 测试 key 跑 `leads-llm-screen --source comment --limit 20`，实际尝试 20 条（跳过/过滤不占 limit），18 条成功、2 条 LLM 内容非 JSON 失败；随后只推进 `needs_review` 到 `pending_feishu`，并通过 `lark-cli` 用户态向真实飞书群发送 3 张审核卡片。发送行 `id=11,15,16` 均写入 `sent`、唯一 `feishu_message_id`、`attempt_count=1`，无重复领取或异常发送态。失败重试后剩 1 条 `pending_llm`，错误为 `LLM returned invalid JSON content: ''`，属于带错误信息的可重试状态。`lead-flow-once` JSON 输出现在包含 `workflow_counts` 和 `review_counts`，覆盖 `pending_llm`、`llm_done`、`pending_feishu`、`sending`、`sent`、`reviewed`、`failed` 等统计。
 
 2026-07-07 已新增可配置线索资格层：`platform_config/` 定义 `CampaignConfig`、`QualificationPolicy`、`LocationPolicy`、位置证据和可解释资格结果；新增三份配置 `education_fuzhou_offline`、`ielts_nationwide_online`、`automotive_xiamen_local`。成功的 LLM 筛选会在保持原有 `review_status` 和工作流状态不变的前提下，读取默认教育 Campaign 并写入独立 `qualification_*` 字段；`services/qualification.py` 也可在不重新调用 DeepSeek、不发送飞书的情况下，对已保存 `lead_screening_results` 做离线资格判断。IP/地区审计见 `docs/QUALIFICATION_ARCHITECTURE_AUDIT.md`：当前主库 `public_profiles.region_text=0/641`、`contents.region_text=0/163`，历史评论此前没有 `region_text` 字段；本次新增可空 `comments.region_text` 和迁移 `0013_comment_region_text`，未来适配器提供公开 IP 属地时可结构化保存，历史空值不会被当作外地。离线验证结果已生成到 `.runtime/qualification-validation-result.json`，只含聚合计数不含真实评论全文或个人信息；福州线下教育配置结果为 `total_records=28, qualified=0, rejected=12, needs_review=16, location_unknown=27, location_not_matched=1`，全国线上雅思配置结果为 `total_records=28, qualified=5, rejected=12, needs_review=11, location_not_required=28`。
+
+2026-07-09 已完成当前主线整理和发送链路降风险：`feat/v15-agent-neutral-runtime` 已快进合并到 `main` 并推送；CLI/API 入口支持加载本地 `.env`，测试进程默认跳过本机 `.env` 避免环境污染；飞书跟进话术审批卡的“发送”按钮现在只审批入库为 `approved_to_send`，不再在飞书回调线程里直接打开小红书发送。真实小红书发送被隔离到 `send_approved_outreach()`，后续应由独立 worker 或人工触发入口处理。当前小红书私信真实发送因本机浏览器/网络环境无法稳定打开小红书页面而搁置，用户明确要求不要改 Clash；不要为了完成发送而恢复回调内直接发送或修改系统代理配置。
 
 本机普通用户入口：
 
@@ -132,28 +149,38 @@ python -m apps.cli --json run-control-panel-once
 
 ## 需要主控 Codex 完成的下一件事
 
-1. 把 `AI筛选客户线索` 的主字段从 `客户` 优化为更适合卡片展示的字段，或新建一张“客户审核卡片表”，让卡片标题直接显示 `需求摘要`。
-2. 增加正式命令 `feishu-ai-review-sync`：从本地库重新筛选，增量写入 `AI筛选客户线索` / `AI筛选证据明细`，避免以后手工脚本导入。
-3. 对 61 条 `待人工确认` 做人工审核，标记 `可跟进` / `已忽略`，记录误判类型。
-4. 接入大模型二次评分，只对规则初筛出来的候选调用模型，输出“是否值得跟进、原因、建议动作”。
-5. 用 `系统控制台` 执行一次非破坏性真实指令，例如 `查看系统状态`，确认普通用户流程可复现。
-6. 再小规模执行 `找新客户`，记录是否成功采集、是否被平台限制、是否新增候选客户。
-7. 更新 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` 和本交接文件。
+1. 先不做新的小红书采集；继续用旧数据验证 DeepSeek、Campaign、飞书审核和话术审批闭环。
+2. 为 `approved_to_send` 增加受控发送入口或 worker，但在浏览器/网络问题解决前不要真实触发小红书发送。
+3. 把 `AI筛选客户线索` 的主字段从 `客户` 优化为更适合卡片展示的字段，或新建一张“客户审核卡片表”，让卡片标题直接显示 `需求摘要`。
+4. 增加正式命令 `feishu-ai-review-sync`：从本地库重新筛选，增量写入 `AI筛选客户线索` / `AI筛选证据明细`，避免以后手工脚本导入。
+5. 对 61 条 `待人工确认` 做人工审核，标记 `可跟进` / `已忽略`，记录误判类型。
+6. 用 `系统控制台` 执行一次非破坏性真实指令，例如 `查看系统状态`，确认普通用户流程可复现。
+7. 更新 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md`，补充 2026-07-09 之后的真实点击和审批状态。
 
 子会话不得直接修改本文件或把任务改为 DONE。
 
 ## 当前已知风险
 
-- 飞书 AI 筛选现在是规则型 AI，不是大模型推理；61 条待人工确认里有噪音。
+- 飞书 Base 旧工作台里仍有规则型 AI 结果；61 条待人工确认里有噪音。
 - `AI筛选客户线索` 当前主字段仍是 `客户`，很多行显示 `未知用户`，卡片体验还不够好。
 - `feishu-ai-review-sync` 尚未做成正式命令；当前 71/72 条是已导入的真实表数据，但后续新增数据不会自动追加到这两张 AI 筛选表。
 - `系统控制台` 是人工触发的一次性命令；没有后台自动轮询，符合用户要求，但需要有人在本机运行命令。
-- `找新客户` 会触发真实采集，仍受小红书登录态、平台风控和 MediaCrawler 运行状态影响。
+- `找新客户` 会触发真实采集，仍受小红书登录态、平台风控和 MediaCrawler 运行状态影响；当前用户要求先不做采集。
+- 小红书真实私信发送暂时搁置：Safari/Chrome/Playwright 在当前 VPN/网络环境下无法稳定打开小红书，用户要求不要改 Clash。飞书话术审批按钮只能写入 `approved_to_send`，不能伪造成已发送。
 - Docker 未安装，当前使用本机 Homebrew PostgreSQL。
 - `pytest -m live` 因未启用 live 登录环境仍为 skipped。
 
 这些风险直接影响“无人值守全自动获客”验收，但不影响当前“飞书人工工作台 + 人工发指令执行一次”的能力。
 
+
+## 2026-07-09 今日已完成
+
+- GitHub 主线已调整为 `main`，并推送到 `origin/main`。
+- 最新提交：`f4e24c9 fix: defer outreach sending after approval`。
+- CLI/API 入口加载本地 `.env`；pytest 进程默认跳过本机 `.env`，避免真实配置污染单元测试。
+- 飞书话术审批卡“发送”按钮改为审批入库，不再在回调线程里直接执行小红书发送。
+- 新增 `send_approved_outreach()` 作为后续独立发送入口；发送失败会记录 `failed`、`last_error` 和 `attempt_count`。
+- 全量测试通过：`297 passed, 4 skipped, 1 warning`。
 
 ## 2026-07-06 今日已完成
 
@@ -164,8 +191,8 @@ python -m apps.cli --json run-control-panel-once
 - 新增 `系统控制台` 表，字段使用普通话：`我要做什么`、`开始执行`、`现在状态`、`结果`、`哪里出错了`。
 - 新增 `run-control-panel-once` 命令，符合用户要求：不自动跑、不常驻，只在人为设置 `开始执行=是，开始` 后执行一次。
 - 真实验证系统控制台：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次，写回 `已完成` 和结果文字。
-- 全量测试通过：`275 passed, 4 skipped, 1 warning`。
-- 当前分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`。
+- 当时全量测试通过：`275 passed, 4 skipped, 1 warning`。
+- 当时分支已推送到 GitHub：`feat/v15-agent-neutral-runtime`，最新提交 `8623c66`；2026-07-09 已合并到 `main`。
 
 ## 2026-07-03 今日已完成
 
@@ -181,7 +208,7 @@ python -m apps.cli --json run-control-panel-once
 - 启动器会检查项目内 `third_party/MediaCrawler`，并自动创建 `third_party/MediaCrawler/.venv` 安装依赖。
 - 启动器未检测到小红书持久登录态时，会自动启动 MediaCrawler 登录流程。
 - 修复扫码登录后脚本停住的问题：扫码后在终端按回车，脚本会清理登录浏览器并继续启动主服务和网页。
-- 所有上述代码已推送到 GitHub 当前分支 `feat/v15-agent-neutral-runtime`。
+- 所有上述代码当时已推送到 GitHub 分支 `feat/v15-agent-neutral-runtime`；当前主线见 2026-07-09 小节。
 - 本次文档补充也需要提交并推送，具体 HEAD 以 `git log` 和 GitHub 分支历史为准。
 - 新增 AI 自动获客最小闭环代码和页面：`services/lead_generation.py`、`/api/leads`、`/leads`、`leads-backfill`。
 - 新增 lead 相关测试，当时完整测试已通过：`184 passed, 2 skipped, 1 warning`。当前最新测试结果见 2026-07-06 小节。

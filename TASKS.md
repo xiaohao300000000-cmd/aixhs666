@@ -18,23 +18,24 @@
 | 规则辅助 + LLM 主筛选 | DONE：`lead_screening_results` 结构化保存 LLM 判断，`leads-llm-screen` 可手动执行数据库 → LLM → 数据库 |
 | 统一 LLM/飞书流程编排 | DONE_CODE：复用 `lead_screening_results` 增加 `workflow_status`、`attempt_count`、`last_error`，`lead-flow-once` 可按状态推进下一步；LLM 使用 `screening` 领取态，飞书发送使用 `sending` 领取态，`send_uncertain` 暴露不能自动重发的不确定结果 |
 | 飞书 LLM 审核闭环 | DONE_REAL：真实点击“有效/无效/暂时观察”已更新数据库并把原卡片改成“已处理”；当前 live 验收未启用签名密钥，签名路径由测试覆盖 |
+| 飞书话术审批闭环 | DONE_CODE：点击“有效”后可生成话术审批卡；飞书内点击“发送”现在只审批入库为 `approved_to_send`，真实小红书发送拆到独立入口，避免回调卡住 |
 | 飞书 AI 筛选工作台 | DONE：`AI筛选客户线索` 71 条、`AI筛选证据明细` 72 条已写入 Base，证据已双向关联，卡片视图已创建 |
 | 飞书系统控制台 | DONE：`系统控制台` 表已创建，`run-control-panel-once` 只在人为设置 `开始执行=是，开始` 后执行一次并写回结果 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
-| 自动测试通过 | DONE：`pytest -q` 为 275 passed, 4 skipped |
+| 自动测试通过 | DONE：`pytest -q` 为 297 passed, 4 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
 | 真实 Pipeline Runner 验证通过 | PARTIAL：历史真实库和飞书写入已验证；长期稳定运行和新一轮小规模采集仍需观察 |
 | 真实潜在客户回填验证通过 | DONE：本机历史库经人工校正后保留 3 个真实家长为可跟进，广告/无需求自动候选已清空，待完善 0，可跟进 3 |
 | 真实飞书验证通过 | DONE：lark-cli 用户身份已验证 Base 建表、建字段、写记录、更新记录、创建视图和读记录 |
-| 完整闭环通过 | PARTIAL：飞书人工工作台已通过；长期无人值守运行和新数据自动进入 AI 筛选表未完成 |
+| 完整闭环通过 | PARTIAL：飞书人工审核和话术审批入库已通过；真实小红书私信发送因当前浏览器/网络环境暂时搁置；长期无人值守运行和新数据自动进入 AI 筛选表未完成 |
 
 V15 本机自动测试结果：
 
 ```text
-.venv/bin/python -m pytest -q
-275 passed, 4 skipped, 1 warning
+.venv/bin/pytest -q
+297 passed, 4 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
 1 skipped, 170 deselected, 1 warning

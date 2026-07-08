@@ -4,10 +4,10 @@
 
 本项目用于从小红书等公开平台持续发现教育相关需求，采集帖子、评论、回复和公开主页信息，建立可追溯的数据资产，并逐步提升获客效率。
 
-当前最新形态是“本地采集与分析系统 + 飞书多维表格人工工作台”：
+当前最新形态是“本地采集与分析系统 + DeepSeek 筛选 + Campaign 资格判断 + 飞书人工审核/话术审批工作台”：
 
 - 系统负责采集、入库、初筛、生成证据。
-- 飞书负责人工查看、确认、忽略和发出一次性操作指令。
+- 飞书负责人工查看、确认、忽略、审批跟进话术和发出一次性操作指令。
 - 人不需要理解技术词，只在飞书里看 `需求摘要`、`状态`、`结果` 等字段。
 
 项目第一阶段不追求自动销售，而是先解决四件事：
@@ -27,6 +27,14 @@
 | AI 筛选证据明细 | <https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld?table=tblWuVvYREtAPHGs> |
 
 长期目标是形成一套可迁移到装修、留学、移民、本地生活等行业的“公开市场需求感知引擎”。
+
+2026-07-09 当前主线：
+
+- GitHub 主分支：`main`
+- 最新提交：`f4e24c9 fix: defer outreach sending after approval`
+- 完整测试：`297 passed, 4 skipped, 1 warning`
+- 当前不再把新更新只推到功能分支；主线代码已合并并推送到 `origin/main`。
+- 小红书真实私信发送暂时搁置：当前本机浏览器/网络环境无法稳定打开小红书私信页，且用户要求不要改 Clash。飞书“发送”按钮已改为只审批入库为 `approved_to_send`，不再在飞书回调线程里直接触发小红书发送。后续等浏览器/网络问题解决后，再通过独立发送入口或 worker 执行真实发送。
 
 ## 2. 核心价值
 
@@ -199,7 +207,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-275 passed, 4 skipped, 1 warning
+297 passed, 4 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -400,6 +408,16 @@ feishu_chat_id=oc_1623b52748f4cf5cfb6f6e9174008f55
 
 本次真实运行环境未设置 `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN`，所以真实点击没有启用签名密钥校验；签名校验路径由 `tests/test_feishu_llm_review.py` 覆盖。详细验收记录见 `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md`。
 
+### 跟进话术审批状态
+
+人工把 LLM 审核卡片点为 `有效` 后，系统可以生成小红书跟进话术审批卡并发送到飞书。当前真实发送策略是：
+
+```text
+生成话术审批卡 -> 飞书内人工编辑/点击发送 -> approved_to_send -> 后续独立发送入口处理
+```
+
+飞书“发送”按钮现在只做审批确认和状态入库，不会在回调请求中直接打开小红书发送。这样可以保证飞书回调快速返回，避免小红书浏览器失败导致卡片按钮卡住。真实小红书发送失败会在后续发送入口里记录为 `failed`、`last_error` 和 `attempt_count`，不会把失败伪造成成功。
+
 规则调整后需要重算自动生成结果时使用：
 
 ```bash
@@ -417,7 +435,7 @@ python -m apps.cli --json leads-backfill --rebuild
 
 ## 10. Agent 中立运行框架
 
-当前分支新增轻量 Pipeline Runner，把已有采集、入库、文本处理、需求事件、聚类/新词、查询评分和内容洞察接为一条框架主流程。框架不依赖 Codex、OpenClaw、Hermes 或任何具体大模型 API；任意 Agent 只要能调用 Shell 或 HTTP，就能读取状态、启动一轮流程、查看结果并恢复失败运行。
+当前 `main` 新增轻量 Pipeline Runner，把已有采集、入库、文本处理、需求事件、聚类/新词、查询评分和内容洞察接为一条框架主流程。框架不依赖 Codex、OpenClaw、Hermes 或任何具体大模型 API；任意 Agent 只要能调用 Shell 或 HTTP，就能读取状态、启动一轮流程、查看结果并恢复失败运行。
 
 核心入口：
 
@@ -488,7 +506,7 @@ MAX_HISTORY_CONTEXT_PER_QUERY = 50
 
 在真实闭环通过前，不应把项目状态写成 100% 完成，也不应继续开发第二平台。
 
-## 10. 本机可视化看板启动方式
+## 11. 本机可视化看板启动方式
 
 2026-07-03 已补充一个面向非技术用户的本机启动入口：
 
@@ -534,12 +552,12 @@ KET PET 二刷
 - 首次扫码登录后，需要在终端按回车继续启动主程序。
 - 真实小红书平台可能出现验证码、限流或页面变更，出现时不能伪造成功，应在看板或日志中记录失败原因。
 
-## 11. 2026-07-06 飞书工作台变更摘要
+## 12. 2026-07-06 飞书工作台变更摘要
 
-当前分支已推送到 GitHub：
+当前主线已推送到 GitHub：
 
 ```text
-https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-runtime
+https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 ```
 
 主要变化：
@@ -551,17 +569,19 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/feat/v15-agent-neutral-run
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`275 passed, 4 skipped, 1 warning`。
+- 当前全量测试：`297 passed, 4 skipped, 1 warning`。
 - 当前 LLM/飞书可靠性链路使用 `screening` 和 `sending` 领取态；`send_uncertain` 用于暴露不能自动重发的不确定发送结果。
+- 当前跟进话术审批卡已改为“审批入库”和“真实小红书发送”分离，飞书按钮不再直接触发小红书浏览器发送。
 
 仍未完成或尚未充分验证：
 
 - `AI筛选客户线索` 的主字段仍是 `客户`，卡片标题还不够适合普通人阅读。
 - `feishu-ai-review-sync` 尚未做成正式增量命令，新采集数据不会自动进入 AI 筛选表。
 - AI 筛选仍是规则型，61 条待人工确认里需要人工审核和后续大模型二次评分。
+- 小红书真实私信发送因本机浏览器/网络环境问题暂时搁置；不要在未解决前恢复“飞书回调里直接发送”的实现。
 - 长期无人值守运行仍未完成。
 
-## 12. 2026-07-03 变更摘要
+## 13. 2026-07-03 变更摘要
 
 2026-07-03 在 `feat/v15-agent-neutral-runtime` 分支完成并推送的主要变更：
 
