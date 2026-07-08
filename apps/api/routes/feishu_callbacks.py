@@ -7,13 +7,21 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
+from collectors.xiaohongshu.dm import XiaohongshuDirectMessageSender
 from integrations.feishu.im import FeishuIMClient
 from integrations.feishu.llm_review import (
     LLMReviewCallbackError,
     apply_llm_review_callback,
     update_llm_review_card_from_callback,
 )
+from integrations.feishu.outreach import (
+    OutreachCallbackError,
+    apply_outreach_callback,
+    create_outreach_for_valid_screening,
+    is_outreach_callback,
+)
 from integrations.feishu.webhook import verify_callback_token, verify_webhook_signature
+from services.outreach_generation import OpenAICompatibleOutreachGenerator
 from storage.database import SessionLocal
 
 
@@ -53,6 +61,10 @@ async def llm_review_callback(
             raise HTTPException(status_code=401, detail="invalid Feishu verification token")
         return {"challenge": payload.get("challenge")}
 
+    if is_outreach_callback(payload):
+        background_tasks.add_task(_apply_outreach_callback, payload)
+        return {"code": 0, "msg": "accepted", "type": "outreach"}
+
     with SessionLocal() as session:
         try:
             result = apply_llm_review_callback(
@@ -66,6 +78,8 @@ async def llm_review_callback(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         session.commit()
     background_tasks.add_task(_update_llm_review_card, payload)
+    if result.applied and result.human_review_status == "valid":
+        background_tasks.add_task(_create_outreach_after_valid_review, result.screening_result_id, payload)
     return {
         "code": 0,
         "msg": "success",
@@ -87,6 +101,56 @@ def _update_llm_review_card(payload: dict[str, Any]) -> None:
             )
         except Exception:
             logger.exception("Feishu LLM review card update failed after callback was applied")
+
+
+def _create_outreach_after_valid_review(screening_result_id: int, payload: dict[str, Any]) -> None:
+    chat_id = _chat_id_from_payload(payload) or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID")
+    if not chat_id:
+        logger.warning("Cannot create outreach approval card: chat_id is missing")
+        return
+    with SessionLocal() as session:
+        try:
+            create_outreach_for_valid_screening(
+                session,
+                screening_id=screening_result_id,
+                generator=OpenAICompatibleOutreachGenerator(),
+                card_client=FeishuIMClient(),
+                chat_id=chat_id,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.exception("Feishu outreach approval card creation failed")
+
+
+def _apply_outreach_callback(payload: dict[str, Any]) -> None:
+    sender = XiaohongshuDirectMessageSender()
+    try:
+        with SessionLocal() as session:
+            try:
+                apply_outreach_callback(
+                    session,
+                    payload,
+                    card_client=FeishuIMClient(),
+                    xhs_sender=sender,
+                    verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
+                )
+                session.commit()
+            except OutreachCallbackError:
+                session.rollback()
+                logger.exception("Feishu outreach callback rejected")
+            except Exception:
+                session.rollback()
+                logger.exception("Feishu outreach callback processing failed")
+    finally:
+        sender.close()
+
+
+def _chat_id_from_payload(payload: dict[str, Any]) -> str | None:
+    event = payload.get("event") if isinstance(payload.get("event"), dict) else payload
+    context = event.get("context") if isinstance(event.get("context"), dict) else {}
+    value = context.get("open_chat_id") or event.get("chat_id")
+    return str(value) if value else None
 
 
 def _verify_signature(

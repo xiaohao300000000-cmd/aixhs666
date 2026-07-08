@@ -43,6 +43,19 @@ def test_browser_config_reads_runtime_environment(tmp_path: Path, monkeypatch: p
     assert config.proxy_server == "http://127.0.0.1:7897"
 
 
+def test_browser_config_reuses_mediacrawler_proxy_when_xhs_proxy_is_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XHS_BROWSER_PROFILE_DIR", str(tmp_path / "profile"))
+    monkeypatch.delenv("XHS_PROXY_SERVER", raising=False)
+    monkeypatch.setenv("MEDIACRAWLER_PROXY_SERVER", "http://127.0.0.1:7897")
+
+    config = XiaohongshuBrowserConfig.from_env()
+
+    assert config.proxy_server == "http://127.0.0.1:7897"
+
+
 def test_login_page_raises_clear_error() -> None:
     with pytest.raises(LoginRequiredError, match="requires manual login"):
         parse_search_page("KET", _fixture("login_page.html"), source_url="https://www.xiaohongshu.com/search_result")

@@ -334,6 +334,36 @@ class LeadScreeningResult(TimestampMixin, Base):
     qualification_location_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class LeadOutreachMessage(TimestampMixin, Base):
+    __tablename__ = "lead_outreach_messages"
+    __table_args__ = (
+        UniqueConstraint("screening_result_id", name="uq_lead_outreach_screening_result_id"),
+        Index("ix_lead_outreach_status", "status"),
+        Index("ix_lead_outreach_feishu_message_id", "feishu_message_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    screening_result_id: Mapped[int] = mapped_column(
+        ForeignKey("lead_screening_results.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    public_profile_id: Mapped[int | None] = mapped_column(ForeignKey("public_profiles.id", ondelete="SET NULL"))
+    platform: Mapped[str] = mapped_column(String(50), nullable=False, default="xhs", server_default="xhs")
+    target_profile_url: Mapped[str | None] = mapped_column(Text)
+    generated_text: Mapped[str] = mapped_column(Text, nullable=False)
+    final_text: Mapped[str | None] = mapped_column(Text)
+    model_name: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft", server_default="draft")
+    feishu_message_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_chat_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_card_status: Mapped[str | None] = mapped_column(String(50))
+    reviewer_id: Mapped[str | None] = mapped_column(String(255))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class EnrichmentTask(TimestampMixin, Base):
     __tablename__ = "enrichment_tasks"
     __table_args__ = (

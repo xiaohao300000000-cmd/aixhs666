@@ -41,7 +41,7 @@ class XiaohongshuBrowserConfig:
             screenshot_dir=Path(os.getenv("XHS_SCREENSHOT_DIR", ".runtime/screenshots")),
             page_timeout_ms=int(os.getenv("XHS_PAGE_TIMEOUT_MS", "30000")),
             manual_login_timeout_ms=int(os.getenv("XHS_MANUAL_LOGIN_TIMEOUT_MS", "120000")),
-            proxy_server=_empty_to_none(os.getenv("XHS_PROXY_SERVER")),
+            proxy_server=_empty_to_none(os.getenv("XHS_PROXY_SERVER")) or _empty_to_none(os.getenv("MEDIACRAWLER_PROXY_SERVER")),
         )
 
 
