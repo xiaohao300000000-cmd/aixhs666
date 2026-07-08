@@ -25,6 +25,7 @@ class BrowserCapture:
 @dataclass(frozen=True, slots=True)
 class XiaohongshuBrowserConfig:
     profile_dir: Path
+    browser_engine: str
     headless: bool
     snapshot_dir: Path
     screenshot_dir: Path
@@ -36,6 +37,7 @@ class XiaohongshuBrowserConfig:
     def from_env(cls) -> "XiaohongshuBrowserConfig":
         return cls(
             profile_dir=Path(os.getenv("XHS_BROWSER_PROFILE_DIR", ".runtime/xhs-profile")),
+            browser_engine=_browser_engine(os.getenv("XHS_BROWSER_ENGINE")),
             headless=_env_bool("XHS_HEADLESS", default=False),
             snapshot_dir=Path(os.getenv("XHS_SNAPSHOT_DIR", ".runtime/snapshots")),
             screenshot_dir=Path(os.getenv("XHS_SCREENSHOT_DIR", ".runtime/screenshots")),
@@ -158,7 +160,8 @@ class XiaohongshuBrowser:
         self.config.snapshot_dir.mkdir(parents=True, exist_ok=True)
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
         self._playwright = sync_playwright().start()
-        self._context = self._playwright.chromium.launch_persistent_context(
+        browser_type = self._browser_type()
+        self._context = browser_type.launch_persistent_context(
             user_data_dir=str(self.config.profile_dir),
             headless=self.config.headless,
             viewport={"width": 1440, "height": 1000},
@@ -166,6 +169,13 @@ class XiaohongshuBrowser:
             proxy={"server": self.config.proxy_server} if self.config.proxy_server else None,
         )
         return self._context
+
+    def _browser_type(self) -> Any:
+        if self._playwright is None:
+            raise RuntimeError("Playwright is not started")
+        if self.config.browser_engine == "webkit":
+            return self._playwright.webkit
+        return self._playwright.chromium
 
     def _handle_login_or_expired(self, page: Page, html: str, *, artifact_name: str) -> None:
         if any(marker in html for marker in selectors.SEARCH.expired_markers):
@@ -233,6 +243,13 @@ def _empty_to_none(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _browser_engine(value: str | None) -> str:
+    engine = (value or "chromium").strip().casefold()
+    if engine not in {"chromium", "webkit"}:
+        raise ValueError("XHS_BROWSER_ENGINE must be chromium or webkit")
+    return engine
 
 
 def _wait_for_captured_response(
