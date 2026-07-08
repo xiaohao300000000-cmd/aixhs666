@@ -162,10 +162,10 @@ async function loadTasks() {
 
 function taskButtons(item) {
   return [
-    `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/retry">重试</button>`,
-    `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/resume">继续</button>`,
+    `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/retry" data-confirm="确认重试任务 ${item.task_id}？可能重复采集。">重试</button>`,
+    `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/resume" data-confirm="确认继续任务 ${item.task_id}？只在确认任务中断时使用。">继续</button>`,
     `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/cancel" data-confirm="取消任务 ${item.task_id}？">取消</button>`,
-    `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/run-once">运行一次</button>`,
+    `<button class="secondary" data-post="/ops/api/tasks/${item.task_id}/run-once" data-confirm="确认只运行任务 ${item.task_id} 一次？">运行一次</button>`,
   ].join(" ");
 }
 

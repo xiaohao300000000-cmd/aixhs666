@@ -4,8 +4,14 @@ body { margin: 0; }
 h1 { font-size: 20px; margin: 0; }
 h2 { font-size: 16px; margin: 0 0 10px; }
 h3 { font-size: 14px; margin: 8px 0; }
+.role-note { color: #5d6a7a; font-size: 13px; margin: 4px 0 0; }
 main { padding: 16px; display: grid; gap: 16px; }
 section { background: #ffffff; border: 1px solid #d8dee8; border-radius: 8px; padding: 14px; overflow: auto; }
+.role-panel { align-items: center; display: flex; justify-content: space-between; gap: 16px; }
+.role-panel p { color: #485568; margin: 0; }
+.link-button { background: #0f766e; border-radius: 6px; color: #ffffff; padding: 8px 12px; text-decoration: none; white-space: nowrap; }
+.danger-zone { border: 1px solid #f2b8b5; background: #fff7f6; }
+.danger-zone strong { color: #9e1c13; display: block; font-size: 12px; margin-bottom: 4px; width: 100%; }
 .notice { border: 1px solid #c9d1dd; border-radius: 6px; padding: 10px 12px; background: #fbfcfe; font-weight: 600; }
 .notice.info { border-color: #9bbcf2; background: #eef5ff; color: #164f9f; }
 .notice.success { border-color: #9bd3ab; background: #ecf8ef; color: #146c2e; }

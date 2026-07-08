@@ -32,7 +32,7 @@
 
 - GitHub 主分支：`main`
 - 最新提交：`f4e24c9 fix: defer outreach sending after approval`
-- 完整测试：`301 passed, 4 skipped, 1 warning`
+- 完整测试：`304 passed, 4 skipped, 1 warning`
 - 当前不再把新更新只推到功能分支；主线代码已合并并推送到 `origin/main`。
 - 小红书真实私信发送暂时搁置：当前本机浏览器/网络环境无法稳定打开小红书私信页，且用户要求不要改 Clash。飞书“发送”按钮已改为只审批入库为 `approved_to_send`，不再在飞书回调线程里直接触发小红书发送。后续等浏览器/网络问题解决后，再通过独立发送入口或 worker 执行真实发送。
 
@@ -207,7 +207,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-301 passed, 4 skipped, 1 warning
+304 passed, 4 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -251,7 +251,7 @@ FEISHU_AI_REVIEW_CUSTOMER_TABLE_ID=tblAHiwa7ip0IkxQ
 FEISHU_AI_REVIEW_EVIDENCE_TABLE_ID=tblWuVvYREtAPHGs
 ```
 
-为兼容当前已经创建好的 Base 字段，DeepSeek、Campaign 和地区信息会写入现有字段，例如 `为什么推荐`、`AI判断`、`置信度`、`证据标题`，不会要求先新增飞书字段。飞书连接方式仍沿用 `FEISHU_ENABLED`、`FEISHU_SYNC_DRY_RUN`、`FEISHU_BITABLE_TRANSPORT` 和 `FEISHU_BITABLE_APP_TOKEN`。
+为兼容当前已经创建好的 Base 字段，DeepSeek、Campaign 和地区信息会写入现有字段，例如 `为什么推荐`、`AI判断`、`置信度`、`证据标题`，不会要求先新增飞书字段。同步 payload 已按运营视角把 `需求摘要`、`意向程度`、`下一步`、`状态`、`证据数量`、`为什么推荐` 放在前面，`客户` 和技术 ID 后移。飞书连接方式仍沿用 `FEISHU_ENABLED`、`FEISHU_SYNC_DRY_RUN`、`FEISHU_BITABLE_TRANSPORT` 和 `FEISHU_BITABLE_APP_TOKEN`。
 
 飞书系统控制台：
 
@@ -317,6 +317,29 @@ http://127.0.0.1:8000/leads
 - `leads`：潜在客户卡片
 - `lead_evidence`：判断依据
 - `enrichment_tasks`：待完善信息和后续任务
+
+当前 `/leads` 是客户判断工作台，不是工程看板。列表按 `新鲜度 + 意向 + 可行动性` 分桶：
+
+```text
+立即处理
+今日内处理
+可观察
+信息不足
+过期/低优先级
+```
+
+每张卡片展示业务摘要、为什么推荐、来源角色、线索新鲜度、SLA 建议、证据展开和人工判断动作。人工动作包括：
+
+```text
+有效
+无效
+观察
+信息不足
+重复
+已联系
+```
+
+这样使用者可以在同一页面完成“看证据 -> 判断是否值得跟 -> 标记下一步”的闭环。
 
 业务闭环：
 
@@ -446,7 +469,7 @@ python -m apps.cli --json leads-backfill --rebuild
 - 多少进入待完善队列
 - 多少已经达到可跟进条件
 
-`/ops` 保留为运维页面。聚类、查询评分和内容洞察继续作为后台能力，用于帮助系统找到更多高质量线索，不再作为主要产品结果展示。
+`/ops` 保留为管理员控制台，不作为普通运营入口。普通运营使用 `/leads` 或飞书客户审核表；运营负责人通过飞书 `系统控制台` 触发一次性动作；管理员和工程师才进入 `/ops` 处理 worker、任务、错误、恢复和重试。聚类、查询评分和内容洞察继续作为后台能力，用于帮助系统找到更多高质量线索，不再作为主要产品结果展示。
 
 ## 10. Agent 中立运行框架
 
@@ -585,7 +608,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`301 passed, 4 skipped, 1 warning`。
+- 当前全量测试：`304 passed, 4 skipped, 1 warning`。
 - 当前 LLM/飞书可靠性链路使用 `screening` 和 `sending` 领取态；`send_uncertain` 用于暴露不能自动重发的不确定发送结果。
 - 当前跟进话术审批卡已改为“审批入库”和“真实小红书发送”分离，飞书按钮不再直接触发小红书浏览器发送。
 

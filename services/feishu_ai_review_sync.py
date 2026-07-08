@@ -199,17 +199,17 @@ def _customer_fields(session: Session, screenings: list[LeadScreeningResult]) ->
     texts = [_raw_text(session, item) for item in screenings]
     all_text = "\n".join(text for text in texts if text)
     return {
-        "客户": _customer_name(profile),
-        "平台用户ID": _platform_user_id(profile, fallback=f"screening:{best.id}"),
-        "意向程度": _intent_label(best),
         "需求摘要": _truncate(_summary_text(best, all_text), 500),
-        "课程/考试": _detect_product(all_text),
-        "为什么推荐": _recommendation_text(best),
+        "意向程度": _intent_label(best),
         "下一步": _next_step(best),
         "状态": _review_status_label(best),
         "证据数量": len(screenings),
+        "为什么推荐": _recommendation_text(best),
         "来源链接": _source_url(session, best),
         "抓取时间": _format_datetime(_published_at(session, best) or best.updated_at or best.created_at),
+        "客户": _customer_name(profile),
+        "平台用户ID": _platform_user_id(profile, fallback=f"screening:{best.id}"),
+        "课程/考试": _detect_product(all_text),
     }
 
 
@@ -222,16 +222,16 @@ def _evidence_fields(
     profile = _profile(session, screening)
     fields: dict[str, Any] = {
         "证据标题": f"{_customer_name(profile)}-{screening.source_entity_type}-{screening.source_entity_id}-screening-{screening.id}",
-        "平台用户ID": _platform_user_id(profile, fallback=f"screening:{screening.id}"),
-        "客户": _customer_name(profile),
+        "抓取原文": _truncate(_raw_text(session, screening), 1500),
         "证据类型": screening.source_entity_type,
         "AI判断": screening.review_status,
         "置信度": screening.confidence or 0,
-        "动作": screening.demand_type or "",
         "为什么推荐": _recommendation_text(screening),
-        "抓取原文": _truncate(_raw_text(session, screening), 1500),
         "来源链接": _source_url(session, screening),
         "发布时间": _format_datetime(_published_at(session, screening)),
+        "客户": _customer_name(profile),
+        "平台用户ID": _platform_user_id(profile, fallback=f"screening:{screening.id}"),
+        "动作": screening.demand_type or "",
         "内容ID": str(screening.content_id or ""),
         "评论ID": str(screening.comment_id or ""),
     }

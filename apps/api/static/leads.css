@@ -80,7 +80,7 @@ main {
 .board {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(260px, 1fr));
+  grid-template-columns: repeat(5, minmax(240px, 1fr));
 }
 
 .lane {
@@ -113,7 +113,15 @@ main {
 
 .lead-card h3 {
   font-size: 15px;
+  line-height: 1.35;
   margin: 0;
+}
+
+.subhead {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 
 .score {
@@ -126,13 +134,38 @@ main {
 }
 
 .meta,
-.missing,
 .next-step,
-.evidence {
+.evidence,
+.reason-list {
   color: #475467;
   font-size: 13px;
   line-height: 1.45;
   margin-top: 8px;
+}
+
+.reason-list {
+  background: #f8fafc;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.reason-list strong {
+  color: #1f2933;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.evidence-panel {
+  margin-top: 8px;
+}
+
+.evidence-panel summary {
+  color: #0f766e;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .evidence {
@@ -149,8 +182,15 @@ main {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+.actions button {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 70px;
+  padding: 8px 10px;
 }
 
 .empty {

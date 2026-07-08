@@ -51,7 +51,9 @@ def test_ops_page_and_read_apis(api_context: tuple[TestClient, sessionmaker[Sess
     tasks = client.get("/ops/api/tasks")
 
     assert page.status_code == 200
-    assert "AIXHS 需求发现看板" in page.text
+    assert "AIXHS 管理员控制台" in page.text
+    assert "普通运营请使用客户判断工作台或飞书表" in page.text
+    assert "危险操作" in page.text
     assert system.status_code == 200
     assert system.json()["api"]["status"] == "正常"
     assert tasks.status_code == 200

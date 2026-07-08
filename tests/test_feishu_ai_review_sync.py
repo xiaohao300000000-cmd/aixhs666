@@ -60,6 +60,7 @@ def test_feishu_ai_review_sync_writes_deepseek_result_to_customer_and_evidence_t
     }
     customer_fields = customer_client.upserts[0][1]
     evidence_fields = evidence_client.upserts[0][1]
+    assert list(customer_fields)[:6] == ["需求摘要", "意向程度", "下一步", "状态", "证据数量", "为什么推荐"]
     assert customer_fields["客户"] == "福州家长"
     assert customer_fields["平台用户ID"] == "u1"
     assert customer_fields["状态"] == "待确认"
@@ -67,6 +68,7 @@ def test_feishu_ai_review_sync_writes_deepseek_result_to_customer_and_evidence_t
     assert "Campaign=needs_review" in str(customer_fields["为什么推荐"])
     assert "福州" in str(customer_fields["为什么推荐"])
     assert f"screening-{screening_id}" in str(evidence_fields["证据标题"])
+    assert list(evidence_fields)[:6] == ["证据标题", "抓取原文", "证据类型", "AI判断", "置信度", "为什么推荐"]
     assert evidence_fields["AI判断"] == "needs_review"
     assert evidence_fields["置信度"] == 68
     assert evidence_fields["关联客户线索"] == ["customer_table_rec_1"]

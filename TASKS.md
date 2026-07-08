@@ -14,16 +14,17 @@
 |---|---|
 | 代码完成 | DONE：真实 adapter、Worker、PostgreSQL 幂等/并发、飞书 transport/callback、数据库看板、运行诊断、HTML 控制台 |
 | Agent 中立 Pipeline Runner | DONE：`services/pipeline_runner.py`、`pipeline_runs`、CLI、REST 已接入主流程 |
-| AI 自动获客最小闭环 | DONE_CODE：`leads`、`lead_evidence`、`enrichment_tasks`、历史回填、Pipeline 增量接入和 `/leads` 获客页面已完成 |
+| AI 自动获客最小闭环 | DONE_CODE：`leads`、`lead_evidence`、`enrichment_tasks`、历史回填、Pipeline 增量接入和 `/leads` 客户判断工作台已完成 |
 | 规则辅助 + LLM 主筛选 | DONE：`lead_screening_results` 结构化保存 LLM 判断，`leads-llm-screen` 可手动执行数据库 → LLM → 数据库 |
 | 统一 LLM/飞书流程编排 | DONE_CODE：复用 `lead_screening_results` 增加 `workflow_status`、`attempt_count`、`last_error`，`lead-flow-once` 可按状态推进下一步；LLM 使用 `screening` 领取态，飞书发送使用 `sending` 领取态，`send_uncertain` 暴露不能自动重发的不确定结果 |
 | 飞书 LLM 审核闭环 | DONE_REAL：真实点击“有效/无效/暂时观察”已更新数据库并把原卡片改成“已处理”；当前 live 验收未启用签名密钥，签名路径由测试覆盖 |
 | 飞书话术审批闭环 | DONE_CODE：点击“有效”后可生成话术审批卡；飞书内点击“发送”现在只审批入库为 `approved_to_send`，真实小红书发送拆到独立入口，避免回调卡住 |
 | 飞书 AI 筛选工作台 | DONE：`AI筛选客户线索` 71 条、`AI筛选证据明细` 72 条已写入 Base，证据已双向关联，卡片视图已创建 |
-| 飞书 AI 筛选增量同步 | DONE_CODE：`feishu-ai-review-sync` 可把 `lead_screening_results` 的 DeepSeek 新结果增量写入 AI 筛选客户线索/证据明细表，重复执行不重复创建 |
+| 飞书 AI 筛选增量同步 | DONE_CODE：`feishu-ai-review-sync` 可把 `lead_screening_results` 的 DeepSeek 新结果增量写入 AI 筛选客户线索/证据明细表，重复执行不重复创建；字段顺序已按运营视角业务字段前置 |
 | 飞书系统控制台 | DONE：`系统控制台` 表已创建，`run-control-panel-once` 只在人为设置 `开始执行=是，开始` 后执行一次并写回结果 |
+| `/ops` 管理员边界 | DONE_CODE：普通运营入口改为 `/leads`/飞书表，`/ops` 明确为管理员控制台，采集、恢复、重试、创建任务等危险操作增加提示和确认 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
-| 自动测试通过 | DONE：`pytest -q` 为 301 passed, 4 skipped |
+| 自动测试通过 | DONE：`pytest -q` 为 304 passed, 4 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
@@ -36,7 +37,7 @@ V15 本机自动测试结果：
 
 ```text
 .venv/bin/pytest -q
-301 passed, 4 skipped, 1 warning
+304 passed, 4 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
 1 skipped, 170 deselected, 1 warning

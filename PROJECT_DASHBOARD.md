@@ -15,12 +15,12 @@
 
 | 项目 | 当前值 |
 |---|---|
-| 当前阶段 | DeepSeek 筛选 + Campaign 资格判断 + 飞书人工审核/话术审批工作台 |
-| 当前主任务 | 用旧数据继续验证真实 DeepSeek、资格判断、飞书审核、AI 筛选表增量同步和话术审批；暂不做新的小红书采集 |
+| 当前阶段 | DeepSeek 筛选 + Campaign 资格判断 + 客户判断工作台 + 飞书人工审核/话术审批 |
+| 当前主任务 | 优化普通运营判断体验：`/leads` 承接线索判断，飞书表业务字段前置，`/ops` 只给管理员使用；暂不做新的小红书采集 |
 | 执行会话 | 主控单会话 |
 | 当前分支 | `main` |
 | 阻塞数量 | 4 |
-| 最后更新 | 2026-07-09：新增 `feishu-ai-review-sync`，DeepSeek 新结果可增量进入飞书 AI 筛选两张表；飞书话术审批按钮只写 approved_to_send；全量测试 301 passed, 4 skipped |
+| 最后更新 | 2026-07-09：`/leads` 升级为客户判断工作台，飞书 AI 筛选字段按运营视角重排，`/ops` 明确为管理员控制台；全量测试 304 passed, 4 skipped |
 
 ## 阶段进度
 
@@ -124,6 +124,7 @@ gantt
 
 | 日期 | 任务 | 结果 | 报告 |
 |---|---|---|---|
+| 2026-07-09 | 客户判断工作台与角色边界 | `/leads` 增加业务摘要、为什么推荐、证据展开、新鲜度/SLA 和人工判断动作；飞书 AI 筛选字段业务前置；`/ops` 增加管理员边界和危险操作确认 | `README.md` / `HANDOFF.md` |
 | 2026-07-09 | 飞书 AI 筛选增量同步 | 新增 `feishu-ai-review-sync`，把 `lead_screening_results` 的 DeepSeek 新结果增量写入 `AI筛选客户线索` / `AI筛选证据明细`，重复执行不重复创建 | `README.md` |
 | 2026-07-09 | 主线整理与话术发送降风险 | `feat/v15-agent-neutral-runtime` 已合并推送到 `main`；飞书话术审批按钮改为 `approved_to_send`，不再在回调线程里直接发送小红书；完整测试 `301 passed, 4 skipped, 1 warning` | `HANDOFF.md` |
 | 2026-07-07 | Campaign 资格判断与地区证据模型 | 新增可配置 Campaign、LocationPolicy、LocationEvidence、资格判断字段和小红书公开 IP 属地映射基础 | `docs/QUALIFICATION_ARCHITECTURE_AUDIT.md` |
@@ -159,9 +160,9 @@ gantt
 
 1. 暂不做新采集，继续用旧数据验证 DeepSeek、Campaign、飞书审核、`feishu-ai-review-sync` 和话术审批状态流转。
 2. 把 `feishu-ai-review-sync` 挂到飞书 `系统控制台` 或后续 worker，让普通用户能显式触发。
-3. 为 `approved_to_send` 增加受控发送入口或 worker；浏览器/网络问题解决前不要真实触发小红书发送。
-4. 在 `待人工确认卡片` 视图审核 61 个候选客户，标记 `可跟进` 或 `已忽略`。
-5. 新建“客户审核卡片表”或调整主字段，让卡片标题直接显示 `需求摘要`。
+3. 在 `待人工确认卡片` 视图审核 61 个候选客户，标记 `可跟进` 或 `已忽略`，记录误判类型并反哺 `/leads` 判断文案。
+4. 新建“客户审核卡片表”或调整主字段，让卡片标题直接显示 `需求摘要`。
+5. 为 `approved_to_send` 增加受控发送入口或 worker；浏览器/网络问题解决前不要真实触发小红书发送。
 
 
 ## 并发管理

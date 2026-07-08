@@ -3,12 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AIXHS 需求发现看板</title>
+    <title>AIXHS 管理员控制台</title>
     <link rel="stylesheet" href="/ops/static/ops.css" />
   </head>
   <body>
     <header class="topbar">
-      <h1>AIXHS 需求发现看板</h1>
+      <div>
+        <h1>AIXHS 管理员控制台</h1>
+        <p class="role-note">普通运营请使用客户判断工作台或飞书表；这里用于管理员处理采集、任务和错误。</p>
+      </div>
       <div class="token">
         <input id="ops-token" type="password" placeholder="操作密码" autocomplete="off" />
         <label><input id="auto-refresh" type="checkbox" checked /> 自动刷新</label>
@@ -17,12 +20,20 @@
     </header>
     <main>
       <div id="notice" class="notice" hidden></div>
+      <section class="role-panel">
+        <div>
+          <h2>角色边界</h2>
+          <p>普通运营只看客户、审核、批准和反馈；运营负责人通过飞书系统控制台触发找新客户和同步；管理员才在本页处理 worker、任务、错误和恢复。</p>
+        </div>
+        <a class="link-button" href="/leads">进入客户判断工作台</a>
+      </section>
       <section class="hero-panel">
         <div class="hero-copy">
           <h2>今日机会总览</h2>
           <div id="business-overview" class="metric-strip"></div>
         </div>
-        <form id="run-pipeline" class="run-form">
+        <form id="run-pipeline" class="run-form danger-zone">
+          <strong>危险操作：可能触发真实采集和分析</strong>
           <select name="mode">
             <option value="all">全部启用查询</option>
             <option value="query">指定查询 ID</option>
@@ -66,10 +77,11 @@
           <thead><tr><th>编号</th><th>在线</th><th>状态</th><th>任务</th><th>启动时间</th><th>心跳</th><th>完成</th><th>失败</th><th>错误</th></tr></thead>
           <tbody id="workers"></tbody>
         </table>
-        <div class="actions">
+        <div class="actions danger-zone">
+          <strong>危险操作</strong>
           <button data-post="/ops/api/worker/pause" data-confirm="确认暂停采集进程？">暂停</button>
-          <button data-post="/ops/api/worker/resume">恢复</button>
-          <button data-post="/ops/api/worker/recover-timeouts">恢复超时任务</button>
+          <button data-post="/ops/api/worker/resume" data-confirm="确认恢复采集进程？">恢复</button>
+          <button data-post="/ops/api/worker/recover-timeouts" data-confirm="只在确认任务卡住时使用。确认恢复超时任务？">恢复超时任务</button>
         </div>
       </section>
       <section>
@@ -80,7 +92,8 @@
           <input id="task-q" placeholder="搜索关键词" />
           <button id="task-filter">筛选</button>
         </div>
-        <form id="create-task" class="inline-form">
+        <form id="create-task" class="inline-form danger-zone">
+          <strong>危险操作：会创建新的采集任务</strong>
           <input name="query_text" placeholder="查询词" required />
           <input name="limit" type="number" min="1" max="200" value="20" />
           <input name="priority" type="number" value="100" />
