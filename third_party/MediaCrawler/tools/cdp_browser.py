@@ -44,6 +44,11 @@ class CDPBrowserManager:
         self.debug_port: Optional[int] = None
         self._cleanup_registered = False
 
+    def _cdp_host(self) -> str:
+        if config.CDP_CONNECT_EXISTING:
+            return getattr(config, "CDP_HOST", "localhost") or "localhost"
+        return "localhost"
+
     def _register_cleanup_handlers(self):
         """
         Register cleanup handlers to ensure browser process cleanup on program exit
@@ -150,7 +155,7 @@ class CDPBrowserManager:
         """
         self.debug_port = config.CDP_DEBUG_PORT
         utils.logger.info(
-            f"[CDPBrowserManager] Connecting to existing browser on port {self.debug_port}..."
+            f"[CDPBrowserManager] Connecting to existing browser on {self._cdp_host()}:{self.debug_port}..."
         )
         utils.logger.info(
             "[CDPBrowserManager] Make sure remote debugging is enabled in your browser: "
@@ -177,11 +182,12 @@ class CDPBrowserManager:
 
         if not connected:
             raise RuntimeError(
-                f"Cannot connect to existing browser on port {self.debug_port} "
+                f"Cannot connect to existing browser on {self._cdp_host()}:{self.debug_port} "
                 f"after waiting {timeout}s. Please ensure:\n"
                 "  1. Your browser is running\n"
                 "  2. Remote debugging is enabled (chrome://inspect/#remote-debugging)\n"
-                f"  3. The debug port is {self.debug_port} (configure via CDP_DEBUG_PORT)"
+                f"  3. The debug host/port is {self._cdp_host()}:{self.debug_port} "
+                "(configure via MEDIACRAWLER_CDP_HOST / MEDIACRAWLER_CDP_DEBUG_PORT)"
             )
 
         # Connect via CDP (reuse existing method)
@@ -232,7 +238,7 @@ class CDPBrowserManager:
             # Simple socket connection test
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(5)
-                result = s.connect_ex(("localhost", debug_port))
+                result = s.connect_ex((self._cdp_host(), debug_port))
                 if result == 0:
                     utils.logger.info(
                         f"[CDPBrowserManager] CDP port {debug_port} is accessible"
@@ -292,7 +298,7 @@ class CDPBrowserManager:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://localhost:{debug_port}/json/version", timeout=10
+                    f"http://{self._cdp_host()}:{debug_port}/json/version", timeout=10
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -318,7 +324,7 @@ class CDPBrowserManager:
             if config.CDP_CONNECT_EXISTING:
                 # Existing browser remote debugging in Chrome 136+ does not expose
                 # /json/version. Connect directly and wait for user confirmation.
-                ws_url = f"ws://localhost:{self.debug_port}/devtools/browser"
+                ws_url = f"ws://{self._cdp_host()}:{self.debug_port}/devtools/browser"
                 utils.logger.info(f"[CDPBrowserManager] Connecting to existing browser via CDP: {ws_url}")
                 utils.logger.info(
                     "[CDPBrowserManager] Please check your browser for a confirmation dialog and accept it"

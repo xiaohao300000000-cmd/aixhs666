@@ -32,7 +32,7 @@
 
 - GitHub 主分支：`main`
 - 最新提交：`f4e24c9 fix: defer outreach sending after approval`
-- 完整测试：`304 passed, 4 skipped, 1 warning`
+- 完整测试：`305 passed, 4 skipped, 1 warning`
 - 当前不再把新更新只推到功能分支；主线代码已合并并推送到 `origin/main`。
 - 小红书真实私信发送暂时搁置：当前本机浏览器/网络环境无法稳定打开小红书私信页，且用户要求不要改 Clash。飞书“发送”按钮已改为只审批入库为 `approved_to_send`，不再在飞书回调线程里直接触发小红书发送。后续等浏览器/网络问题解决后，再通过独立发送入口或 worker 执行真实发送。
 
@@ -207,7 +207,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-304 passed, 4 skipped, 1 warning
+305 passed, 4 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：
@@ -285,9 +285,20 @@ python -m apps.cli --json run-control-panel-once
 
 - 默认 `MEDIACRAWLER_ENABLE_CDP_MODE=true`
 - 默认 `MEDIACRAWLER_CDP_CONNECT_EXISTING=false`
+- 默认 `MEDIACRAWLER_CDP_HOST=localhost`
 - 默认 `MEDIACRAWLER_SAVE_LOGIN_STATE=true`
 - 默认 `MEDIACRAWLER_AUTO_CLOSE_BROWSER=false`
 - 默认持久 profile：`third_party/MediaCrawler/browser_data/cdp_aixhs_xhs_user_data_dir`
+
+如果小红书只能在另一台 Tailscale Windows 主机上稳定打开，可以让远端主机运行 Chrome CDP，再让本机连接远端 CDP：
+
+```env
+MEDIACRAWLER_CDP_CONNECT_EXISTING=true
+MEDIACRAWLER_CDP_HOST=100.124.24.8
+MEDIACRAWLER_CDP_DEBUG_PORT=19223
+```
+
+当前验证过的远端方式是：Windows 主机 `100.124.24.8` 通过计划任务启动 Chrome `127.0.0.1:9222`，再用用户态 relay 暴露 `100.124.24.8:19223 -> 127.0.0.1:9222`，防火墙只允许本机 Tailscale 地址访问。不要把 CDP 端口无认证地暴露到公网或普通局域网。
 
 首次登录时运行：
 
@@ -608,7 +619,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 - 新增 `系统控制台` 表，普通用户可通过 `我要做什么`、`开始执行`、`现在状态` 发出一次性指令。
 - 新增 `python -m apps.cli --json run-control-panel-once`，只检查一次控制台，不后台自动跑。
 - 已真实验证：`开始执行=否` 时不执行；改成 `是，开始` 后执行一次并写回结果。
-- 当前全量测试：`304 passed, 4 skipped, 1 warning`。
+- 当前全量测试：`305 passed, 4 skipped, 1 warning`。
 - 当前 LLM/飞书可靠性链路使用 `screening` 和 `sending` 领取态；`send_uncertain` 用于暴露不能自动重发的不确定发送结果。
 - 当前跟进话术审批卡已改为“审批入库”和“真实小红书发送”分离，飞书按钮不再直接触发小红书浏览器发送。
 

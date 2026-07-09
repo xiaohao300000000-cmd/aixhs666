@@ -105,7 +105,7 @@ git worktree list
 阻塞：当前浏览器/网络环境无法稳定打开小红书私信页，用户要求不要改 Clash
 文件锁：无
 下一步：先把 AI 筛选同步挂入普通用户可触发入口，并继续人工审核 61 条待确认候选；浏览器/网络问题解决后再恢复真实发送
-最后一次全量测试：.venv/bin/pytest -q -> 304 passed, 4 skipped, 1 warning
+最后一次全量测试：.venv/bin/pytest -q -> 305 passed, 4 skipped, 1 warning
 ```
 
 接手时不要以旧功能分支为主线。除非用户明确要求新分支，默认在 `main` 上继续提交并推送。

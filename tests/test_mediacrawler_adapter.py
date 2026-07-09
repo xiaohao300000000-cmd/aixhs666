@@ -165,11 +165,30 @@ def test_mediacrawler_login_state_environment_is_passed(tmp_path: Path) -> None:
     assert captured_env["MEDIACRAWLER_USER_DATA_DIR"] == "aixhs_%s_user_data_dir"
 
 
+def test_mediacrawler_remote_cdp_host_environment_is_passed(tmp_path: Path) -> None:
+    config = _config(tmp_path, cdp_host="100.124.24.8", cdp_connect_existing=True)
+    captured_env: dict[str, str] = {}
+
+    def fake_runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        captured_env.update(kwargs["env"])
+        output_dir = Path(command[command.index("--save_data_path") + 1])
+        _write_sample_output(output_dir)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    MediaCrawlerXiaohongshuAdapter(config=config, runner=fake_runner).search("PET 二刷", limit=1)
+
+    assert captured_env["MEDIACRAWLER_CDP_CONNECT_EXISTING"] == "true"
+    assert captured_env["MEDIACRAWLER_CDP_HOST"] == "100.124.24.8"
+    assert captured_env["MEDIACRAWLER_CDP_DEBUG_PORT"] == "9222"
+
+
 def _config(
     tmp_path: Path,
     *,
     proxy_server: str | None = None,
     assume_has_more: bool = False,
+    cdp_host: str = "localhost",
+    cdp_connect_existing: bool = False,
 ) -> MediaCrawlerConfig:
     home = tmp_path / "MediaCrawler"
     home.mkdir()
@@ -192,7 +211,8 @@ def _config(
         proxy_server=proxy_server,
         log_dir=tmp_path / "logs",
         enable_cdp_mode=True,
-        cdp_connect_existing=False,
+        cdp_connect_existing=cdp_connect_existing,
+        cdp_host=cdp_host,
         cdp_debug_port=9222,
         auto_close_browser=False,
         save_login_state=True,

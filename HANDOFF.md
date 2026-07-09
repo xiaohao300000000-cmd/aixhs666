@@ -26,7 +26,7 @@ d54f793 feat: harden xhs location evidence workflow
 
 ```text
 .venv/bin/pytest -q
-304 passed, 4 skipped, 1 warning
+305 passed, 4 skipped, 1 warning
 ```
 
 GitHub 更新规则已调整：后续默认在 `main` 上提交和推送，除非明确需要新功能分支。当前工作区只允许保留本地未跟踪笔记，不得把密钥、cookie、Webhook、数据库密码或完整用户隐私数据提交到仓库。
@@ -107,6 +107,8 @@ Base URL: https://my.feishu.cn/base/RVtDb7nGkabAMbsDkA0cvxdOnld
 2026-07-09 已优化飞书 AI 筛选同步的字段顺序：客户表优先写 `需求摘要`、`意向程度`、`下一步`、`状态`、`证据数量`、`为什么推荐`，证据表优先写 `证据标题`、`抓取原文`、`证据类型`、`AI判断`、`置信度`、`为什么推荐`；`客户`、平台 ID、内容 ID、评论 ID 等技术字段后移，便于普通运营先看业务判断。
 
 2026-07-09 已把 `/ops` 明确降级为管理员控制台：页面文案提示普通运营使用 `/leads` 或飞书表，采集、恢复、重试、创建任务等危险操作增加显式风险提示和确认。普通运营不应直接使用 `/ops` 做日常审核。
+
+2026-07-09 已接通一台 Tailscale Windows 主机作为远端浏览器环境：主机地址 `100.124.24.8`，SSH 用户 `10579`，本机使用专用 key `~/.ssh/aixhs_100_124_24_8` 可登录。远端通过计划任务 `AIXHS Chrome CDP` 在交互式用户会话中启动 Chrome CDP，本机已验证 Playwright 可通过 `http://100.124.24.8:19223` attach 并打开 `https://www.xiaohongshu.com/explore`，标题为“小红书 - 你的生活兴趣社区”。本机 `.env` 已设置 `MEDIACRAWLER_CDP_CONNECT_EXISTING=true`、`MEDIACRAWLER_CDP_HOST=100.124.24.8`、`MEDIACRAWLER_CDP_DEBUG_PORT=19223`。远端 `19223` 是用户态 relay 到 Chrome 本机 `127.0.0.1:9222`，防火墙只允许本机 Tailscale 地址访问；不要把 CDP 端口开放到公网。
 
 本机普通用户入口：
 
@@ -193,7 +195,7 @@ python -m apps.cli --json run-control-panel-once
 - `/leads` 升级为客户判断工作台，增加业务摘要、为什么推荐、证据展开、SLA/新鲜度和完整人工判断动作。
 - 飞书 AI 筛选同步字段按运营视角重排，业务字段前置，技术字段后移。
 - `/ops` 明确为管理员控制台，危险操作增加角色边界和确认提示。
-- 全量测试通过：`304 passed, 4 skipped, 1 warning`。
+- 全量测试通过：`305 passed, 4 skipped, 1 warning`。
 
 ## 2026-07-06 今日已完成
 

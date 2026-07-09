@@ -79,6 +79,10 @@ ENABLE_CDP_MODE = _env_bool("MEDIACRAWLER_ENABLE_CDP_MODE", True)
 # 如果端口被占用，系统会自动尝试下一个可用端口
 CDP_DEBUG_PORT = _env_int("MEDIACRAWLER_CDP_DEBUG_PORT", 9222)
 
+# CDP 调试主机。默认连接本机；当通过 Tailscale 或局域网控制另一台
+# 已开启 remote debugging 的 Chrome 时，设置为远端 IP。
+CDP_HOST = os.getenv("MEDIACRAWLER_CDP_HOST", "localhost")
+
 # 自定义浏览器路径（可选）
 # 如果为空，系统会自动检测 Chrome/Edge 的安装路径
 # Windows 示例: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"

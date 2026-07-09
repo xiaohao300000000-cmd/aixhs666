@@ -46,6 +46,7 @@ class MediaCrawlerConfig:
     log_dir: Path | None
     enable_cdp_mode: bool
     cdp_connect_existing: bool
+    cdp_host: str
     cdp_debug_port: int
     auto_close_browser: bool
     save_login_state: bool
@@ -83,6 +84,7 @@ class MediaCrawlerConfig:
             log_dir=_absolute_path(Path(log_dir_raw).expanduser()) if log_dir_raw else None,
             enable_cdp_mode=_env_bool("MEDIACRAWLER_ENABLE_CDP_MODE", default=True),
             cdp_connect_existing=_env_bool("MEDIACRAWLER_CDP_CONNECT_EXISTING", default=False),
+            cdp_host=os.getenv("MEDIACRAWLER_CDP_HOST", "localhost"),
             cdp_debug_port=int(os.getenv("MEDIACRAWLER_CDP_DEBUG_PORT", "9222")),
             auto_close_browser=_env_bool("MEDIACRAWLER_AUTO_CLOSE_BROWSER", default=False),
             save_login_state=_env_bool("MEDIACRAWLER_SAVE_LOGIN_STATE", default=True),
@@ -239,6 +241,7 @@ class MediaCrawlerXiaohongshuAdapter:
         env.setdefault("PYTHONUTF8", "1")
         env["MEDIACRAWLER_ENABLE_CDP_MODE"] = _bool_arg(self.config.enable_cdp_mode)
         env["MEDIACRAWLER_CDP_CONNECT_EXISTING"] = _bool_arg(self.config.cdp_connect_existing)
+        env["MEDIACRAWLER_CDP_HOST"] = self.config.cdp_host
         env["MEDIACRAWLER_CDP_DEBUG_PORT"] = str(self.config.cdp_debug_port)
         env["MEDIACRAWLER_AUTO_CLOSE_BROWSER"] = _bool_arg(self.config.auto_close_browser)
         env["MEDIACRAWLER_SAVE_LOGIN_STATE"] = _bool_arg(self.config.save_login_state)

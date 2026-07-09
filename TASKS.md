@@ -24,7 +24,7 @@
 | 飞书系统控制台 | DONE：`系统控制台` 表已创建，`run-control-panel-once` 只在人为设置 `开始执行=是，开始` 后执行一次并写回结果 |
 | `/ops` 管理员边界 | DONE_CODE：普通运营入口改为 `/leads`/飞书表，`/ops` 明确为管理员控制台，采集、恢复、重试、创建任务等危险操作增加提示和确认 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
-| 自动测试通过 | DONE：`pytest -q` 为 304 passed, 4 skipped |
+| 自动测试通过 | DONE：`pytest -q` 为 305 passed, 4 skipped |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
@@ -37,7 +37,7 @@ V15 本机自动测试结果：
 
 ```text
 .venv/bin/pytest -q
-304 passed, 4 skipped, 1 warning
+305 passed, 4 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
 1 skipped, 170 deselected, 1 warning
