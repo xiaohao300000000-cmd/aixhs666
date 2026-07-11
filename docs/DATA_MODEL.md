@@ -390,7 +390,7 @@ created_at
 updated_at
 ```
 
-`screening_result_id` 唯一，确保每条筛选结果只创建一个回复工作流。`target_comment_id + status` 建索引，支持按目标评论检查发送状态。
+`screening_result_id` 唯一，确保每条筛选结果只创建一个回复工作流。`target_comment_id` 和 `target_content_id` 允许为空，删除本地评论或帖子记录时通过 `SET NULL` 保留回复审计记录；对应的平台 ID 始终必填，保证目标证据可追溯。`target_comment_id + status` 建索引，支持按目标评论检查发送状态。
 
 `status`：
 

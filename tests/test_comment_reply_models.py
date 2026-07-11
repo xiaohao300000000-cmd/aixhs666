@@ -91,3 +91,44 @@ def test_comment_reply_defaults_and_unique_screening(factory: sessionmaker[Sessi
         )
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def test_comment_reply_preserves_denormalized_targets_without_local_rows(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="deleted-target-user")
+        session.add(profile)
+        session.flush()
+        screening = LeadScreeningResult(
+            platform="xhs",
+            source_entity_type="comment",
+            source_entity_id=999,
+            public_profile_id=profile.id,
+        )
+        session.add(screening)
+        session.flush()
+        reply = LeadCommentReply(
+            screening_result_id=screening.id,
+            target_comment_id=None,
+            target_platform_comment_id="deleted-platform-comment",
+            target_content_id=None,
+            target_platform_content_id="deleted-platform-content",
+            draft_text="保留审核和发送证据。",
+        )
+        session.add(reply)
+        session.commit()
+
+        assert reply.target_comment_id is None
+        assert reply.target_content_id is None
+        assert reply.target_platform_comment_id == "deleted-platform-comment"
+        assert reply.target_platform_content_id == "deleted-platform-content"
+
+
+def test_comment_reply_target_foreign_keys_use_set_null() -> None:
+    table = LeadCommentReply.__table__
+
+    assert table.c.target_comment_id.nullable is True
+    assert table.c.target_content_id.nullable is True
+    assert table.c.target_platform_comment_id.nullable is False
+    assert table.c.target_platform_content_id.nullable is False
+    assert next(iter(table.c.target_comment_id.foreign_keys)).ondelete == "SET NULL"
+    assert next(iter(table.c.target_content_id.foreign_keys)).ondelete == "SET NULL"

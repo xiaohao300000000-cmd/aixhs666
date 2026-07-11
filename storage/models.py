@@ -378,9 +378,9 @@ class LeadCommentReply(TimestampMixin, Base):
         ForeignKey("lead_screening_results.id", ondelete="CASCADE"), nullable=False
     )
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"))
-    target_comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id", ondelete="CASCADE"), nullable=False)
+    target_comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id", ondelete="SET NULL"))
     target_platform_comment_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    target_content_id: Mapped[int] = mapped_column(ForeignKey("contents.id", ondelete="CASCADE"), nullable=False)
+    target_content_id: Mapped[int | None] = mapped_column(ForeignKey("contents.id", ondelete="SET NULL"))
     target_platform_content_id: Mapped[str] = mapped_column(String(255), nullable=False)
     target_url: Mapped[str | None] = mapped_column(Text)
     draft_text: Mapped[str] = mapped_column(Text, nullable=False)
