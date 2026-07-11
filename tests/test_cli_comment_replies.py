@@ -160,7 +160,33 @@ def test_comment_reply_confirm_not_sent_records_operator_reason(monkeypatch: pyt
         reply_id = 45
         status = "failed"
         reconciliation_required = False
+        card_status = "replaced"
+        card_error = None
     monkeypatch.setattr("integrations.feishu.comment_replies.confirm_comment_reply_not_sent", lambda session_factory, **kwargs: calls.append(kwargs) or Result())
+    monkeypatch.setattr(cli, "FeishuIMClient", object)
     assert cli.main(["--json", "comment-reply-confirm-not-sent", "--reply-id", "45", "--operator", "ops@example.com", "--reason", "verified absent on XHS"]) == 0
-    assert calls == [{"reply_id": 45, "operator": "ops@example.com", "reason": "verified absent on XHS"}]
-    assert json.loads(capsys.readouterr().out)["comment_reply_not_sent_confirmation"]["status"] == "failed"
+    assert calls[0]["reply_id"] == 45
+    assert calls[0]["operator"] == "ops@example.com"
+    assert calls[0]["reason"] == "verified absent on XHS"
+    assert type(calls[0]["card_client"]) is object
+    output = json.loads(capsys.readouterr().out)["comment_reply_not_sent_confirmation"]
+    assert output["status"] == "failed"
+    assert output["card_status"] == "replaced"
+
+
+def test_comment_reply_confirm_not_sent_partial_card_recovery_is_nonzero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _runtime(monkeypatch)
+    class Result:
+        applied = True
+        duplicate = False
+        reply_id = 46
+        status = "failed"
+        reconciliation_required = True
+        card_status = "replacement_unknown"
+        card_error = "reconcile Feishu before another replacement"
+    monkeypatch.setattr("integrations.feishu.comment_replies.confirm_comment_reply_not_sent", lambda *args, **kwargs: Result())
+    monkeypatch.setattr(cli, "FeishuIMClient", object)
+    assert cli.main(["--json", "comment-reply-confirm-not-sent", "--reply-id", "46", "--operator", "ops", "--reason", "verified absent"]) == 2
+    output = json.loads(capsys.readouterr().err)["comment_reply_not_sent_confirmation"]
+    assert output["card_status"] == "replacement_unknown"
+    assert output["card_error"] == "reconcile Feishu before another replacement"

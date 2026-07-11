@@ -323,8 +323,12 @@ def main(argv: list[str] | None = None) -> int:
                 reply_id=args.reply_id,
                 operator=args.operator,
                 reason=args.reason,
+                card_client=FeishuIMClient(),
             )
             payload = {"comment_reply_not_sent_confirmation": _comment_reply_result_payload(result)}
+            if result.reconciliation_required:
+                _emit(payload, as_json=args.json, stream=sys.stderr)
+                return 2
         elif args.command == "run-control-panel-once":
             payload = {
                 "control_panel": run_control_panel_once(
@@ -415,13 +419,17 @@ def _emit(payload: dict[str, Any], *, as_json: bool, stream: Any | None = None) 
 
 
 def _comment_reply_result_payload(result: Any) -> dict[str, Any]:
-    return {
+    payload = {
         "applied": result.applied,
         "duplicate": result.duplicate,
         "reply_id": result.reply_id,
         "status": result.status,
         "reconciliation_required": result.reconciliation_required,
     }
+    if hasattr(result, "card_status"):
+        payload["card_status"] = result.card_status
+        payload["card_error"] = result.card_error
+    return payload
 
 
 def _positive_integer(value: str) -> int:

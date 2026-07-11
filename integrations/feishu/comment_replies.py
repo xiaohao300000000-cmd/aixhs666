@@ -58,6 +58,8 @@ class CommentReplyCallbackResult:
     reply_id: int
     status: str
     reconciliation_required: bool = False
+    card_status: str | None = None
+    card_error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +195,12 @@ def create_comment_reply_for_valid_screening(
     return session.get(LeadCommentReply, reply_id)
 
 
-def build_comment_reply_approval_card(reply: LeadCommentReply, screening: LeadScreeningResult) -> dict[str, Any]:
+def build_comment_reply_approval_card(
+    reply: LeadCommentReply,
+    screening: LeadScreeningResult,
+    *,
+    action: Literal["confirm", "retry"] = "confirm",
+) -> dict[str, Any]:
     context = screening.context_json or {}
     customer_name = str(context.get("customer_name") or context.get("profile_name") or "未提供")
     post_url = str(context.get("source_url") or reply.target_url or "")
@@ -219,7 +226,7 @@ def build_comment_reply_approval_card(reply: LeadCommentReply, screening: LeadSc
                     "name": f"comment_reply_form_{reply.id}",
                     "elements": [
                         {"tag": "input", "name": "comment_reply_text", "label": {"tag": "plain_text", "content": "公开回复"}, "default_value": reply.approved_text or reply.draft_text, "input_type": "multiline_text", "required": True, "max_length": 300, "rows": 4},
-                        {"tag": "button", "name": f"confirm_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "确认回复"}, "type": "primary", "action_type": "form_submit"},
+                        {"tag": "button", "name": f"{action}_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "重试回复" if action == "retry" else "确认回复"}, "type": "primary", "action_type": "form_submit"},
                     ],
                 },
             ],
@@ -460,6 +467,7 @@ def confirm_comment_reply_not_sent(
     reply_id: int,
     operator: str,
     reason: str,
+    card_client: FeishuMessageClient,
 ) -> CommentReplyCallbackResult:
     operator_text = operator.strip()
     reason_text = reason.strip()
@@ -472,6 +480,12 @@ def confirm_comment_reply_not_sent(
         reply = session.get(LeadCommentReply, reply_id)
         if reply is None:
             raise ValueError(f"comment reply not found: {reply_id}")
+        screening = session.get(LeadScreeningResult, reply.screening_result_id) if reply.screening_result_id else None
+        if screening is None:
+            raise ValueError(f"comment reply screening not found: {reply_id}")
+        chat_id = (reply.feishu_chat_id or "").strip()
+        if not chat_id or chat_id.startswith("card-claim:"):
+            raise ValueError(f"comment reply has no usable Feishu chat for retry card: {reply_id}")
         confirmed = session.execute(
             update(LeadCommentReply)
             .where(
@@ -481,14 +495,71 @@ def confirm_comment_reply_not_sent(
             .values(
                 status="failed",
                 last_error=audit_text,
+                feishu_card_status="retry_card_creating",
+                feishu_sync_error=audit_text,
                 updated_at=_utc_now(),
             )
             .execution_options(synchronize_session=False)
         ).rowcount == 1
         session.commit()
-        session.expire_all()
-        current = session.get(LeadCommentReply, reply_id)
-        return CommentReplyCallbackResult(confirmed, not confirmed, reply_id, current.status, not confirmed)
+        if not confirmed:
+            session.expire_all()
+            current = session.get(LeadCommentReply, reply_id)
+            card_status = "replaced" if current.feishu_card_status == "card_pending" else "replacement_unknown" if current.feishu_card_status == "retry_card_creating" else "not_replaced"
+            return CommentReplyCallbackResult(False, True, reply_id, current.status, card_status != "replaced", card_status, current.feishu_sync_error)
+        session.refresh(reply)
+        retry_card = build_comment_reply_approval_card(reply, screening, action="retry")
+
+    try:
+        response = card_client.send_interactive_card(chat_id=chat_id, card=retry_card)
+    except Exception as exc:
+        error = f"retry card replacement result unknown; reconcile Feishu before another replacement: {exc}"
+        with session_factory() as session:
+            session.execute(
+                update(LeadCommentReply)
+                .where(
+                    LeadCommentReply.id == reply_id,
+                    LeadCommentReply.status == "failed",
+                    LeadCommentReply.feishu_card_status == "retry_card_creating",
+                )
+                .values(feishu_sync_error=error, updated_at=_utc_now())
+            )
+            session.commit()
+        return CommentReplyCallbackResult(True, False, reply_id, "failed", True, "replacement_unknown", error)
+
+    message_id = (response.get("message_id") or "").strip()
+    if not message_id:
+        error = "retry card replacement returned no message_id; reconcile Feishu before another replacement"
+        with session_factory() as session:
+            session.execute(
+                update(LeadCommentReply)
+                .where(LeadCommentReply.id == reply_id, LeadCommentReply.feishu_card_status == "retry_card_creating")
+                .values(feishu_sync_error=error, updated_at=_utc_now())
+            )
+            session.commit()
+        return CommentReplyCallbackResult(True, False, reply_id, "failed", True, "replacement_unknown", error)
+
+    with session_factory() as session:
+        replaced = session.execute(
+            update(LeadCommentReply)
+            .where(
+                LeadCommentReply.id == reply_id,
+                LeadCommentReply.status == "failed",
+                LeadCommentReply.feishu_card_status == "retry_card_creating",
+            )
+            .values(
+                feishu_message_id=message_id,
+                feishu_chat_id=response.get("chat_id") or chat_id,
+                feishu_card_status="card_pending",
+                feishu_sync_error=audit_text,
+                updated_at=_utc_now(),
+            )
+        ).rowcount == 1
+        session.commit()
+    if not replaced:
+        error = "retry card was sent but database binding lost ownership; operator reconciliation required"
+        return CommentReplyCallbackResult(True, False, reply_id, "failed", True, "replacement_unknown", error)
+    return CommentReplyCallbackResult(True, False, reply_id, "failed", False, "replaced", None)
 
 
 def _claim_send(

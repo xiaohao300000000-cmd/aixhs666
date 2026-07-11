@@ -108,7 +108,9 @@ python -m apps.cli comment-reply-confirm-not-sent --reply-id REPLY_ID \
   --operator OPERATOR_ID --reason "checked target comment and confirmed reply absent"
 ```
 
-该命令只允许条件更新 `result_unknown -> failed`，并把 operator/reason 写入审计错误字段；它不会自动发送。之后仅允许普通 `retry` 回调重新领取一个新 attempt。旧 attempt 的迟到完成会因 `attempt_count` fencing 被拒绝，不能覆盖新 attempt。
+该命令只允许条件更新 `result_unknown -> failed`，并把 operator/reason 写入审计错误字段；它不会自动发送。由于飞书现有 API 只能凭回调临时 update token 更新原卡，CLI 无法按持久化 message ID 安全改写旧卡，因此命令会在原 chat 中创建一张带 `retry_comment_reply_ID` 动作的新重试卡，并在明确收到新 `message_id` 后替换数据库绑定。只有新卡回调能通过 message/chat 校验并领取新 attempt，旧卡按钮会被拒绝。
+
+CLI JSON 会返回 `card_status`：`replaced` 表示新重试 UI 已绑定；`replacement_unknown` 表示发送异常或未返回 message ID，数据库虽然已保留为 `failed`，但 UI 恢复未完成，命令退出码为 `2`，并在 `card_error` 给出人工核对信息。`retry_card_creating` 是持久化防重 claim；未知结果下禁止再次建卡，必须先在飞书消息历史核对是否已生成替代卡，再由后续显式认领/修复流程处理。之后仅允许普通 `retry` 回调重新领取一个新 attempt。旧 attempt 的迟到完成会因 `attempt_count` fencing 被拒绝，不能覆盖新 attempt。
 
 ## Selector Probe 与真实验收合同
 

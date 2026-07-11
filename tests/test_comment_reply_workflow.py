@@ -215,11 +215,14 @@ def test_result_unknown_requires_explicit_not_sent_confirmation_before_one_retry
     ])
     apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     blocked = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    confirmed = confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops@example.com", reason="checked XHS comment thread")
+    card_client = FakeCardClient()
+    confirmed = confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops@example.com", reason="checked XHS comment thread", card_client=card_client)
     retried = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert blocked.duplicate is True
     assert confirmed.status == "failed"
+    assert confirmed.card_status == "replaced"
+    assert card_client.sent_cards[0]["card"]["body"]["elements"][-1]["elements"][-1]["name"] == f"retry_comment_reply_{reply_id}"
     assert retried.status == "sent"
     assert duplicate.duplicate is True
     assert len(sender.calls) == 2
@@ -254,7 +257,7 @@ def test_late_unknown_completion_cannot_overwrite_confirmed_retry(factory: sessi
     with factory() as session:
         session.execute(update(LeadCommentReply).where(LeadCommentReply.id == reply_id).values(status="result_unknown", attempt_count=1))
         session.commit()
-    confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops", reason="not present on platform")
+    confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops", reason="not present on platform", card_client=FakeCardClient())
     sender = FakeCommentReplySender([CommentReplySendResult(outcome="sent", platform_reply_id="reply-new")])
     apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     with factory() as session:
@@ -268,6 +271,28 @@ def test_late_unknown_completion_cannot_overwrite_confirmed_retry(factory: sessi
         assert stale == 0
         assert saved.status == "sent"
         assert saved.platform_reply_id == "reply-new"
+
+
+def test_confirm_not_sent_card_failure_is_partial_and_never_creates_duplicate(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    with factory() as session:
+        session.execute(update(LeadCommentReply).where(LeadCommentReply.id == reply_id).values(status="result_unknown"))
+        session.commit()
+    failing = FakeCardClient()
+    failing.send_interactive_card = lambda **_: (_ for _ in ()).throw(RuntimeError("ambiguous card send failure"))
+    first = confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops", reason="verified absent", card_client=failing)
+    second_client = FakeCardClient()
+    second = confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops", reason="verified absent", card_client=second_client)
+    assert first.status == "failed"
+    assert first.card_status == "replacement_unknown"
+    assert first.reconciliation_required is True
+    assert second.card_status == "replacement_unknown"
+    assert second_client.sent_cards == []
+    with factory() as session:
+        saved = session.get(LeadCommentReply, reply_id)
+        assert saved.status == "failed"
+        assert saved.feishu_card_status == "retry_card_creating"
+        assert "ambiguous card send failure" in saved.feishu_sync_error
 
 
 @pytest.mark.parametrize("text", ["", "加微信详聊", "保证提分"])
