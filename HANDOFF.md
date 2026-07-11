@@ -273,3 +273,4 @@ python -m apps.cli --json run-control-panel-once
 - 每个任务单独新开一个独立执行对话
 - 独立执行对话不从项目经理对话派生
 - 所需上下文由项目经理写入任务包
+- 2026-07-12 Task 7 评论回复文档与安全验收合同已完成自动化侧整理：新增 `docs/COMMENT_REPLY_OPERATIONS.md` 和默认跳过的 `tests/test_comment_reply_live_contract.py`。当前不得宣称真实小红书评论发送成功；live acceptance 仍阻塞于一个明确准备的测试帖子/评论、只读 selector probe 通过，以及飞书人工对最终文本和本次单条发送的明确批准。`result_unknown` 禁止盲目重试，只能人工核对平台后处理。
