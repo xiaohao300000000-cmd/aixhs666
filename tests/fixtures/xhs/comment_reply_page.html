@@ -4,11 +4,14 @@
     <section class="comments-container">
       <article class="comment-item" data-comment-id="xhs-comment-001">
         <p>第一条评论</p>
-        <button class="reply-button">回复</button>
+        <button data-xhs-role="comment-reply-trigger">回复</button>
       </article>
       <article class="comment-item" data-comment-id="xhs-comment-002">
         <p>目标评论</p>
-        <button class="reply-button">回复</button>
+        <button data-xhs-role="comment-reply-trigger">回复</button>
+        <textarea data-xhs-role="comment-reply-editor"></textarea>
+        <button data-xhs-role="comment-reply-submit">发布</button>
+        <div data-xhs-role="comment-reply-text">已有回复</div>
       </article>
     </section>
   </body>

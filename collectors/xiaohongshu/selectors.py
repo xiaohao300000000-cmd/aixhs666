@@ -54,20 +54,23 @@ XHS_RESPONSE_URL_MARKERS = (
     "/user/",
 )
 
-COMMENT_REPLY_BUTTONS = (
-    ".reply-button",
-    "[data-xhs-role='comment-reply']",
-    "[aria-label='回复']",
+# Candidate ID attributes mirror the comment IDs normalized by parsers.py
+# (comment_id, commentId, id, commentid). They are candidates, not a claim
+# that every XHS page provides them: sending requires exactly one match.
+COMMENT_TARGET_CONTAINER_TEMPLATES = (
+    '[data-comment-id="{platform_comment_id}"]',
+    '[data-commentid="{platform_comment_id}"]',
+    '[data-id="{platform_comment_id}"]',
 )
-COMMENT_REPLY_EDITORS = (
-    "textarea",
-    "[contenteditable='true']",
-    "input[type='text']",
-)
-COMMENT_REPLY_SUBMITS = (
-    "[data-xhs-role='comment-reply-submit']",
-    ".comment-reply-submit",
-    "button[type='submit']",
+# Every control is resolved relative to the proven target comment container.
+COMMENT_REPLY_TRIGGER_SELECTOR = "[data-xhs-role='comment-reply-trigger']"
+COMMENT_REPLY_EDITOR_SELECTOR = "[data-xhs-role='comment-reply-editor']"
+COMMENT_REPLY_SUBMIT_SELECTOR = "[data-xhs-role='comment-reply-submit']"
+COMMENT_REPLY_VISIBLE_TEXT_SELECTOR = "[data-xhs-role='comment-reply-text']"
+COMMENT_REPLY_RESPONSE_URL_MARKERS = (
+    "/comment/post",
+    "/comment/create",
+    "/comment/reply",
 )
 COMMENT_REPLY_LOGIN_OR_CAPTCHA_MARKERS = (
     "login-container",
@@ -75,16 +78,4 @@ COMMENT_REPLY_LOGIN_OR_CAPTCHA_MARKERS = (
     "滑块验证",
     "登录后查看",
     "手机号登录",
-)
-COMMENT_REPLY_REJECTION_MARKERS = (
-    "操作频繁，请稍后再试",
-    "发布失败",
-    "评论失败",
-    "内容不符合社区规范",
-    "暂时无法回复",
-)
-COMMENT_REPLY_SUCCESS_MARKERS = (
-    "回复成功",
-    "发布成功",
-    "评论成功",
 )

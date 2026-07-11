@@ -42,6 +42,7 @@ class CommentReplySender(Protocol):
         *,
         platform_comment_id: str,
         platform_content_id: str,
+        target_url: str | None,
         text: str,
     ) -> CommentReplySendResult: ...
 
@@ -61,6 +62,7 @@ class _SendClaim:
     attempt_count: int
     platform_comment_id: str
     platform_content_id: str
+    target_url: str | None
 
 
 def create_comment_reply_for_valid_screening(
@@ -242,6 +244,7 @@ def apply_comment_reply_callback(
         send_result = sender.reply_to_comment(
             platform_comment_id=claim.platform_comment_id,
             platform_content_id=claim.platform_content_id,
+            target_url=claim.target_url,
             text=final_text,
         )
     except CommentReplyPreSubmitError as exc:
@@ -274,7 +277,7 @@ def apply_comment_reply_callback(
                 status=send_result.outcome,
                 platform_reply_id=send_result.platform_reply_id,
                 platform_response_json=send_result.response_json,
-                last_error=send_result.error,
+                last_error=_sanitize_persisted_error(send_result.error),
                 sent_at=completed_at if send_result.outcome == "sent" else None,
             )
         ).rowcount == 1
@@ -465,6 +468,7 @@ def _claim_send(
             attempt_count=claimed_reply.attempt_count,
             platform_comment_id=claimed_reply.target_platform_comment_id,
             platform_content_id=claimed_reply.target_platform_content_id,
+            target_url=claimed_reply.target_url,
         )
 
 
@@ -519,6 +523,13 @@ def _result_card(reply_id: int, text: str, result: CommentReplySendResult, compl
     if result.outcome == "failed":
         elements.append({"tag": "form", "name": f"comment_reply_retry_form_{reply_id}", "elements": [{"tag": "input", "name": "comment_reply_text", "default_value": text, "required": True}, {"tag": "button", "name": f"retry_comment_reply_{reply_id}", "text": {"tag": "plain_text", "content": "重试"}, "type": "primary", "action_type": "form_submit"}]})
     return {"schema": "2.0", "config": {"update_multi": True}, "header": {"template": "green" if result.outcome == "sent" else "orange", "title": {"tag": "plain_text", "content": "小红书评论回复"}}, "body": {"elements": elements}}
+
+
+def _sanitize_persisted_error(error: str | None) -> str | None:
+    if error is None:
+        return None
+    sanitized = " ".join(error.split())
+    return sanitized[:1000] or None
 
 
 def _utc_now() -> datetime:

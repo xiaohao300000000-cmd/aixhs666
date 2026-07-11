@@ -74,8 +74,22 @@ class FakeCommentReplySender:
     def success(cls, reply_id: str = "platform-reply-1") -> FakeCommentReplySender:
         return cls([CommentReplySendResult(outcome="sent", platform_reply_id=reply_id, response_json={"id": reply_id})])
 
-    def reply_to_comment(self, *, platform_comment_id: str, platform_content_id: str, text: str) -> CommentReplySendResult:
-        self.calls.append({"comment_id": platform_comment_id, "content_id": platform_content_id, "text": text})
+    def reply_to_comment(
+        self,
+        *,
+        platform_comment_id: str,
+        platform_content_id: str,
+        target_url: str | None,
+        text: str,
+    ) -> CommentReplySendResult:
+        self.calls.append(
+            {
+                "comment_id": platform_comment_id,
+                "content_id": platform_content_id,
+                "target_url": target_url,
+                "text": text,
+            }
+        )
         return self.outcomes.pop(0)
 
 
@@ -154,6 +168,7 @@ def test_callback_sends_once_and_marks_sent(factory: sessionmaker[Session]) -> N
     assert result.applied is True
     assert duplicate.duplicate is True
     assert len(sender.calls) == 1
+    assert sender.calls[0]["target_url"] == "https://www.xiaohongshu.com/explore/note-1"
     with factory() as session:
         saved = session.get(LeadCommentReply, reply_id)
         assert saved is not None
