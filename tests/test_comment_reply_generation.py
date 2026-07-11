@@ -91,19 +91,28 @@ def test_generator_requests_helpful_optional_soft_dm_prompt(fake_urlopen: FakeUr
         "加V聊",
         "留个v号",
         "V信发我",
+        "威信加我",
         "vx：pet123",
         "wx：pet123",
+        "微信=pet123",
+        "QQ: 123456",
         "留下手机号",
         "电话：138 0013 8000",
+        "电话联系我",
+        "把联系方式给我",
         "请发一下家庭住址",
         "住址告诉我",
         "地址发我",
         "留下地址方便联系",
+        "加QQ沟通",
         "保证提分",
         "保 证 通 过",
         "包过 PET",
         "PET 稳过",
         "百分百通过",
+        "肯定考上",
+        "一定录取",
+        "包上岸",
     ],
 )
 def test_validate_comment_reply_rejects_unsafe_text(text: str) -> None:
@@ -121,6 +130,24 @@ def test_validate_comment_reply_allows_benign_private_message_mention() -> None:
 
 def test_validate_comment_reply_allows_benign_area_context() -> None:
     assert validate_comment_reply_text("不同地区的考试安排可能略有差异，可以先看本地官方通知。") == "不同地区的考试安排可能略有差异，可以先看本地官方通知。"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "可以私信说明孩子的错题类型。",
+        "微信是常见沟通工具，但公开回复里先看官方信息更稳妥。",
+        "QQ阅读的错题可以按题型整理。",
+        "电话会议前先确认课程安排。",
+        "地址信息以考点官方通知为准。",
+        "稳步练习比追求短期结果更重要。",
+        "保证每天复盘错题会更容易发现薄弱点。",
+        "一定要结合孩子当前基础安排练习。",
+        "肯定句和条件句要分开练习。",
+    ],
+)
+def test_validate_comment_reply_allows_benign_channel_and_certainty_context(text: str) -> None:
+    assert validate_comment_reply_text(text) == text
 
 
 def test_validate_comment_reply_rejects_text_over_300_characters_after_normalization() -> None:
