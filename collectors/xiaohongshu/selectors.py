@@ -53,3 +53,38 @@ XHS_RESPONSE_URL_MARKERS = (
     "/comment/",
     "/user/",
 )
+
+COMMENT_REPLY_BUTTONS = (
+    ".reply-button",
+    "[data-xhs-role='comment-reply']",
+    "[aria-label='回复']",
+)
+COMMENT_REPLY_EDITORS = (
+    "textarea",
+    "[contenteditable='true']",
+    "input[type='text']",
+)
+COMMENT_REPLY_SUBMITS = (
+    "[data-xhs-role='comment-reply-submit']",
+    ".comment-reply-submit",
+    "button[type='submit']",
+)
+COMMENT_REPLY_LOGIN_OR_CAPTCHA_MARKERS = (
+    "login-container",
+    "验证码",
+    "滑块验证",
+    "登录后查看",
+    "手机号登录",
+)
+COMMENT_REPLY_REJECTION_MARKERS = (
+    "操作频繁，请稍后再试",
+    "发布失败",
+    "评论失败",
+    "内容不符合社区规范",
+    "暂时无法回复",
+)
+COMMENT_REPLY_SUCCESS_MARKERS = (
+    "回复成功",
+    "发布成功",
+    "评论成功",
+)

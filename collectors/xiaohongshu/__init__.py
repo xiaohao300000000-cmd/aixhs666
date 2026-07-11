@@ -2,8 +2,10 @@
 
 from collectors.xiaohongshu.adapter import XiaohongshuAdapter
 from collectors.xiaohongshu.browser import XiaohongshuBrowserConfig
+from collectors.xiaohongshu.comment_reply import XiaohongshuCommentReplySender
 from collectors.xiaohongshu.exceptions import (
     ContentNotFoundError,
+    XiaohongshuCommentReplyDefiniteFailure,
     LoginRequiredError,
     PageExpiredError,
     PageTimeoutError,
@@ -14,6 +16,8 @@ from collectors.xiaohongshu.exceptions import (
 
 __all__ = [
     "ContentNotFoundError",
+    "XiaohongshuCommentReplyDefiniteFailure",
+    "XiaohongshuCommentReplySender",
     "LoginRequiredError",
     "PageExpiredError",
     "PageTimeoutError",
