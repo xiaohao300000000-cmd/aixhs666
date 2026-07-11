@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Barrier, Lock
 from typing import Any
 
 import pytest
@@ -9,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from integrations.feishu.comment_replies import (
+    CommentReplyPreSubmitError,
     CommentReplySendResult,
     apply_comment_reply_callback,
     build_comment_reply_approval_card,
@@ -46,6 +50,16 @@ class FakeCardClient:
         return {"ok": True}
 
 
+class ConcurrentCardClient(FakeCardClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.lock = Lock()
+
+    def send_interactive_card(self, *, chat_id: str, card: dict[str, Any]) -> dict[str, str]:
+        with self.lock:
+            return super().send_interactive_card(chat_id=chat_id, card=card)
+
+
 class FakeCommentReplySender:
     def __init__(self, outcomes: list[CommentReplySendResult]) -> None:
         self.outcomes = outcomes
@@ -60,6 +74,14 @@ class FakeCommentReplySender:
         return self.outcomes.pop(0)
 
 
+class RaisingSender:
+    def __init__(self, exception: Exception) -> None:
+        self.exception = exception
+
+    def reply_to_comment(self, **_: str) -> CommentReplySendResult:
+        raise self.exception
+
+
 @pytest.fixture
 def factory() -> Iterator[sessionmaker[Session]]:
     engine = create_engine(
@@ -67,6 +89,14 @@ def factory() -> Iterator[sessionmaker[Session]]:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    Base.metadata.create_all(engine)
+    yield sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    engine.dispose()
+
+
+@pytest.fixture
+def file_factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'workflow.db'}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     yield sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     engine.dispose()
@@ -166,7 +196,15 @@ def test_invalid_final_text_is_rejected_without_claim(factory: sessionmaker[Sess
 
 def test_send_result_is_persisted_before_card_update(factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(factory)
-    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(fail_update=True), sender=FakeCommentReplySender.success(), verification_token="token")
+    class ObservingFailingCardClient(FakeCardClient):
+        def update_interactive_card(self, *, token: str, card: dict[str, Any]) -> dict[str, Any]:
+            with factory() as session:
+                saved = session.get(LeadCommentReply, reply_id)
+                assert saved.status == "sent"
+                assert saved.platform_reply_id == "platform-reply-1"
+            raise RuntimeError("card update failed")
+
+    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=ObservingFailingCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
     assert result.status == "sent"
     with factory() as session:
         saved = session.get(LeadCommentReply, reply_id)
@@ -198,6 +236,184 @@ def test_callback_identification_and_card_rendering(factory: sessionmaker[Sessio
     assert "comment_reply_text" in str(card)
 
 
+def test_callback_rejects_invalid_token_and_stored_context_mismatch(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    with pytest.raises(ValueError, match="token"):
+        apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", token="wrong"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+    with pytest.raises(ValueError, match="message"):
+        apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", message_id="forged"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+    with pytest.raises(ValueError, match="chat"):
+        apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", chat_id="forged"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+
+
+@pytest.mark.parametrize("name", ["confirm_comment_reply_1_extra", "confirm_comment_reply_-1", "xconfirm_comment_reply_1", "retry_comment_reply_abc"])
+def test_callback_rejects_malformed_or_forged_actions(factory: sessionmaker[Session], name: str) -> None:
+    reply_id = _seed_pending_reply(factory)
+    payload = _payload(reply_id, "最终回复")
+    payload["event"]["action"]["name"] = name
+    assert is_comment_reply_callback(payload) is False
+    with pytest.raises(ValueError, match="callback"):
+        apply_comment_reply_callback(factory, payload, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+
+
+def test_direct_event_shape_is_supported_and_operator_is_required(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    wrapped = _payload(reply_id, "最终回复")
+    direct = {"token": wrapped["token"], **wrapped["event"]}
+    assert is_comment_reply_callback(direct) is True
+    result = apply_comment_reply_callback(factory, direct, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="update-token")
+    assert result.status == "sent"
+    other_id = _seed_pending_reply(factory, suffix="2")
+    missing_operator = _payload(other_id, "最终回复")
+    missing_operator["event"].pop("operator")
+    with pytest.raises(ValueError, match="operator"):
+        apply_comment_reply_callback(factory, missing_operator, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+
+
+def test_stale_send_completion_does_not_overwrite_new_attempt(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+
+    class StealingSender:
+        def reply_to_comment(self, **_: str) -> CommentReplySendResult:
+            with factory() as session:
+                session.execute(update(LeadCommentReply).where(LeadCommentReply.id == reply_id).values(attempt_count=2, status="sending"))
+                session.commit()
+            return CommentReplySendResult(outcome="sent", platform_reply_id="stale")
+
+    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=StealingSender(), verification_token="token")
+    assert result.status == "result_unknown"
+    assert result.reconciliation_required is True
+    with factory() as session:
+        saved = session.get(LeadCommentReply, reply_id)
+        assert saved.status == "sending"
+        assert saved.attempt_count == 2
+        assert saved.platform_reply_id is None
+
+
+def test_sender_exception_contract_and_unsupported_outcome_are_durable(factory: sessionmaker[Session]) -> None:
+    failed_id = _seed_pending_reply(factory)
+    failed = apply_comment_reply_callback(factory, _payload(failed_id, "最终回复"), card_client=FakeCardClient(), sender=RaisingSender(CommentReplyPreSubmitError("not submitted")), verification_token="token")
+    assert failed.status == "failed"
+    unknown_id = _seed_pending_reply(factory, suffix="2")
+    unknown = apply_comment_reply_callback(factory, _payload(unknown_id, "最终回复"), card_client=FakeCardClient(), sender=RaisingSender(RuntimeError("after submit maybe")), verification_token="token")
+    assert unknown.status == "result_unknown"
+    unsupported_id = _seed_pending_reply(factory, suffix="3")
+    unsupported = apply_comment_reply_callback(factory, _payload(unsupported_id, "最终回复"), card_client=FakeCardClient(), sender=FakeCommentReplySender([CommentReplySendResult(outcome="mystery")]), verification_token="token")
+    assert unsupported.status == "result_unknown"
+    with factory() as session:
+        assert session.get(LeadCommentReply, unsupported_id).status == "result_unknown"
+    malformed_id = _seed_pending_reply(factory, suffix="4")
+    class MalformedSender:
+        def reply_to_comment(self, **_: str) -> object:
+            return object()
+    malformed = apply_comment_reply_callback(factory, _payload(malformed_id, "最终回复"), card_client=FakeCardClient(), sender=MalformedSender(), verification_token="token")
+    assert malformed.status == "result_unknown"
+    with factory() as session:
+        assert session.get(LeadCommentReply, malformed_id).status == "result_unknown"
+
+
+def test_concurrent_callbacks_only_one_claims_send(file_factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(file_factory)
+    barrier = Barrier(2)
+
+    class BarrierSender(FakeCommentReplySender):
+        def reply_to_comment(self, **kwargs: str) -> CommentReplySendResult:
+            barrier.wait(timeout=5)
+            return super().reply_to_comment(**kwargs)
+
+    sender = FakeCommentReplySender.success()
+    def invoke() -> Any:
+        return apply_comment_reply_callback(file_factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: invoke(), range(2)))
+    assert len(sender.calls) == 1
+    assert sorted(result.duplicate for result in results) == [False, True]
+
+
+def test_concurrent_card_creation_has_one_external_send(file_factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(file_factory)
+    card_client = ConcurrentCardClient()
+    def create() -> Any:
+        with file_factory() as session:
+            return create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=card_client, chat_id="oc_review")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda _: create(), range(2)))
+    assert replies[0].id == replies[1].id
+    assert len(card_client.sent_cards) == 1
+
+
+def test_card_creation_failure_is_retryable_but_card_creating_is_not_blindly_resent(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(factory)
+    failing = FakeCardClient()
+    failing.send_interactive_card = lambda **_: (_ for _ in ()).throw(RuntimeError("send card failed"))
+    with factory() as session:
+        with pytest.raises(RuntimeError, match="send card failed"):
+            create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=failing, chat_id="oc_review")
+    with factory() as session:
+        saved = session.scalar(select(LeadCommentReply))
+        assert saved.feishu_card_status == "card_failed"
+    retry_client = FakeCardClient()
+    with factory() as session:
+        create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=retry_client, chat_id="oc_review")
+    assert len(retry_client.sent_cards) == 1
+    with factory() as session:
+        saved = session.scalar(select(LeadCommentReply))
+        saved.feishu_message_id = None
+        saved.feishu_card_status = "card_creating"
+        session.commit()
+    no_resend = FakeCardClient()
+    with factory() as session:
+        create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=no_resend, chat_id="oc_review")
+    assert no_resend.sent_cards == []
+
+
+def test_card_response_without_message_id_stays_reconciliation_only(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(factory)
+    card_client = FakeCardClient()
+    card_client.send_interactive_card = lambda **_: {"chat_id": "oc_review"}
+    with factory() as session:
+        create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=card_client, chat_id="oc_review")
+    with factory() as session:
+        saved = session.scalar(select(LeadCommentReply))
+        assert saved.feishu_card_status == "card_creating"
+        assert "reconciliation" in saved.feishu_sync_error
+    retry_client = FakeCardClient()
+    with factory() as session:
+        create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=retry_client, chat_id="oc_review")
+    assert retry_client.sent_cards == []
+
+
+def test_stale_card_completion_does_not_overwrite_new_creation_claim(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(factory)
+
+    class StealingCardClient(FakeCardClient):
+        def send_interactive_card(self, *, chat_id: str, card: dict[str, Any]) -> dict[str, str]:
+            with factory() as session:
+                reply = session.scalar(select(LeadCommentReply))
+                session.execute(
+                    update(LeadCommentReply)
+                    .where(LeadCommentReply.id == reply.id)
+                    .values(feishu_chat_id="card-claim:new-owner", feishu_sync_error="new owner")
+                )
+                session.commit()
+            return {"message_id": "om_stale", "chat_id": chat_id}
+
+    with factory() as session:
+        create_comment_reply_for_valid_screening(
+            session,
+            screening_id=screening_id,
+            generator=FakeCommentReplyGenerator(),
+            card_client=StealingCardClient(),
+            chat_id="oc_review",
+        )
+    with factory() as session:
+        saved = session.scalar(select(LeadCommentReply))
+        assert saved.feishu_card_status == "card_creating"
+        assert saved.feishu_chat_id == "card-claim:new-owner"
+        assert saved.feishu_message_id is None
+        assert saved.feishu_sync_error == "new owner"
+
+
 def _seed_comment_screening(factory: sessionmaker[Session], *, suffix: str = "1", source_type: str = "comment") -> int:
     with factory() as session:
         profile = PublicProfile(platform="xhs", platform_user_id=f"u{suffix}", display_name="家长")
@@ -215,13 +431,13 @@ def _seed_comment_screening(factory: sessionmaker[Session], *, suffix: str = "1"
         return int(screening.id)
 
 
-def _seed_pending_reply(factory: sessionmaker[Session]) -> int:
-    screening_id = _seed_comment_screening(factory)
+def _seed_pending_reply(factory: sessionmaker[Session], *, suffix: str = "1") -> int:
+    screening_id = _seed_comment_screening(factory, suffix=suffix)
     with factory() as session:
         reply = create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=FakeCardClient(), chat_id="oc_review")
         session.commit()
         return int(reply.id)
 
 
-def _payload(reply_id: int, text: str, *, action: str = "confirm") -> dict[str, Any]:
-    return {"token": "token", "event": {"token": "update-token", "operator": {"open_id": "ou_reviewer"}, "context": {"open_message_id": "om_reply_1", "open_chat_id": "oc_review"}, "action": {"name": f"{action}_comment_reply_{reply_id}", "form_value": {"comment_reply_text": text}}}}
+def _payload(reply_id: int, text: str, *, action: str = "confirm", token: str = "token", message_id: str = "om_reply_1", chat_id: str = "oc_review") -> dict[str, Any]:
+    return {"token": token, "event": {"token": "update-token", "operator": {"open_id": "ou_reviewer"}, "context": {"open_message_id": message_id, "open_chat_id": chat_id}, "action": {"name": f"{action}_comment_reply_{reply_id}", "form_value": {"comment_reply_text": text}}}}
