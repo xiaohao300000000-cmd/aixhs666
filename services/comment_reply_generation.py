@@ -18,8 +18,14 @@ _REPEATED_PUNCTUATION_RE = re.compile(r"([，。！？；：,.!?;:])\1+")
 _CONTACT_PATTERNS = (
     re.compile(r"(?:加|留|给|发)?微信(?:号)?"),
     re.compile(r"(?:v|w)[xX信]\s*[:：]?[\w-]*"),
+    re.compile(r"(?:加|留(?:个|下)?|给|发)(?:v|V)(?:号)?"),
+    re.compile(r"(?:v|V)信(?:发|给|留|加|联系)"),
     re.compile(r"(?:手机号|手机号码|电话(?:号码)?|联系方式|联系我)"),
     re.compile(r"1[3-9]\d{9}"),
+    re.compile(r"(?:家庭)?住址(?:发|给|告诉|留)(?:我|下)?"),
+    re.compile(r"(?:发|给|告诉|留(?:下)?)(?:一下)?(?:家庭)?住址"),
+    re.compile(r"(?:地址)(?:发|给|告诉|留)(?:我|下)?"),
+    re.compile(r"留(?:下)?地址"),
 )
 _GUARANTEE_PATTERNS = (
     re.compile(r"保证(?:提分|通过|考过|拿证|成功|结果)"),

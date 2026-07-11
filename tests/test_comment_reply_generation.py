@@ -88,10 +88,17 @@ def test_generator_requests_helpful_optional_soft_dm_prompt(fake_urlopen: FakeUr
         "加微信详聊",
         "加 微 信 详聊",
         "V信联系",
+        "加V聊",
+        "留个v号",
+        "V信发我",
         "vx：pet123",
         "wx：pet123",
         "留下手机号",
         "电话：138 0013 8000",
+        "请发一下家庭住址",
+        "住址告诉我",
+        "地址发我",
+        "留下地址方便联系",
         "保证提分",
         "保 证 通 过",
         "包过 PET",
@@ -110,6 +117,10 @@ def test_validate_comment_reply_normalizes_whitespace_and_punctuation() -> None:
 
 def test_validate_comment_reply_allows_benign_private_message_mention() -> None:
     assert validate_comment_reply_text("可以先按错题类型练习；如果方便，私信说说孩子目前的情况。") == "可以先按错题类型练习；如果方便，私信说说孩子目前的情况。"
+
+
+def test_validate_comment_reply_allows_benign_area_context() -> None:
+    assert validate_comment_reply_text("不同地区的考试安排可能略有差异，可以先看本地官方通知。") == "不同地区的考试安排可能略有差异，可以先看本地官方通知。"
 
 
 def test_validate_comment_reply_rejects_text_over_300_characters_after_normalization() -> None:
