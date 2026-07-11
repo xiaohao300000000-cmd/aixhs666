@@ -14,7 +14,7 @@ from integrations.feishu.comment_replies import CommentReplySendResult, CommentR
 
 
 class XiaohongshuCommentReplySender(CommentReplySender):
-    """Reply once to a proven XHS target comment using a persistent profile."""
+    """Reply once after explicit live selector acceptance; otherwise fail closed."""
 
     def __init__(
         self,
@@ -126,6 +126,27 @@ def _target_container(page: Any, platform_comment_id: str) -> Any:
             f"exact target comment {platform_comment_id!r} is missing or ambiguous"
         )
     return next(locator.first for locator in matches if locator.count() == 1)
+
+
+def inspect_comment_reply_selectors(page: Any, *, platform_comment_id: str) -> dict[str, int]:
+    """Inspect only; real platform acceptance is required before live sending."""
+    escaped_id = _css_attribute_value(platform_comment_id)
+    report: dict[str, int] = {}
+    for template in selectors.COMMENT_TARGET_CONTAINER_TEMPLATES:
+        selector = template.format(platform_comment_id=escaped_id)
+        container = page.locator(selector)
+        report[selector] = container.count()
+        if container.count() == 1:
+            report[f"{selector} >> {selectors.COMMENT_REPLY_TRIGGER_SELECTOR}"] = container.locator(
+                selectors.COMMENT_REPLY_TRIGGER_SELECTOR
+            ).count()
+            report[f"{selector} >> {selectors.COMMENT_REPLY_EDITOR_SELECTOR}"] = container.locator(
+                selectors.COMMENT_REPLY_EDITOR_SELECTOR
+            ).count()
+            report[f"{selector} >> {selectors.COMMENT_REPLY_SUBMIT_SELECTOR}"] = container.locator(
+                selectors.COMMENT_REPLY_SUBMIT_SELECTOR
+            ).count()
+    return report
 
 
 def _require_one(locator: Any, description: str) -> None:

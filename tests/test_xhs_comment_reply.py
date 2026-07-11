@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
-from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
-from collectors.xiaohongshu.comment_reply import XiaohongshuCommentReplySender
+from collectors.xiaohongshu.comment_reply import XiaohongshuCommentReplySender, inspect_comment_reply_selectors
+from collectors.xiaohongshu import selectors
 from collectors.xiaohongshu.exceptions import LoginRequiredError, XiaohongshuCommentReplyDefiniteFailure
 
 
@@ -266,3 +268,76 @@ def test_sender_returns_failed_for_correlated_platform_rejection() -> None:
     assert result.outcome == "failed"
     assert result.error == "操作频繁，请稍后再试"
     assert page.submit_clicks == 1
+
+
+def test_fixture_selector_contract_executes_with_real_playwright_and_never_touches_unrelated_controls() -> None:
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page()
+            try:
+                page.set_content(FIXTURE_PATH.read_text(encoding="utf-8"))
+                target = page.locator(selectors.COMMENT_TARGET_CONTAINER_TEMPLATES[0].format(platform_comment_id=TARGET_ID))
+                unrelated = page.locator(selectors.COMMENT_TARGET_CONTAINER_TEMPLATES[0].format(platform_comment_id="xhs-comment-001"))
+                assert target.count() == 1
+                assert target.locator(selectors.COMMENT_REPLY_TRIGGER_SELECTOR).count() == 1
+                assert target.locator(selectors.COMMENT_REPLY_EDITOR_SELECTOR).count() == 1
+                assert target.locator(selectors.COMMENT_REPLY_SUBMIT_SELECTOR).count() == 1
+                assert unrelated.locator(selectors.COMMENT_REPLY_EDITOR_SELECTOR).count() == 0
+                assert unrelated.locator(selectors.COMMENT_REPLY_SUBMIT_SELECTOR).count() == 0
+
+                page.evaluate(
+                    """({targetId, trigger, editor, submit, text}) => {
+                        const target = document.querySelector(`[data-comment-id="${targetId}"]`);
+                        target.querySelector(trigger).addEventListener("click", () => { target.dataset.clicked = "true"; });
+                        target.querySelector(submit).addEventListener("click", () => {
+                            const reply = document.createElement("div");
+                            reply.setAttribute("data-xhs-role", "comment-reply-text");
+                            reply.textContent = target.querySelector(editor).value;
+                            target.appendChild(reply);
+                        });
+                    }""",
+                    {"targetId": TARGET_ID, "trigger": selectors.COMMENT_REPLY_TRIGGER_SELECTOR, "editor": selectors.COMMENT_REPLY_EDITOR_SELECTOR, "submit": selectors.COMMENT_REPLY_SUBMIT_SELECTOR, "text": selectors.COMMENT_REPLY_VISIBLE_TEXT_SELECTOR},
+                )
+                target.locator(selectors.COMMENT_REPLY_TRIGGER_SELECTOR).click()
+                target.locator(selectors.COMMENT_REPLY_EDITOR_SELECTOR).fill(TEXT)
+                target.locator(selectors.COMMENT_REPLY_SUBMIT_SELECTOR).click()
+                assert target.get_attribute("data-clicked") == "true"
+                assert target.locator(selectors.COMMENT_REPLY_VISIBLE_TEXT_SELECTOR).all_inner_texts() == ["已有回复", TEXT]
+                assert unrelated.locator(selectors.COMMENT_REPLY_VISIBLE_TEXT_SELECTOR).all_inner_texts() == []
+            finally:
+                browser.close()
+    except PlaywrightError as exc:
+        pytest.skip(f"Playwright Chromium executable unavailable: {exc}")
+
+
+def test_production_selector_list_excludes_disabled_speculative_alternatives() -> None:
+    production_selectors = (
+        *selectors.COMMENT_TARGET_CONTAINER_TEMPLATES,
+        selectors.COMMENT_REPLY_TRIGGER_SELECTOR,
+        selectors.COMMENT_REPLY_EDITOR_SELECTOR,
+        selectors.COMMENT_REPLY_SUBMIT_SELECTOR,
+        selectors.COMMENT_REPLY_VISIBLE_TEXT_SELECTOR,
+    )
+    assert not set(production_selectors) & set(selectors.DISABLED_SPECULATIVE_COMMENT_REPLY_SELECTORS)
+
+
+def test_live_selector_probe_is_opt_in_and_never_submits() -> None:
+    target_url = os.getenv("XHS_COMMENT_REPLY_SELECTOR_PROBE_URL")
+    target_id = os.getenv("XHS_COMMENT_REPLY_SELECTOR_PROBE_COMMENT_ID")
+    if not target_url or not target_id:
+        pytest.skip("set XHS_COMMENT_REPLY_SELECTOR_PROBE_URL and XHS_COMMENT_REPLY_SELECTOR_PROBE_COMMENT_ID to inspect live selectors")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page()
+            try:
+                page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
+                report = inspect_comment_reply_selectors(page, platform_comment_id=target_id)
+            finally:
+                browser.close()
+    except PlaywrightError as exc:
+        pytest.skip(f"Playwright Chromium executable unavailable: {exc}")
+    print(f"inspection-only XHS selector report: {report}")
+    assert all(selector not in selectors.DISABLED_SPECULATIVE_COMMENT_REPLY_SELECTORS for selector in report)
+    assert report
