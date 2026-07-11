@@ -4,9 +4,11 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+import json
 import os
 from pathlib import Path
 from threading import Barrier, Lock
+import time
 from typing import Any
 
 import pytest
@@ -17,16 +19,18 @@ from sqlalchemy.pool import StaticPool
 from integrations.feishu.comment_replies import (
     CommentReplyPreSubmitError,
     CommentReplySendResult,
+    CommentReplyWorkflowError,
     apply_comment_reply_callback,
     build_comment_reply_approval_card,
     adopt_reconciled_comment_reply_card,
     create_comment_reply_for_valid_screening,
+    confirm_comment_reply_not_sent,
     is_comment_reply_callback,
     reconcile_stale_comment_reply,
 )
 from services.comment_reply_generation import CommentReplyDraft
 from storage.database import Base
-from storage.models import Comment, Content, LeadCommentReply, LeadScreeningResult, PublicProfile
+from storage.models import Comment, Content, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
 
 
 class FakeCommentReplyGenerator:
@@ -201,6 +205,69 @@ def test_result_unknown_is_duplicate_protected(factory: sessionmaker[Session]) -
     assert first.status == "result_unknown"
     assert duplicate.duplicate is True
     assert len(sender.calls) == 1
+
+
+def test_result_unknown_requires_explicit_not_sent_confirmation_before_one_retry(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    sender = FakeCommentReplySender([
+        CommentReplySendResult(outcome="result_unknown", error="timeout"),
+        CommentReplySendResult(outcome="sent", platform_reply_id="reply-2"),
+    ])
+    apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    blocked = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    confirmed = confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops@example.com", reason="checked XHS comment thread")
+    retried = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    assert blocked.duplicate is True
+    assert confirmed.status == "failed"
+    assert retried.status == "sent"
+    assert duplicate.duplicate is True
+    assert len(sender.calls) == 2
+    with factory() as session:
+        saved = session.get(LeadCommentReply, reply_id)
+        assert saved.attempt_count == 2
+
+
+def test_synchronous_sender_delay_still_duplicate_protects_followup_request(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    started = Barrier(2)
+
+    class DelayedSender(FakeCommentReplySender):
+        def reply_to_comment(self, **kwargs: Any) -> CommentReplySendResult:
+            started.wait()
+            time.sleep(0.02)
+            return super().reply_to_comment(**kwargs)
+
+    sender = DelayedSender([CommentReplySendResult(outcome="sent", platform_reply_id="reply-delayed")])
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first_future = executor.submit(apply_comment_reply_callback, factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+        started.wait()
+        duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+        first = first_future.result()
+    assert first.status == "sent"
+    assert duplicate.duplicate is True
+    assert len(sender.calls) == 1
+
+
+def test_late_unknown_completion_cannot_overwrite_confirmed_retry(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    with factory() as session:
+        session.execute(update(LeadCommentReply).where(LeadCommentReply.id == reply_id).values(status="result_unknown", attempt_count=1))
+        session.commit()
+    confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops", reason="not present on platform")
+    sender = FakeCommentReplySender([CommentReplySendResult(outcome="sent", platform_reply_id="reply-new")])
+    apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    with factory() as session:
+        stale = session.execute(
+            update(LeadCommentReply)
+            .where(LeadCommentReply.id == reply_id, LeadCommentReply.status == "sending", LeadCommentReply.attempt_count == 1)
+            .values(status="result_unknown", last_error="late timeout")
+        ).rowcount
+        session.commit()
+        saved = session.get(LeadCommentReply, reply_id)
+        assert stale == 0
+        assert saved.status == "sent"
+        assert saved.platform_reply_id == "reply-new"
 
 
 @pytest.mark.parametrize("text", ["", "加微信详聊", "保证提分"])
@@ -549,6 +616,49 @@ def test_card_response_without_message_id_stays_reconciliation_only(factory: ses
     assert retry_client.sent_cards == []
 
 
+def test_missing_lead_is_actionable_and_sends_no_card(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(factory, suffix="missing-lead")
+    with factory() as session:
+        lead = session.scalar(select(Lead).join(PublicProfile).where(PublicProfile.platform_user_id == "umissing-lead"))
+        session.delete(lead)
+        session.commit()
+    card_client = FakeCardClient()
+    with factory() as session, pytest.raises(CommentReplyWorkflowError, match="create or backfill the lead"):
+        create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=card_client, chat_id="oc_review")
+    assert card_client.sent_cards == []
+
+
+def test_existing_reply_without_lead_is_backfilled_before_return(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(factory, suffix="legacy-link")
+    with factory() as session:
+        screening = session.get(LeadScreeningResult, screening_id)
+        reply = LeadCommentReply(
+            screening_result_id=screening.id,
+            target_comment_id=screening.comment_id,
+            target_platform_comment_id="comment-legacy-link",
+            target_content_id=screening.content_id,
+            target_platform_content_id="note-legacy-link",
+            draft_text="已有草稿",
+            status="pending_review",
+        )
+        session.add(reply)
+        session.commit()
+    with factory() as session:
+        saved = create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=FakeCardClient(), chat_id="oc_review")
+        assert saved.lead_id is not None
+
+
+def test_approval_card_contains_customer_post_and_demand_context(factory: sessionmaker[Session]) -> None:
+    screening_id = _seed_comment_screening(factory, suffix="card-context")
+    card_client = FakeCardClient()
+    with factory() as session:
+        create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=card_client, chat_id="oc_review")
+    card_text = json.dumps(card_client.sent_cards[0]["card"], ensure_ascii=False)
+    assert "家长" in card_text
+    assert "家长询问备考入门" in card_text
+    assert "https://www.xiaohongshu.com/explore/note-card-context" in card_text
+
+
 def test_stale_card_completion_does_not_overwrite_new_creation_claim(factory: sessionmaker[Session]) -> None:
     screening_id = _seed_comment_screening(factory)
 
@@ -585,13 +695,14 @@ def _seed_comment_screening(factory: sessionmaker[Session], *, suffix: str = "1"
         profile = PublicProfile(platform="xhs", platform_user_id=f"u{suffix}", display_name="家长")
         session.add(profile)
         session.flush()
+        session.add(Lead(platform="xhs", public_profile_id=profile.id, status="qualified"))
         content = Content(platform="xhs", platform_content_id=f"note-{suffix}", content_type="note", author_profile_id=profile.id, title="KET备考", url=f"https://www.xiaohongshu.com/explore/note-{suffix}")
         session.add(content)
         session.flush()
         comment = Comment(platform="xhs", platform_comment_id=f"comment-{suffix}", content_id=content.id, author_profile_id=profile.id, body_text="怎么入门")
         session.add(comment)
         session.flush()
-        screening = LeadScreeningResult(platform="xhs", source_entity_type=source_type, source_entity_id=comment.id, content_id=content.id, comment_id=comment.id, public_profile_id=profile.id, review_status="accepted", workflow_status="reviewed", human_review_status="valid", context_json={"current_comment": comment.body_text, "post_title": content.title, "source_url": content.url})
+        screening = LeadScreeningResult(platform="xhs", source_entity_type=source_type, source_entity_id=comment.id, content_id=content.id, comment_id=comment.id, public_profile_id=profile.id, review_status="accepted", workflow_status="reviewed", human_review_status="valid", demand_type="KET入门", qualification_human_reason="家长询问备考入门", context_json={"current_comment": comment.body_text, "post_title": content.title, "source_url": content.url, "customer_name": profile.display_name})
         session.add(screening)
         session.commit()
         return int(screening.id)

@@ -52,7 +52,7 @@ FEISHU_CUSTOMER_FOLLOWUP_TIMEZONE=Asia/Shanghai
 FEISHU_BITABLE_TRANSPORT=openapi
 ```
 
-`COMMENT_REPLY_GENERATION_API_KEY` 为空时生成器可回退到 `DEEPSEEK_API_KEY`。生产回调必须配置飞书校验信息；禁止把任何实际值提交到 Git。
+`COMMENT_REPLY_GENERATION_API_KEY` 为空时生成器可回退到 `DEEPSEEK_API_KEY`。真实评论回调必须配置非空 `FEISHU_VERIFICATION_TOKEN`；缺失或空值时接口返回配置错误，并且不会识别或执行评论回复动作。若 verification token 已配置，而签名或 encrypt key 未配置，则继续遵循项目现有飞书回调合同，不额外破坏其他 legacy 回调。禁止把任何实际值提交到 Git。
 
 ## 飞书 Base 字段、视图与仪表盘
 
@@ -80,6 +80,8 @@ python -m apps.cli comment-reply-generate-once --screening-id SCREENING_ID --cha
 python -m apps.cli comment-reply-sync-followup --reply-id REPLY_ID
 ```
 
+评论回复发送当前位于同步回调路径。上线验收必须把“飞书回调收到请求到返回 HTTP 200”的总延迟纳入 acceptance gate：使用与生产相同的 `XHS_PAGE_TIMEOUT_MS` 和浏览器环境测量，确保延迟低于飞书实际回调超时/重试窗口，并验证延迟期间的重复请求只读取持久化/处理中状态、不触发第二次平台发送。自动测试使用毫秒级可配置延迟 fake 验证该幂等合同，不拖慢测试套件。
+
 ## 卡片恢复、发送恢复与认领
 
 对卡片创建或发送长时间停在处理中状态时，先执行只判定、不重发的恢复命令：
@@ -98,6 +100,15 @@ python -m apps.cli comment-reply-adopt-card --reply-id REPLY_ID \
 ```
 
 认领只修复卡片关联，不发送小红书评论。陈旧发送 claim 进入 `result_unknown`；若无法确认远端结果，保持 unknown 并交由人工核对。
+
+只有人工确认平台上确实没有发送成功后，才允许显式执行：
+
+```bash
+python -m apps.cli comment-reply-confirm-not-sent --reply-id REPLY_ID \
+  --operator OPERATOR_ID --reason "checked target comment and confirmed reply absent"
+```
+
+该命令只允许条件更新 `result_unknown -> failed`，并把 operator/reason 写入审计错误字段；它不会自动发送。之后仅允许普通 `retry` 回调重新领取一个新 attempt。旧 attempt 的迟到完成会因 `attempt_count` fencing 被拒绝，不能覆盖新 attempt。
 
 ## Selector Probe 与真实验收合同
 

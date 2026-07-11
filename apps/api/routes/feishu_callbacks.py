@@ -64,13 +64,17 @@ async def llm_review_callback(
         return {"challenge": payload.get("challenge")}
 
     if is_comment_reply_callback(payload):
+        verification_token = (os.getenv("FEISHU_VERIFICATION_TOKEN") or "").strip()
+        if not verification_token:
+            logger.error("Feishu comment reply callback rejected: FEISHU_VERIFICATION_TOKEN is not configured")
+            raise HTTPException(status_code=503, detail="FEISHU_VERIFICATION_TOKEN is required for comment reply callbacks")
         try:
             result = apply_comment_reply_callback(
                 SessionLocal,
                 payload,
                 card_client=FeishuIMClient(),
                 sender=XiaohongshuCommentReplySender(),
-                verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
+                verification_token=verification_token,
             )
         except ValueError as exc:
             logger.warning("Feishu comment reply callback rejected: %s", exc)

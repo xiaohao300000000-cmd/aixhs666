@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from integrations.feishu.webhook import verify_callback_token
 from services.comment_reply_generation import CommentReplyGenerator, validate_comment_reply_text
-from storage.models import Comment, Content, LeadCommentReply, LeadScreeningResult
+from storage.models import Comment, Content, Lead, LeadCommentReply, LeadScreeningResult
 
 
 CommentReplyOutcome = Literal["sent", "failed", "result_unknown"]
@@ -34,6 +34,10 @@ class CommentReplySendResult:
 
 class CommentReplyPreSubmitError(RuntimeError):
     """The platform request definitely was not submitted and is safe to retry."""
+
+
+class CommentReplyWorkflowError(RuntimeError):
+    """The approved screening cannot enter the comment-reply workflow."""
 
 
 class CommentReplySender(Protocol):
@@ -80,11 +84,22 @@ def create_comment_reply_for_valid_screening(
     if source is None:
         return None
     comment, content = source
+    lead = session.scalar(
+        select(Lead).where(
+            Lead.platform == "xhs",
+            Lead.public_profile_id == screening.public_profile_id,
+        )
+    )
+    if lead is None:
+        raise CommentReplyWorkflowError(
+            f"no xhs lead found for screening {screening.id} public_profile_id={screening.public_profile_id}; create or backfill the lead before generating a comment reply"
+        )
     reply = _find_reply(session, screening.id, comment.platform_comment_id)
     if reply is None:
         draft = generator.generate(screening)
         reply = LeadCommentReply(
             screening_result_id=screening.id,
+            lead_id=lead.id,
             target_comment_id=comment.id,
             target_platform_comment_id=comment.platform_comment_id,
             target_content_id=content.id,
@@ -102,6 +117,9 @@ def create_comment_reply_for_valid_screening(
             reply = _find_reply(session, screening.id, comment.platform_comment_id)
             if reply is None:
                 raise
+        session.commit()
+    elif reply.lead_id is None:
+        reply.lead_id = lead.id
         session.commit()
     reply_id = int(reply.id)
     card_claim = f"card-claim:{uuid4().hex}"
@@ -177,6 +195,15 @@ def create_comment_reply_for_valid_screening(
 
 def build_comment_reply_approval_card(reply: LeadCommentReply, screening: LeadScreeningResult) -> dict[str, Any]:
     context = screening.context_json or {}
+    customer_name = str(context.get("customer_name") or context.get("profile_name") or "未提供")
+    post_url = str(context.get("source_url") or reply.target_url or "")
+    demand_summary = str(
+        context.get("demand_summary")
+        or screening.qualification_human_reason
+        or screening.status_reason
+        or screening.demand_type
+        or "未提供"
+    )
     return {
         "schema": "2.0",
         "config": {"update_multi": True, "width_mode": "default"},
@@ -185,7 +212,8 @@ def build_comment_reply_approval_card(reply: LeadCommentReply, screening: LeadSc
             "direction": "vertical",
             "elements": [
                 {"tag": "markdown", "content": f"**原评论**\n> {context.get('current_comment') or ''}"},
-                {"tag": "markdown", "content": f"**帖子**\n{context.get('post_title') or ''}\n\n**回复目标**：{reply.target_platform_comment_id}"},
+                {"tag": "markdown", "content": f"**客户**：{customer_name}\n\n**需求摘要/原因**：{demand_summary}"},
+                {"tag": "markdown", "content": f"**帖子**\n[{context.get('post_title') or '查看原帖'}]({post_url})\n\n**回复目标**：{reply.target_platform_comment_id}"},
                 {
                     "tag": "form",
                     "name": f"comment_reply_form_{reply.id}",
@@ -424,6 +452,43 @@ def adopt_reconciled_comment_reply_card(
         session.expire_all()
         current = session.get(LeadCommentReply, reply_id)
         return CommentReplyCallbackResult(adopted, not adopted, reply_id, current.status, not adopted)
+
+
+def confirm_comment_reply_not_sent(
+    session_factory: sessionmaker[Session],
+    *,
+    reply_id: int,
+    operator: str,
+    reason: str,
+) -> CommentReplyCallbackResult:
+    operator_text = operator.strip()
+    reason_text = reason.strip()
+    if not operator_text:
+        raise ValueError("comment reply confirmation operator is required")
+    if not reason_text:
+        raise ValueError("comment reply confirmation reason is required")
+    audit_text = f"operator {operator_text} confirmed result_unknown was not sent: {reason_text}"
+    with session_factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        if reply is None:
+            raise ValueError(f"comment reply not found: {reply_id}")
+        confirmed = session.execute(
+            update(LeadCommentReply)
+            .where(
+                LeadCommentReply.id == reply_id,
+                LeadCommentReply.status == "result_unknown",
+            )
+            .values(
+                status="failed",
+                last_error=audit_text,
+                updated_at=_utc_now(),
+            )
+            .execution_options(synchronize_session=False)
+        ).rowcount == 1
+        session.commit()
+        session.expire_all()
+        current = session.get(LeadCommentReply, reply_id)
+        return CommentReplyCallbackResult(confirmed, not confirmed, reply_id, current.status, not confirmed)
 
 
 def _claim_send(

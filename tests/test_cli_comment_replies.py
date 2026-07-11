@@ -43,6 +43,17 @@ def test_comment_reply_generate_once_creates_card_without_xhs_send(monkeypatch: 
     assert json.loads(capsys.readouterr().out) == {"comment_reply": {"created": True, "reply_id": 41, "status": "pending_review", "feishu_message_id": "message-1"}}
 
 
+def test_comment_reply_generate_once_reports_missing_lead_as_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _runtime(monkeypatch)
+    monkeypatch.setenv("FEISHU_LLM_REVIEW_CHAT_ID", "chat-1")
+    from integrations.feishu.comment_replies import CommentReplyWorkflowError
+    monkeypatch.setattr("integrations.feishu.comment_replies.create_comment_reply_for_valid_screening", lambda *args, **kwargs: (_ for _ in ()).throw(CommentReplyWorkflowError("create or backfill the lead")))
+    monkeypatch.setattr("services.comment_reply_generation.OpenAICompatibleCommentReplyGenerator", object)
+    monkeypatch.setattr(cli, "FeishuIMClient", object)
+    assert cli.main(["--json", "comment-reply-generate-once", "--screening-id", "9"]) == 2
+    assert json.loads(capsys.readouterr().err) == {"comment_reply": {"created": False, "status": "failed", "error": "create or backfill the lead"}}
+
+
 def test_comment_reply_sync_followup_recovers_without_sender(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _runtime(monkeypatch)
     calls: list[int] = []
@@ -138,3 +149,18 @@ def test_comment_reply_adopt_card_rejects_missing_reason(monkeypatch: pytest.Mon
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["comment-reply-adopt-card", "--reply-id", "44", "--message-id", "msg-1", "--chat-id", "chat-1", "--operator", "ops"])
     assert exc_info.value.code == 2
+
+
+def test_comment_reply_confirm_not_sent_records_operator_reason(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _runtime(monkeypatch)
+    calls: list[dict[str, object]] = []
+    class Result:
+        applied = True
+        duplicate = False
+        reply_id = 45
+        status = "failed"
+        reconciliation_required = False
+    monkeypatch.setattr("integrations.feishu.comment_replies.confirm_comment_reply_not_sent", lambda session_factory, **kwargs: calls.append(kwargs) or Result())
+    assert cli.main(["--json", "comment-reply-confirm-not-sent", "--reply-id", "45", "--operator", "ops@example.com", "--reason", "verified absent on XHS"]) == 0
+    assert calls == [{"reply_id": 45, "operator": "ops@example.com", "reason": "verified absent on XHS"}]
+    assert json.loads(capsys.readouterr().out)["comment_reply_not_sent_confirmation"]["status"] == "failed"
