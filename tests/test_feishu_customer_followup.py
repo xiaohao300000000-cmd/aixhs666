@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 import threading
@@ -170,6 +170,80 @@ def test_concurrent_first_push_has_one_remote_create(file_factory: sessionmaker[
         mapping = session.scalar(select(FeishuBitableRecord))
         assert mapping.record_id == "rec-customer"
         assert mapping.last_sync_status == "synced"
+
+
+def test_concurrent_no_mapping_insert_reloads_winning_mapping(file_factory: sessionmaker[Session], monkeypatch) -> None:
+    lead_id, reply_id = _seed_customer(file_factory, reply_status="sent")
+    original_flush = Session.flush
+    injected = False
+
+    def racing_flush(session: Session, objects=None) -> None:
+        nonlocal injected
+        pending_mapping = next((item for item in session.new if isinstance(item, FeishuBitableRecord)), None)
+        if pending_mapping is not None and not injected:
+            injected = True
+            with file_factory() as winner:
+                winner.add(
+                    FeishuBitableRecord(
+                        local_entity_type="customer_followup",
+                        local_entity_id=lead_id,
+                        app_token="followup-app",
+                        table_id="followup-table",
+                        sync_direction="bidirectional",
+                        last_sync_status="creating",
+                    )
+                )
+                original_flush(winner)
+                winner.commit()
+        original_flush(session, objects)
+
+    monkeypatch.setattr(Session, "flush", racing_flush)
+    client = FakeBitableClient()
+
+    result = push_customer_followup(file_factory, reply_id=reply_id, client=client)
+
+    assert result.status == "in_progress"
+    assert client.upserts == []
+    with file_factory() as session:
+        assert len(session.scalars(select(FeishuBitableRecord)).all()) == 1
+
+
+def test_fresh_creating_claim_returns_in_progress(factory: sessionmaker[Session]) -> None:
+    lead_id, reply_id = _seed_customer(factory, reply_status="sent")
+    _seed_mapping(factory, lead_id=lead_id, status="creating", updated_at=datetime.now(UTC))
+    client = FakeBitableClient()
+
+    result = push_customer_followup(factory, reply_id=reply_id, client=client, creation_claim_timeout_seconds=60)
+
+    assert result.status == "in_progress"
+    assert client.search_matches == []
+    assert client.upserts == []
+
+
+def test_stale_creating_before_remote_create_searches_but_never_creates(factory: sessionmaker[Session]) -> None:
+    lead_id, reply_id = _seed_customer(factory, reply_status="sent")
+    _seed_mapping(factory, lead_id=lead_id, status="creating", updated_at=datetime.now(UTC) - timedelta(minutes=10))
+    client = FakeBitableClient()
+
+    result = push_customer_followup(factory, reply_id=reply_id, client=client, creation_claim_timeout_seconds=60)
+
+    assert result.status == "reconciliation_unknown"
+    assert client.upserts == []
+    with factory() as session:
+        mapping = session.scalar(select(FeishuBitableRecord))
+        assert mapping.last_sync_status == "reconciliation_unknown"
+
+
+def test_stale_creating_after_remote_create_adopts_exact_match(factory: sessionmaker[Session]) -> None:
+    lead_id, reply_id = _seed_customer(factory, reply_status="sent")
+    _seed_mapping(factory, lead_id=lead_id, status="creating", updated_at=datetime.now(UTC) - timedelta(minutes=10))
+    client = FakeBitableClient()
+    client.search_matches = [{"record_id": "rec-crash-created", "fields": {"客户唯一键": "xhs:user-1"}}]
+
+    result = push_customer_followup(factory, reply_id=reply_id, client=client, creation_claim_timeout_seconds=60)
+
+    assert result.status == "synced"
+    assert client.upserts[0][0] == "rec-crash-created"
 
 
 def test_ambiguous_create_requires_reconciliation_search_before_retry(factory: sessionmaker[Session]) -> None:
@@ -500,3 +574,19 @@ def _seed_customer(
         session.add(reply)
         session.commit()
         return lead.id, reply.id
+
+
+def _seed_mapping(factory: sessionmaker[Session], *, lead_id: int, status: str, updated_at: datetime) -> None:
+    with factory() as session:
+        mapping = FeishuBitableRecord(
+            local_entity_type="customer_followup",
+            local_entity_id=lead_id,
+            app_token="followup-app",
+            table_id="followup-table",
+            sync_direction="bidirectional",
+            last_sync_status=status,
+        )
+        session.add(mapping)
+        session.flush()
+        mapping.updated_at = updated_at
+        session.commit()

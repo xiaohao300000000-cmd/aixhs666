@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from integrations.feishu.bitable import FeishuBitableClient, FeishuBitableSettings
@@ -38,6 +39,7 @@ AUTOMATIC_STATUSES = {
     "send_failed": "评论发送失败",
     "result_unknown": "评论结果待确认",
 }
+DEFAULT_CREATION_CLAIM_TIMEOUT_SECONDS = 300
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +67,7 @@ def push_customer_followup(
     *,
     reply_id: int,
     client: FeishuBitableClient | None = None,
+    creation_claim_timeout_seconds: float = DEFAULT_CREATION_CLAIM_TIMEOUT_SECONDS,
 ) -> CustomerFollowupSyncResult:
     client = client or FeishuBitableClient(settings=FeishuBitableSettings.from_customer_followup_env())
     if client.settings.app_token is None or client.settings.table_id is None:
@@ -82,14 +85,15 @@ def push_customer_followup(
         mapping = _get_or_create_mapping(session, lead.id, client)
         fields = _push_fields(session, lead=lead, reply=reply, profile=profile, transport=client.settings.transport)
         session.commit()
+        search_only_recovery = False
         if mapping.record_id is None:
-            claim = _claim_creation(session, mapping.id)
-            if not claim:
-                current = session.get(FeishuBitableRecord, mapping.id)
-                if current is not None and current.record_id:
-                    mapping = current
-                else:
-                    return CustomerFollowupSyncResult(status="in_progress", skipped=1)
+            claim_mode = _claim_creation(session, mapping.id, timeout_seconds=creation_claim_timeout_seconds)
+            current = session.get(FeishuBitableRecord, mapping.id)
+            if current is not None:
+                mapping = current
+            if claim_mode == "busy":
+                return CustomerFollowupSyncResult(status="in_progress", skipped=1)
+            search_only_recovery = claim_mode == "reconciling"
         try:
             if mapping.record_id is None:
                 matches = client.find_records_by_exact_field("客户唯一键", str(fields["客户唯一键"]))
@@ -100,6 +104,16 @@ def push_customer_followup(
                     if not record_id:
                         raise ValueError(f"remote customer record missing record_id: {fields['客户唯一键']}")
                     mapping.record_id = record_id
+                elif search_only_recovery:
+                    mapping.last_sync_status = "reconciliation_unknown"
+                    mapping.last_error = "stale creation claim had no exact remote match; operator recovery required"
+                    session.commit()
+                    return CustomerFollowupSyncResult(
+                        status="reconciliation_unknown",
+                        skipped=1,
+                        error=mapping.last_error,
+                        errors=(mapping.last_error,),
+                    )
             result = client.upsert_record(mapping.record_id, fields)
         except Exception as exc:  # noqa: BLE001 - sync failure is persisted and isolated from sending.
             if mapping.record_id is None and _is_ambiguous_remote_result(exc):
@@ -248,9 +262,24 @@ def _get_or_create_mapping(session: Session, lead_id: int, client: FeishuBitable
         sync_direction="bidirectional",
         last_sync_status="pending",
     )
-    session.add(mapping)
-    session.flush()
-    return mapping
+    try:
+        with session.begin_nested():
+            session.add(mapping)
+            session.flush()
+        return mapping
+    except IntegrityError:
+        session.expire_all()
+        winner = session.scalar(
+            select(FeishuBitableRecord).where(
+                FeishuBitableRecord.local_entity_type == "customer_followup",
+                FeishuBitableRecord.local_entity_id == lead_id,
+                FeishuBitableRecord.app_token == app_token,
+                FeishuBitableRecord.table_id == table_id,
+            )
+        )
+        if winner is None:
+            raise
+        return winner
 
 
 def _record_success(mapping: FeishuBitableRecord, fields: dict[str, Any], record_id: str | None, *, dry_run: bool) -> None:
@@ -271,8 +300,30 @@ def _record_reconciliation_unknown(mapping: FeishuBitableRecord, exc: Exception)
     mapping.last_error = str(exc)
 
 
-def _claim_creation(session: Session, mapping_id: int) -> bool:
+def _claim_creation(session: Session, mapping_id: int, *, timeout_seconds: float) -> str:
     claimed_at = datetime.now(UTC)
+    stale_before = claimed_at.timestamp() - timeout_seconds
+    current = session.get(FeishuBitableRecord, mapping_id)
+    if current is None or current.record_id:
+        return "bound"
+    updated_timestamp = _aware_utc(current.updated_at).timestamp()
+    if current.last_sync_status == "creating" and updated_timestamp > stale_before:
+        return "busy"
+    recovery_statuses = {"creating", "reconciliation_unknown", "reconciling"}
+    if current.last_sync_status in recovery_statuses:
+        result = session.execute(
+            update(FeishuBitableRecord)
+            .where(
+                FeishuBitableRecord.id == mapping_id,
+                FeishuBitableRecord.record_id.is_(None),
+                FeishuBitableRecord.last_sync_status == current.last_sync_status,
+                FeishuBitableRecord.updated_at == current.updated_at,
+            )
+            .values(last_sync_status="reconciling", updated_at=claimed_at)
+        )
+        session.commit()
+        session.expire_all()
+        return "reconciling" if result.rowcount == 1 else "busy"
     result = session.execute(
         update(FeishuBitableRecord)
         .where(
@@ -284,7 +335,7 @@ def _claim_creation(session: Session, mapping_id: int) -> bool:
     )
     session.commit()
     session.expire_all()
-    return result.rowcount == 1
+    return "creating" if result.rowcount == 1 else "busy"
 
 
 def _is_ambiguous_remote_result(exc: Exception) -> bool:
@@ -337,6 +388,10 @@ def _format_datetime(value: datetime | None, *, transport: str) -> int | str:
 
 def _base_timezone() -> ZoneInfo:
     return ZoneInfo(os.getenv("FEISHU_CUSTOMER_FOLLOWUP_TIMEZONE", "Asia/Shanghai"))
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _remote_updated_at(record: dict[str, Any]) -> datetime | None:
