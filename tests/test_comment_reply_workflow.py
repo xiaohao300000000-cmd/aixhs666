@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+import os
 from pathlib import Path
 from threading import Barrier, Lock
 from typing import Any
 
 import pytest
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, event, select, update
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -18,6 +21,7 @@ from integrations.feishu.comment_replies import (
     build_comment_reply_approval_card,
     create_comment_reply_for_valid_screening,
     is_comment_reply_callback,
+    reconcile_stale_comment_reply,
 )
 from services.comment_reply_generation import CommentReplyDraft
 from storage.database import Base
@@ -281,13 +285,65 @@ def test_stale_send_completion_does_not_overwrite_new_attempt(factory: sessionma
             return CommentReplySendResult(outcome="sent", platform_reply_id="stale")
 
     result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=StealingSender(), verification_token="token")
-    assert result.status == "result_unknown"
+    assert result.status == "sending"
     assert result.reconciliation_required is True
     with factory() as session:
         saved = session.get(LeadCommentReply, reply_id)
         assert saved.status == "sending"
         assert saved.attempt_count == 2
         assert saved.platform_reply_id is None
+
+
+def test_explicit_reconciliation_recovers_only_stale_claims(factory: sessionmaker[Session]) -> None:
+    card_id = _seed_pending_reply(factory)
+    send_id = _seed_pending_reply(factory, suffix="2")
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
+    with factory() as session:
+        session.execute(
+            update(LeadCommentReply)
+            .where(LeadCommentReply.id == card_id)
+            .values(
+                feishu_message_id=None,
+                feishu_card_status="card_creating",
+                feishu_chat_id="card-claim:stale",
+                updated_at=now - timedelta(minutes=20),
+            )
+        )
+        session.execute(
+            update(LeadCommentReply)
+            .where(LeadCommentReply.id == send_id)
+            .values(status="sending", last_attempt_at=now - timedelta(minutes=20))
+        )
+        session.commit()
+
+    card = reconcile_stale_comment_reply(factory, reply_id=card_id, now=now, card_timeout=timedelta(minutes=10), send_timeout=timedelta(minutes=10))
+    sending = reconcile_stale_comment_reply(factory, reply_id=send_id, now=now, card_timeout=timedelta(minutes=10), send_timeout=timedelta(minutes=10))
+    assert card.applied is True and card.status == "pending_review"
+    assert sending.applied is True and sending.status == "result_unknown"
+    assert sending.reconciliation_required is True
+    with factory() as session:
+        card_reply = session.get(LeadCommentReply, card_id)
+        send_reply = session.get(LeadCommentReply, send_id)
+        assert card_reply.feishu_card_status == "card_failed"
+        assert "operator reconciliation" in card_reply.feishu_sync_error
+        assert send_reply.status == "result_unknown"
+        assert "operator reconciliation" in send_reply.last_error
+
+
+def test_reconciliation_does_not_change_fresh_or_completed_card_claim(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
+    with factory() as session:
+        session.execute(
+            update(LeadCommentReply)
+            .where(LeadCommentReply.id == reply_id)
+            .values(feishu_card_status="card_creating", updated_at=now, feishu_message_id="om_existing")
+        )
+        session.commit()
+    result = reconcile_stale_comment_reply(factory, reply_id=reply_id, now=now, card_timeout=timedelta(minutes=10), send_timeout=timedelta(minutes=10))
+    assert result.applied is False
+    with factory() as session:
+        assert session.get(LeadCommentReply, reply_id).feishu_card_status == "card_creating"
 
 
 def test_sender_exception_contract_and_unsupported_outcome_are_durable(factory: sessionmaker[Session]) -> None:
@@ -314,32 +370,54 @@ def test_sender_exception_contract_and_unsupported_outcome_are_durable(factory: 
 
 def test_concurrent_callbacks_only_one_claims_send(file_factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(file_factory)
-    barrier = Barrier(2)
-
-    class BarrierSender(FakeCommentReplySender):
-        def reply_to_comment(self, **kwargs: str) -> CommentReplySendResult:
-            barrier.wait(timeout=5)
-            return super().reply_to_comment(**kwargs)
-
     sender = FakeCommentReplySender.success()
     def invoke() -> Any:
         return apply_comment_reply_callback(file_factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda _: invoke(), range(2)))
+    with _claim_boundary_barrier(file_factory, "status="):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: invoke(), range(2)))
     assert len(sender.calls) == 1
     assert sorted(result.duplicate for result in results) == [False, True]
 
 
 def test_concurrent_card_creation_has_one_external_send(file_factory: sessionmaker[Session]) -> None:
-    screening_id = _seed_comment_screening(file_factory)
+    reply_id = _seed_pending_reply(file_factory)
+    with file_factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        screening_id = reply.screening_result_id
+        reply.feishu_message_id = None
+        reply.feishu_card_status = "card_failed"
+        session.commit()
     card_client = ConcurrentCardClient()
     def create() -> Any:
         with file_factory() as session:
             return create_comment_reply_for_valid_screening(session, screening_id=screening_id, generator=FakeCommentReplyGenerator(), card_client=card_client, chat_id="oc_review")
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        replies = list(pool.map(lambda _: create(), range(2)))
+    with _claim_boundary_barrier(file_factory, "feishu_card_status="):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            replies = list(pool.map(lambda _: create(), range(2)))
     assert replies[0].id == replies[1].id
     assert len(card_client.sent_cards) == 1
+
+
+@pytest.mark.postgres
+def test_postgres_conditional_send_claim_race() -> None:
+    database_url = os.getenv("POSTGRES_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("POSTGRES_TEST_DATABASE_URL is not set")
+    engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
+    postgres_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    suffix = f"pg-{datetime.now(UTC).timestamp()}"
+    try:
+        reply_id = _seed_pending_reply(postgres_factory, suffix=suffix)
+        sender = FakeCommentReplySender.success()
+        with _claim_boundary_barrier(postgres_factory, "status="):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(lambda _: apply_comment_reply_callback(postgres_factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token"), range(2)))
+        assert len(sender.calls) == 1
+        assert sorted(result.duplicate for result in results) == [False, True]
+    finally:
+        engine.dispose()
 
 
 def test_card_creation_failure_is_retryable_but_card_creating_is_not_blindly_resent(factory: sessionmaker[Session]) -> None:
@@ -441,3 +519,28 @@ def _seed_pending_reply(factory: sessionmaker[Session], *, suffix: str = "1") ->
 
 def _payload(reply_id: int, text: str, *, action: str = "confirm", token: str = "token", message_id: str = "om_reply_1", chat_id: str = "oc_review") -> dict[str, Any]:
     return {"token": token, "event": {"token": "update-token", "operator": {"open_id": "ou_reviewer"}, "context": {"open_message_id": message_id, "open_chat_id": chat_id}, "action": {"name": f"{action}_comment_reply_{reply_id}", "form_value": {"comment_reply_text": text}}}}
+
+
+@contextmanager
+def _claim_boundary_barrier(factory: sessionmaker[Session], assignment: str) -> Iterator[None]:
+    barrier = Barrier(2)
+    engine = factory.kw["bind"]
+    seen = 0
+    seen_lock = Lock()
+
+    def wait_at_claim(_conn: Any, _cursor: Any, statement: str, _parameters: Any, _context: Any, _executemany: bool) -> None:
+        nonlocal seen
+        normalized = "".join(statement.lower().split())
+        if not normalized.startswith("updatelead_comment_repliesset") or assignment not in normalized:
+            return
+        with seen_lock:
+            if seen >= 2:
+                return
+            seen += 1
+        barrier.wait(timeout=5)
+
+    event.listen(engine, "before_cursor_execute", wait_at_claim)
+    try:
+        yield
+    finally:
+        event.remove(engine, "before_cursor_execute", wait_at_claim)

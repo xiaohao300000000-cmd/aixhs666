@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import re
 from typing import Any, Literal, Protocol
 from uuid import uuid4
@@ -114,7 +114,7 @@ def create_comment_reply_for_valid_screening(
                 LeadCommentReply.feishu_card_status == "card_failed",
             ),
         )
-        .values(feishu_card_status="card_creating", feishu_chat_id=card_claim, feishu_sync_error=None)
+        .values(feishu_card_status="card_creating", feishu_chat_id=card_claim, feishu_sync_error=None, updated_at=_utc_now())
     ).rowcount == 1
     session.commit()
     if not claimed:
@@ -134,7 +134,7 @@ def create_comment_reply_for_valid_screening(
                 LeadCommentReply.feishu_message_id.is_(None),
                 LeadCommentReply.feishu_chat_id == card_claim,
             )
-            .values(feishu_card_status="card_failed", feishu_sync_error=str(exc))
+            .values(feishu_card_status="card_failed", feishu_sync_error=str(exc), updated_at=_utc_now())
         )
         session.commit()
         raise
@@ -149,7 +149,7 @@ def create_comment_reply_for_valid_screening(
                 LeadCommentReply.feishu_message_id.is_(None),
                 LeadCommentReply.feishu_chat_id == card_claim,
             )
-            .values(feishu_sync_error="card send returned no message_id; reconciliation required")
+            .values(feishu_sync_error="card send returned no message_id; reconciliation required", updated_at=_utc_now())
         )
         session.commit()
         return session.get(LeadCommentReply, reply_id)
@@ -166,6 +166,7 @@ def create_comment_reply_for_valid_screening(
             feishu_chat_id=response.get("chat_id") or chat_id,
             feishu_card_status="card_pending",
             feishu_sync_error=None,
+            updated_at=_utc_now(),
         )
     ).rowcount == 1
     session.commit()
@@ -279,7 +280,11 @@ def apply_comment_reply_callback(
         ).rowcount == 1
         session.commit()
     if not completed:
-        return CommentReplyCallbackResult(False, True, reply_id, "result_unknown", True)
+        with session_factory() as session:
+            current = session.get(LeadCommentReply, reply_id)
+            if current is None:
+                raise ValueError(f"comment reply not found after lost completion ownership: {reply_id}")
+            return CommentReplyCallbackResult(False, True, reply_id, current.status, True)
 
     update_token = event.get("token")
     if update_token:
@@ -313,6 +318,61 @@ def apply_comment_reply_callback(
                 )
                 session.commit()
     return CommentReplyCallbackResult(True, False, reply_id, send_result.outcome)
+
+
+def reconcile_stale_comment_reply(
+    session_factory: sessionmaker[Session],
+    *,
+    reply_id: int,
+    now: datetime,
+    card_timeout: timedelta,
+    send_timeout: timedelta,
+) -> CommentReplyCallbackResult:
+    card_cutoff = now - card_timeout
+    send_cutoff = now - send_timeout
+    with session_factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        if reply is None:
+            raise ValueError(f"comment reply not found: {reply_id}")
+        card_recovered = session.execute(
+            update(LeadCommentReply)
+            .where(
+                LeadCommentReply.id == reply_id,
+                LeadCommentReply.feishu_card_status == "card_creating",
+                LeadCommentReply.feishu_message_id.is_(None),
+                LeadCommentReply.updated_at <= card_cutoff,
+            )
+            .values(
+                feishu_card_status="card_failed",
+                feishu_sync_error="operator reconciliation: stale card creation claim released for retry",
+                updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        ).rowcount == 1
+        if card_recovered:
+            session.commit()
+            session.expire_all()
+            current = session.get(LeadCommentReply, reply_id)
+            return CommentReplyCallbackResult(True, False, reply_id, current.status, True)
+        send_recovered = session.execute(
+            update(LeadCommentReply)
+            .where(
+                LeadCommentReply.id == reply_id,
+                LeadCommentReply.status == "sending",
+                LeadCommentReply.last_attempt_at.is_not(None),
+                LeadCommentReply.last_attempt_at <= send_cutoff,
+            )
+            .values(
+                status="result_unknown",
+                last_error="operator reconciliation: stale sending claim requires platform verification",
+                updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        ).rowcount == 1
+        session.commit()
+        session.expire_all()
+        current = session.get(LeadCommentReply, reply_id)
+        return CommentReplyCallbackResult(send_recovered, not send_recovered, reply_id, current.status, send_recovered)
 
 
 def _claim_send(
