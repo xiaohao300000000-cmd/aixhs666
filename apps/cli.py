@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime, timedelta
 import json
 import sys
 from typing import Any
@@ -88,6 +89,16 @@ def build_parser() -> argparse.ArgumentParser:
     comment_reply.add_argument("--chat-id", default=None, help="Feishu chat id that receives the comment reply approval card.")
     comment_followup = subparsers.add_parser("comment-reply-sync-followup", help="Retry customer followup sync for a persisted comment reply result.")
     comment_followup.add_argument("--reply-id", type=int, required=True, help="Persisted comment reply id to sync.")
+    comment_reconcile = subparsers.add_parser("comment-reply-reconcile-stale", help="Mark stale card/send claims for operator reconciliation without retrying XHS.")
+    comment_reconcile.add_argument("--reply-id", type=int, required=True, help="Comment reply id to reconcile.")
+    comment_reconcile.add_argument("--card-timeout-seconds", type=int, required=True, help="Minimum stale age for an unresolved card claim.")
+    comment_reconcile.add_argument("--send-timeout-seconds", type=int, required=True, help="Minimum stale age for an unresolved XHS send claim.")
+    comment_adopt = subparsers.add_parser("comment-reply-adopt-card", help="Adopt a verified Feishu card after reconciliation without sending XHS.")
+    comment_adopt.add_argument("--reply-id", type=int, required=True, help="Comment reply id to update.")
+    comment_adopt.add_argument("--message-id", required=True, help="Verified Feishu message id.")
+    comment_adopt.add_argument("--chat-id", required=True, help="Verified Feishu chat id.")
+    comment_adopt.add_argument("--operator", required=True, help="Operator identity recorded in the audit trail.")
+    comment_adopt.add_argument("--reason", required=True, help="Operator reason recorded in the audit trail.")
     control_panel = subparsers.add_parser("run-control-panel-once", help="Run one human-started Feishu control panel command.")
     control_panel.add_argument("--base-token", default=None, help="Feishu Base token for the control panel.")
     control_panel.add_argument("--table-id", default=None, help="Feishu table ID for the control panel.")
@@ -271,6 +282,29 @@ def main(argv: list[str] | None = None) -> int:
             from services.feishu_customer_followup import push_customer_followup
 
             payload = {"comment_reply_followup": push_customer_followup(SessionLocal, reply_id=args.reply_id)}
+        elif args.command == "comment-reply-reconcile-stale":
+            from integrations.feishu.comment_replies import reconcile_stale_comment_reply
+
+            result = reconcile_stale_comment_reply(
+                SessionLocal,
+                reply_id=args.reply_id,
+                now=datetime.now(UTC),
+                card_timeout=timedelta(seconds=args.card_timeout_seconds),
+                send_timeout=timedelta(seconds=args.send_timeout_seconds),
+            )
+            payload = {"comment_reply_reconciliation": _comment_reply_result_payload(result)}
+        elif args.command == "comment-reply-adopt-card":
+            from integrations.feishu.comment_replies import adopt_reconciled_comment_reply_card
+
+            result = adopt_reconciled_comment_reply_card(
+                SessionLocal,
+                reply_id=args.reply_id,
+                message_id=args.message_id,
+                chat_id=args.chat_id,
+                operator=args.operator,
+                reason=args.reason,
+            )
+            payload = {"comment_reply_card_adoption": _comment_reply_result_payload(result)}
         elif args.command == "run-control-panel-once":
             payload = {
                 "control_panel": run_control_panel_once(
@@ -358,6 +392,16 @@ def _emit(payload: dict[str, Any], *, as_json: bool, stream: Any | None = None) 
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True), file=stream)
         return
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), file=stream)
+
+
+def _comment_reply_result_payload(result: Any) -> dict[str, Any]:
+    return {
+        "applied": result.applied,
+        "duplicate": result.duplicate,
+        "reply_id": result.reply_id,
+        "status": result.status,
+        "reconciliation_required": result.reconciliation_required,
+    }
 
 
 def _has_pending_feishu(session: Any, model: Any, status: str) -> bool:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 import pytest
 from apps import cli
 
@@ -52,3 +53,54 @@ def test_comment_reply_sync_followup_recovers_without_sender(monkeypatch: pytest
     assert cli.main(["--json", "comment-reply-sync-followup", "--reply-id", "42"]) == 0
     assert calls == [42]
     assert json.loads(capsys.readouterr().out) == {"comment_reply_followup": {"created": 1, "skipped": 0, "updated": 0}}
+
+
+def test_comment_reply_reconcile_stale_uses_guarded_recovery(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _runtime(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    class Result:
+        applied = True
+        duplicate = False
+        reply_id = 43
+        status = "result_unknown"
+        reconciliation_required = True
+
+    def reconcile(session_factory, **kwargs):
+        calls.append(kwargs)
+        return Result()
+
+    monkeypatch.setattr("integrations.feishu.comment_replies.reconcile_stale_comment_reply", reconcile)
+    assert cli.main(["--json", "comment-reply-reconcile-stale", "--reply-id", "43", "--card-timeout-seconds", "60", "--send-timeout-seconds", "120"]) == 0
+    assert calls[0]["reply_id"] == 43
+    assert calls[0]["card_timeout"] == timedelta(seconds=60)
+    assert calls[0]["send_timeout"] == timedelta(seconds=120)
+    assert isinstance(calls[0]["now"], datetime)
+    assert json.loads(capsys.readouterr().out)["comment_reply_reconciliation"]["status"] == "result_unknown"
+
+
+def test_comment_reply_adopt_card_requires_audited_identity(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _runtime(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    class Result:
+        applied = True
+        duplicate = False
+        reply_id = 44
+        status = "pending_review"
+        reconciliation_required = False
+
+    monkeypatch.setattr("integrations.feishu.comment_replies.adopt_reconciled_comment_reply_card", lambda session_factory, **kwargs: calls.append(kwargs) or Result())
+    assert cli.main([
+        "--json", "comment-reply-adopt-card", "--reply-id", "44", "--message-id", "msg-1",
+        "--chat-id", "chat-1", "--operator", "ops@example.com", "--reason", "verified in Feishu",
+    ]) == 0
+    assert calls == [{"reply_id": 44, "message_id": "msg-1", "chat_id": "chat-1", "operator": "ops@example.com", "reason": "verified in Feishu"}]
+    assert json.loads(capsys.readouterr().out)["comment_reply_card_adoption"]["applied"] is True
+
+
+def test_comment_reply_adopt_card_rejects_missing_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    _runtime(monkeypatch)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["comment-reply-adopt-card", "--reply-id", "44", "--message-id", "msg-1", "--chat-id", "chat-1", "--operator", "ops"])
+    assert exc_info.value.code == 2
