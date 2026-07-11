@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import os
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -24,6 +26,16 @@ SYSTEM_FIELDS = frozenset(
 )
 HUMAN_FIELDS = frozenset({"当前客户状态", "负责人", "运营备注", "下次跟进时间"})
 TERMINAL_HUMAN_STATUSES = frozenset({"已收到私信", "沟通中", "已成交", "已忽略"})
+OPERATOR_STATUSES = frozenset({"待跟进", "待联系", "暂缓跟进"})
+ALLOWED_HUMAN_STATUSES = TERMINAL_HUMAN_STATUSES | OPERATOR_STATUSES
+AUTOMATIC_STATUSES = {
+    "pending_review": "评论待审核",
+    "sending": "评论发送中",
+    "sent": "已评论引导，等待客户私信",
+    "failed": "评论发送失败",
+    "send_failed": "评论发送失败",
+    "result_unknown": "评论结果待确认",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,14 +45,16 @@ class CustomerFollowupSyncResult:
     skipped: int = 0
     failed: int = 0
     error: str | None = None
+    errors: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict[str, int | str | None]:
+    def to_dict(self) -> dict[str, int | str | None | list[str]]:
         return {
             "status": self.status,
             "synced": self.synced,
             "skipped": self.skipped,
             "failed": self.failed,
             "error": self.error,
+            "errors": list(self.errors),
         }
 
 
@@ -64,13 +78,22 @@ def push_customer_followup(
         if profile is None or not profile.platform_user_id:
             return CustomerFollowupSyncResult(status="skipped", skipped=1)
         mapping = _get_or_create_mapping(session, lead.id, client)
-        fields = _push_fields(session, lead=lead, reply=reply, profile=profile)
+        fields = _push_fields(session, lead=lead, reply=reply, profile=profile, transport=client.settings.transport)
         try:
+            if mapping.record_id is None:
+                matches = client.find_records_by_exact_field("客户唯一键", str(fields["客户唯一键"]))
+                if len(matches) > 1:
+                    raise ValueError(f"duplicate remote customer key: {fields['客户唯一键']}")
+                if matches:
+                    record_id = _text(matches[0].get("record_id"))
+                    if not record_id:
+                        raise ValueError(f"remote customer record missing record_id: {fields['客户唯一键']}")
+                    mapping.record_id = record_id
             result = client.upsert_record(mapping.record_id, fields)
         except Exception as exc:  # noqa: BLE001 - sync failure is persisted and isolated from sending.
             _record_failure(mapping, exc)
             session.commit()
-            return CustomerFollowupSyncResult(status="failed", failed=1, error=str(exc))
+            return CustomerFollowupSyncResult(status="failed", failed=1, error=str(exc), errors=(str(exc),))
         _record_success(mapping, fields, result.record_id, dry_run=result.dry_run)
         session.commit()
         return CustomerFollowupSyncResult(status="synced", synced=1)
@@ -90,30 +113,46 @@ def pull_customer_followup_edits(
         return CustomerFollowupSyncResult(status="failed", failed=1, error=str(exc))
     synced = 0
     skipped = 0
+    failed = 0
+    errors: list[str] = []
     with session_factory() as session:
-        for record in records:
-            fields = record.get("fields")
-            if not isinstance(fields, dict):
-                skipped += 1
-                continue
-            customer_key = _text(fields.get("客户唯一键"))
-            lead = _lead_by_customer_key(session, customer_key)
-            if lead is None:
-                skipped += 1
-                continue
-            _apply_human_fields(lead, fields)
-            mapping = _get_or_create_mapping(session, lead.id, client)
-            record_id = _text(record.get("record_id"))
-            if record_id:
-                mapping.record_id = record_id
-            mapping.sync_direction = "bidirectional"
-            mapping.last_remote_updated_at = datetime.now(UTC)
-            mapping.last_sync_status = "synced"
-            mapping.last_error = None
-            mapping.remote_fields_json = {name: fields.get(name) for name in HUMAN_FIELDS if name in fields}
-            synced += 1
+        for index, record in enumerate(records):
+            try:
+                with session.begin_nested():
+                    fields = record.get("fields")
+                    if not isinstance(fields, dict):
+                        raise ValueError("record fields must be an object")
+                    customer_key = _text(fields.get("客户唯一键"))
+                    lead = _lead_by_customer_key(session, customer_key)
+                    if lead is None:
+                        skipped += 1
+                        continue
+                    _apply_human_fields(lead, fields)
+                    mapping = _get_or_create_mapping(session, lead.id, client)
+                    record_id = _text(record.get("record_id"))
+                    if record_id:
+                        mapping.record_id = record_id
+                    mapping.sync_direction = "bidirectional"
+                    mapping.last_remote_updated_at = _remote_updated_at(record) or datetime.now(UTC)
+                    mapping.last_sync_status = "synced"
+                    mapping.last_error = None
+                    merged_fields = dict(mapping.remote_fields_json or {})
+                    merged_fields.update({name: fields.get(name) for name in HUMAN_FIELDS if name in fields})
+                    mapping.remote_fields_json = merged_fields
+                    synced += 1
+            except Exception as exc:  # noqa: BLE001 - isolate malformed remote rows.
+                failed += 1
+                errors.append(f"record {index}: {exc}")
         session.commit()
-    return CustomerFollowupSyncResult(status="synced", synced=synced, skipped=skipped)
+    status = "partial" if failed and (synced or skipped) else "failed" if failed else "synced"
+    return CustomerFollowupSyncResult(
+        status=status,
+        synced=synced,
+        skipped=skipped,
+        failed=failed,
+        error=errors[0] if errors else None,
+        errors=tuple(errors),
+    )
 
 
 def _push_fields(
@@ -122,19 +161,20 @@ def _push_fields(
     lead: Lead,
     reply: LeadCommentReply,
     profile: PublicProfile,
+    transport: str,
 ) -> dict[str, Any]:
     screening = session.get(LeadScreeningResult, reply.screening_result_id) if reply.screening_result_id else None
-    automatic_status = "已评论引导，等待客户私信" if reply.status == "sent" else "待评论引导"
+    automatic_status = AUTOMATIC_STATUSES.get(reply.status, "评论结果待确认")
     current_status = lead.followup_status if lead.followup_status in TERMINAL_HUMAN_STATUSES else automatic_status
     return {
         "客户唯一键": f"{lead.platform}:{profile.platform_user_id}",
         "当前客户状态": current_status,
         "负责人": lead.owner_name or "",
         "运营备注": lead.operator_note or "",
-        "下次跟进时间": _format_datetime(lead.next_followup_at),
+        "下次跟进时间": _format_datetime(lead.next_followup_at, transport=transport),
         "评论审批状态": _approval_status(reply.status),
         "评论发送结果": _send_status(reply.status),
-        "最近评论时间": _format_datetime(reply.sent_at or reply.last_attempt_at),
+        "最近评论时间": _format_datetime(reply.sent_at or reply.last_attempt_at, transport=transport),
         "最近评论错误": reply.last_error or reply.feishu_sync_error or "",
         "评论回复记录 ID": str(reply.id),
         "审批卡片消息 ID": reply.feishu_message_id or "",
@@ -145,7 +185,12 @@ def _push_fields(
 
 def _apply_human_fields(lead: Lead, fields: dict[str, Any]) -> None:
     if "当前客户状态" in fields:
-        lead.followup_status = _text(fields.get("当前客户状态")) or None
+        status = _text(fields.get("当前客户状态"))
+        if status not in ALLOWED_HUMAN_STATUSES:
+            raise ValueError(f"unsupported human followup status: {status}")
+        if lead.followup_status in TERMINAL_HUMAN_STATUSES and status not in TERMINAL_HUMAN_STATUSES:
+            raise ValueError(f"cannot regress terminal followup status: {lead.followup_status} -> {status}")
+        lead.followup_status = status
     if "负责人" in fields:
         lead.owner_name = _text(fields.get("负责人")) or None
     if "运营备注" in fields:
@@ -227,14 +272,33 @@ def _parse_datetime(value: Any) -> datetime | None:
     text = _text(value)
     if not text:
         return None
+    if text.lstrip("-").isdigit():
+        return datetime.fromtimestamp(int(text) / 1000, tz=UTC)
     parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    return parsed.replace(tzinfo=parsed.tzinfo or UTC)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_base_timezone())
+    return parsed.astimezone(UTC)
 
 
-def _format_datetime(value: datetime | None) -> str:
+def _format_datetime(value: datetime | None, *, transport: str) -> int | str:
     if value is None:
         return ""
-    return value.strftime("%Y-%m-%d %H:%M:%S")
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    if transport == "lark_cli":
+        return value.astimezone(_base_timezone()).strftime("%Y-%m-%d %H:%M:%S")
+    return int(value.astimezone(UTC).timestamp() * 1000)
+
+
+def _base_timezone() -> ZoneInfo:
+    return ZoneInfo(os.getenv("FEISHU_CUSTOMER_FOLLOWUP_TIMEZONE", "Asia/Shanghai"))
+
+
+def _remote_updated_at(record: dict[str, Any]) -> datetime | None:
+    for name in ("updated_time", "last_modified_time", "record_updated_time"):
+        if name in record:
+            return _parse_datetime(record.get(name))
+    return None
 
 
 def _text(value: Any) -> str:

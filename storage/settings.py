@@ -16,6 +16,7 @@ class Settings(BaseModel):
     database_url: str = Field(default=DEFAULT_DATABASE_URL)
     feishu_customer_followup_app_token: str | None = None
     feishu_customer_followup_table_id: str | None = None
+    feishu_customer_followup_timezone: str = "Asia/Shanghai"
 
 
 @lru_cache
@@ -27,4 +28,5 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
         feishu_customer_followup_app_token=os.getenv("FEISHU_CUSTOMER_FOLLOWUP_APP_TOKEN") or None,
         feishu_customer_followup_table_id=os.getenv("FEISHU_CUSTOMER_FOLLOWUP_TABLE_ID") or None,
+        feishu_customer_followup_timezone=os.getenv("FEISHU_CUSTOMER_FOLLOWUP_TIMEZONE", "Asia/Shanghai"),
     )
