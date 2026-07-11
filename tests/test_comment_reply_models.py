@@ -123,12 +123,55 @@ def test_comment_reply_preserves_denormalized_targets_without_local_rows(factory
         assert reply.target_platform_content_id == "deleted-platform-content"
 
 
+def test_comment_reply_target_platform_comment_is_unique(factory: sessionmaker[Session]) -> None:
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="recollected-comment-user")
+        session.add(profile)
+        session.flush()
+        first_screening = LeadScreeningResult(
+            platform="xhs",
+            source_entity_type="comment",
+            source_entity_id=1001,
+            public_profile_id=profile.id,
+        )
+        second_screening = LeadScreeningResult(
+            platform="xhs",
+            source_entity_type="comment",
+            source_entity_id=1002,
+            public_profile_id=profile.id,
+        )
+        session.add_all([first_screening, second_screening])
+        session.flush()
+        session.add(
+            LeadCommentReply(
+                screening_result_id=first_screening.id,
+                target_platform_comment_id="durable-platform-comment",
+                target_platform_content_id="durable-platform-content",
+                draft_text="第一条草稿",
+            )
+        )
+        session.commit()
+
+        session.add(
+            LeadCommentReply(
+                screening_result_id=second_screening.id,
+                target_platform_comment_id="durable-platform-comment",
+                target_platform_content_id="recollected-platform-content",
+                draft_text="重新采集后生成的重复草稿",
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
 def test_comment_reply_target_foreign_keys_use_set_null() -> None:
     table = LeadCommentReply.__table__
 
+    assert table.c.screening_result_id.nullable is True
     assert table.c.target_comment_id.nullable is True
     assert table.c.target_content_id.nullable is True
     assert table.c.target_platform_comment_id.nullable is False
     assert table.c.target_platform_content_id.nullable is False
+    assert next(iter(table.c.screening_result_id.foreign_keys)).ondelete == "SET NULL"
     assert next(iter(table.c.target_comment_id.foreign_keys)).ondelete == "SET NULL"
     assert next(iter(table.c.target_content_id.foreign_keys)).ondelete == "SET NULL"

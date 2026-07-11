@@ -370,12 +370,16 @@ class LeadCommentReply(TimestampMixin, Base):
     __tablename__ = "lead_comment_replies"
     __table_args__ = (
         UniqueConstraint("screening_result_id", name="uq_lead_comment_replies_screening_result_id"),
+        UniqueConstraint(
+            "target_platform_comment_id",
+            name="uq_lead_comment_replies_target_platform_comment_id",
+        ),
         Index("ix_lead_comment_replies_target_status", "target_comment_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    screening_result_id: Mapped[int] = mapped_column(
-        ForeignKey("lead_screening_results.id", ondelete="CASCADE"), nullable=False
+    screening_result_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lead_screening_results.id", ondelete="SET NULL")
     )
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"))
     target_comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id", ondelete="SET NULL"))

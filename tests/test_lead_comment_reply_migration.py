@@ -28,7 +28,7 @@ def test_lead_comment_reply_migration_preserves_audit_records(monkeypatch: pytes
     create_table = next(args for operation, args, _ in calls if operation == "create_table")
     assert create_table[0] == "lead_comment_replies"
     columns = {item.name: item for item in create_table[1:] if hasattr(item, "nullable") and item.name}
-    assert columns["screening_result_id"].nullable is False
+    assert columns["screening_result_id"].nullable is True
     assert columns["target_comment_id"].nullable is True
     assert columns["target_platform_comment_id"].nullable is False
     assert columns["target_content_id"].nullable is True
@@ -39,9 +39,11 @@ def test_lead_comment_reply_migration_preserves_audit_records(monkeypatch: pytes
     foreign_key_actions = {
         tuple(constraint.column_keys): constraint.ondelete for constraint in foreign_keys
     }
+    assert foreign_key_actions[("screening_result_id",)] == "SET NULL"
     assert foreign_key_actions[("target_comment_id",)] == "SET NULL"
     assert foreign_key_actions[("target_content_id",)] == "SET NULL"
     assert any(item.name == "uq_lead_comment_replies_screening_result_id" for item in create_table[1:])
+    assert any(item.name == "uq_lead_comment_replies_target_platform_comment_id" for item in create_table[1:])
     assert (
         "create_index",
         ("ix_lead_comment_replies_target_status", "lead_comment_replies", ["target_comment_id", "status"]),

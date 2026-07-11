@@ -390,7 +390,9 @@ created_at
 updated_at
 ```
 
-`screening_result_id` 唯一，确保每条筛选结果只创建一个回复工作流。`target_comment_id` 和 `target_content_id` 允许为空，删除本地评论或帖子记录时通过 `SET NULL` 保留回复审计记录；对应的平台 ID 始终必填，保证目标证据可追溯。`target_comment_id + status` 建索引，支持按目标评论检查发送状态。
+XHS-only v1 以 `target_platform_comment_id` 作为持久业务身份并设置唯一约束，确保同一条小红书评论即使被重新采集或生成新的筛选结果，也只能存在一个回复工作流。创建方应捕获 `IntegrityError`，再按 `target_platform_comment_id` 查询已有记录，实现并发安全的幂等创建。`screening_result_id` 保留唯一约束但允许为空；删除筛选结果时通过 `SET NULL` 保留已经发生的审核与发送事实。
+
+`target_comment_id` 和 `target_content_id` 允许为空，删除本地评论或帖子记录时同样通过 `SET NULL` 保留回复审计记录；对应的平台 ID 始终必填，保证目标证据可追溯。`target_comment_id + status` 建索引，支持按目标评论检查发送状态。
 
 `status`：
 

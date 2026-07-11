@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.create_table(
         "lead_comment_replies",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("screening_result_id", sa.Integer(), nullable=False),
+        sa.Column("screening_result_id", sa.Integer(), nullable=True),
         sa.Column("lead_id", sa.Integer(), nullable=True),
         sa.Column("target_comment_id", sa.Integer(), nullable=True),
         sa.Column("target_platform_comment_id", sa.String(length=255), nullable=False),
@@ -51,11 +51,15 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["lead_id"], ["leads.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["screening_result_id"], ["lead_screening_results.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["screening_result_id"], ["lead_screening_results.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["target_comment_id"], ["comments.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["target_content_id"], ["contents.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("screening_result_id", name="uq_lead_comment_replies_screening_result_id"),
+        sa.UniqueConstraint(
+            "target_platform_comment_id",
+            name="uq_lead_comment_replies_target_platform_comment_id",
+        ),
     )
     op.create_index(
         "ix_lead_comment_replies_target_status",

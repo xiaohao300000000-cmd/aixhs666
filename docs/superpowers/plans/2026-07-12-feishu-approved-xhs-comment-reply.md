@@ -92,12 +92,13 @@ class LeadCommentReply(TimestampMixin, Base):
     __tablename__ = "lead_comment_replies"
     __table_args__ = (
         UniqueConstraint("screening_result_id", name="uq_lead_comment_replies_screening_result_id"),
+        UniqueConstraint("target_platform_comment_id", name="uq_lead_comment_replies_target_platform_comment_id"),
         Index("ix_lead_comment_replies_target_status", "target_comment_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    screening_result_id: Mapped[int] = mapped_column(
-        ForeignKey("lead_screening_results.id", ondelete="CASCADE"), nullable=False
+    screening_result_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lead_screening_results.id", ondelete="SET NULL")
     )
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"))
     target_comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id", ondelete="CASCADE"), nullable=False)
@@ -130,7 +131,7 @@ followup_status: Mapped[str | None] = mapped_column(String(50))
 next_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 ```
 
-Create Alembic revision `0015` with the same reply columns, foreign keys, unique constraint and index, plus the two nullable `leads` columns. Extend `docs/DATA_MODEL.md` with the ownership and status rules.
+Create Alembic revision `0015` with the same reply columns, foreign keys, unique constraints and index, plus the two nullable `leads` columns. For XHS-only v1, `target_platform_comment_id` is the durable workflow identity: creation catches `IntegrityError` and loads the existing row by that field. Extend `docs/DATA_MODEL.md` with the ownership and status rules.
 
 - [ ] **Step 4: Run model and migration tests**
 
