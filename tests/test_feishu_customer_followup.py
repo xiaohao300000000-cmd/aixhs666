@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, datetime
 import json
+from pathlib import Path
+import threading
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -60,6 +62,17 @@ def factory() -> Iterator[sessionmaker[Session]]:
     engine.dispose()
 
 
+@pytest.fixture()
+def file_factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
+    engine = create_engine(
+        f"sqlite+pysqlite:///{tmp_path / 'followup.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    yield sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    engine.dispose()
+
+
 def test_push_maps_sent_reply_and_upserts_idempotently(factory: sessionmaker[Session]) -> None:
     lead_id, reply_id = _seed_customer(factory, reply_status="sent")
     client = FakeBitableClient()
@@ -105,6 +118,83 @@ def test_push_fails_reconciliation_on_duplicate_remote_customer_keys(factory: se
     assert result.failed == 1
     assert "duplicate" in result.errors[0]
     assert client.upserts == []
+
+
+def test_concurrent_first_push_has_one_remote_create(file_factory: sessionmaker[Session]) -> None:
+    lead_id, reply_id = _seed_customer(file_factory, reply_status="sent")
+    with file_factory() as session:
+        session.add(
+            FeishuBitableRecord(
+                local_entity_type="customer_followup",
+                local_entity_id=lead_id,
+                app_token="followup-app",
+                table_id="followup-table",
+                sync_direction="bidirectional",
+                last_sync_status="pending",
+            )
+        )
+        session.commit()
+    owner_search_started = threading.Event()
+    release_owner = threading.Event()
+    create_calls = 0
+    create_lock = threading.Lock()
+
+    class BarrierClient(FakeBitableClient):
+        def find_records_by_exact_field(self, field_name: str, value: str) -> list[dict[str, object]]:
+            owner_search_started.set()
+            assert release_owner.wait(timeout=5)
+            return []
+
+        def upsert_record(self, record_id: str | None, fields: dict[str, object]) -> FeishuBitableWriteResult:
+            nonlocal create_calls
+            if record_id is None:
+                with create_lock:
+                    create_calls += 1
+            return super().upsert_record(record_id, fields)
+
+    owner_client = BarrierClient()
+    contender_client = FakeBitableClient()
+    results: list[object] = []
+
+    owner = threading.Thread(target=lambda: results.append(push_customer_followup(file_factory, reply_id=reply_id, client=owner_client)))
+    owner.start()
+    assert owner_search_started.wait(timeout=5)
+    contender_result = push_customer_followup(file_factory, reply_id=reply_id, client=contender_client)
+    release_owner.set()
+    owner.join(timeout=5)
+
+    assert create_calls == 1
+    assert contender_client.upserts == []
+    assert contender_result.status == "in_progress"
+    with file_factory() as session:
+        mapping = session.scalar(select(FeishuBitableRecord))
+        assert mapping.record_id == "rec-customer"
+        assert mapping.last_sync_status == "synced"
+
+
+def test_ambiguous_create_requires_reconciliation_search_before_retry(factory: sessionmaker[Session]) -> None:
+    _, reply_id = _seed_customer(factory, reply_status="sent")
+
+    class AmbiguousClient(FakeBitableClient):
+        def upsert_record(self, record_id: str | None, fields: dict[str, object]) -> FeishuBitableWriteResult:
+            request = httpx.Request("POST", "https://open.feishu.cn/records")
+            raise httpx.ReadTimeout("result unknown", request=request)
+
+    first = push_customer_followup(factory, reply_id=reply_id, client=AmbiguousClient())
+
+    assert first.status == "reconciliation_unknown"
+    with factory() as session:
+        mapping = session.scalar(select(FeishuBitableRecord))
+        assert mapping.record_id is None
+        assert mapping.last_sync_status == "reconciliation_unknown"
+
+    recovery = FakeBitableClient()
+    recovery.search_matches = [{"record_id": "rec-created-remotely", "fields": {"客户唯一键": "xhs:user-1"}}]
+    second = push_customer_followup(factory, reply_id=reply_id, client=recovery)
+
+    assert second.status == "synced"
+    assert recovery.upserts[0][0] == "rec-created-remotely"
+    assert all(record_id is not None for record_id, _ in recovery.upserts)
 
 
 def test_pull_accepts_only_human_fields_and_preserves_system_facts(factory: sessionmaker[Session]) -> None:

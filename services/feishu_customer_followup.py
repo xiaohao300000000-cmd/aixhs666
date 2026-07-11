@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import os
+import subprocess
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+import httpx
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from integrations.feishu.bitable import FeishuBitableClient, FeishuBitableSettings
@@ -79,6 +81,15 @@ def push_customer_followup(
             return CustomerFollowupSyncResult(status="skipped", skipped=1)
         mapping = _get_or_create_mapping(session, lead.id, client)
         fields = _push_fields(session, lead=lead, reply=reply, profile=profile, transport=client.settings.transport)
+        session.commit()
+        if mapping.record_id is None:
+            claim = _claim_creation(session, mapping.id)
+            if not claim:
+                current = session.get(FeishuBitableRecord, mapping.id)
+                if current is not None and current.record_id:
+                    mapping = current
+                else:
+                    return CustomerFollowupSyncResult(status="in_progress", skipped=1)
         try:
             if mapping.record_id is None:
                 matches = client.find_records_by_exact_field("客户唯一键", str(fields["客户唯一键"]))
@@ -91,9 +102,13 @@ def push_customer_followup(
                     mapping.record_id = record_id
             result = client.upsert_record(mapping.record_id, fields)
         except Exception as exc:  # noqa: BLE001 - sync failure is persisted and isolated from sending.
-            _record_failure(mapping, exc)
+            if mapping.record_id is None and _is_ambiguous_remote_result(exc):
+                _record_reconciliation_unknown(mapping, exc)
+            else:
+                _record_failure(mapping, exc)
             session.commit()
-            return CustomerFollowupSyncResult(status="failed", failed=1, error=str(exc), errors=(str(exc),))
+            status = "reconciliation_unknown" if mapping.last_sync_status == "reconciliation_unknown" else "failed"
+            return CustomerFollowupSyncResult(status=status, failed=1, error=str(exc), errors=(str(exc),))
         _record_success(mapping, fields, result.record_id, dry_run=result.dry_run)
         session.commit()
         return CustomerFollowupSyncResult(status="synced", synced=1)
@@ -249,6 +264,36 @@ def _record_success(mapping: FeishuBitableRecord, fields: dict[str, Any], record
 def _record_failure(mapping: FeishuBitableRecord, exc: Exception) -> None:
     mapping.last_sync_status = "failed"
     mapping.last_error = str(exc)
+
+
+def _record_reconciliation_unknown(mapping: FeishuBitableRecord, exc: Exception) -> None:
+    mapping.last_sync_status = "reconciliation_unknown"
+    mapping.last_error = str(exc)
+
+
+def _claim_creation(session: Session, mapping_id: int) -> bool:
+    claimed_at = datetime.now(UTC)
+    result = session.execute(
+        update(FeishuBitableRecord)
+        .where(
+            FeishuBitableRecord.id == mapping_id,
+            FeishuBitableRecord.record_id.is_(None),
+            FeishuBitableRecord.last_sync_status.in_({"pending", "failed", "reconciliation_unknown", "dry_run"}),
+        )
+        .values(last_sync_status="creating", last_error=None, updated_at=claimed_at)
+    )
+    session.commit()
+    session.expire_all()
+    return result.rowcount == 1
+
+
+def _is_ambiguous_remote_result(exc: Exception) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, (httpx.TimeoutException, httpx.TransportError, subprocess.TimeoutExpired)):
+            return True
+        current = current.__cause__
+    return False
 
 
 def _approval_status(status: str) -> str:
