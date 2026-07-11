@@ -343,8 +343,8 @@ def reconcile_stale_comment_reply(
                 LeadCommentReply.updated_at <= card_cutoff,
             )
             .values(
-                feishu_card_status="card_failed",
-                feishu_sync_error="operator reconciliation: stale card creation claim released for retry",
+                feishu_card_status="card_result_unknown",
+                feishu_sync_error="card creation timed out; reconciliation required before retry",
                 updated_at=now,
             )
             .execution_options(synchronize_session=False)
@@ -373,6 +373,40 @@ def reconcile_stale_comment_reply(
         session.expire_all()
         current = session.get(LeadCommentReply, reply_id)
         return CommentReplyCallbackResult(send_recovered, not send_recovered, reply_id, current.status, send_recovered)
+
+
+def confirm_comment_reply_card_absent(
+    session_factory: sessionmaker[Session],
+    *,
+    reply_id: int,
+    operator: str,
+    reason: str,
+) -> CommentReplyCallbackResult:
+    operator_text = operator.strip()
+    reason_text = reason.strip()
+    if not operator_text:
+        raise ValueError("card absence confirmation operator is required")
+    if not reason_text:
+        raise ValueError("card absence confirmation reason is required")
+    audit_text = f"operator {operator_text} confirmed card absent: {reason_text}"
+    with session_factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        if reply is None:
+            raise ValueError(f"comment reply not found: {reply_id}")
+        confirmed = session.execute(
+            update(LeadCommentReply)
+            .where(
+                LeadCommentReply.id == reply_id,
+                LeadCommentReply.feishu_card_status == "card_result_unknown",
+                LeadCommentReply.feishu_message_id.is_(None),
+            )
+            .values(feishu_card_status="card_failed", feishu_sync_error=audit_text, updated_at=_utc_now())
+            .execution_options(synchronize_session=False)
+        ).rowcount == 1
+        session.commit()
+        session.expire_all()
+        current = session.get(LeadCommentReply, reply_id)
+        return CommentReplyCallbackResult(confirmed, not confirmed, reply_id, current.status, not confirmed)
 
 
 def _claim_send(

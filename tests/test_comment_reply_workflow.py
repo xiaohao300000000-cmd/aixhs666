@@ -19,6 +19,7 @@ from integrations.feishu.comment_replies import (
     CommentReplySendResult,
     apply_comment_reply_callback,
     build_comment_reply_approval_card,
+    confirm_comment_reply_card_absent,
     create_comment_reply_for_valid_screening,
     is_comment_reply_callback,
     reconcile_stale_comment_reply,
@@ -324,10 +325,74 @@ def test_explicit_reconciliation_recovers_only_stale_claims(factory: sessionmake
     with factory() as session:
         card_reply = session.get(LeadCommentReply, card_id)
         send_reply = session.get(LeadCommentReply, send_id)
-        assert card_reply.feishu_card_status == "card_failed"
-        assert "operator reconciliation" in card_reply.feishu_sync_error
+        assert card_reply.feishu_card_status == "card_result_unknown"
+        assert "reconciliation required" in card_reply.feishu_sync_error
         assert send_reply.status == "result_unknown"
         assert "operator reconciliation" in send_reply.last_error
+
+
+def test_card_timeout_cannot_resend_until_operator_confirms_absence(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
+    with factory() as session:
+        session.execute(
+            update(LeadCommentReply)
+            .where(LeadCommentReply.id == reply_id)
+            .values(feishu_message_id=None, feishu_card_status="card_creating", feishu_chat_id="card-claim:old", updated_at=now - timedelta(minutes=20))
+        )
+        session.commit()
+    reconcile_stale_comment_reply(factory, reply_id=reply_id, now=now, card_timeout=timedelta(minutes=10), send_timeout=timedelta(minutes=10))
+    blocked_client = FakeCardClient()
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        create_comment_reply_for_valid_screening(session, screening_id=reply.screening_result_id, generator=FakeCommentReplyGenerator(), card_client=blocked_client, chat_id="oc_review")
+    assert blocked_client.sent_cards == []
+
+    confirmed = confirm_comment_reply_card_absent(factory, reply_id=reply_id, operator="ou_admin", reason="checked Feishu history and no card exists")
+    assert confirmed.applied is True
+    with factory() as session:
+        confirmed_reply = session.get(LeadCommentReply, reply_id)
+        assert confirmed_reply.feishu_card_status == "card_failed"
+        assert confirmed_reply.feishu_sync_error == "operator ou_admin confirmed card absent: checked Feishu history and no card exists"
+    retry_client = FakeCardClient()
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        create_comment_reply_for_valid_screening(session, screening_id=reply.screening_result_id, generator=FakeCommentReplyGenerator(), card_client=retry_client, chat_id="oc_review")
+    assert len(retry_client.sent_cards) == 1
+    with factory() as session:
+        saved = session.get(LeadCommentReply, reply_id)
+        assert saved.feishu_card_status == "card_pending"
+
+
+def test_late_original_card_completion_cannot_overwrite_confirmed_retry_claim(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+    now = datetime(2026, 7, 12, 12, 0, tzinfo=UTC)
+    with factory() as session:
+        session.execute(update(LeadCommentReply).where(LeadCommentReply.id == reply_id).values(feishu_message_id=None, feishu_card_status="card_creating", feishu_chat_id="card-claim:old", updated_at=now - timedelta(minutes=20)))
+        session.commit()
+    reconcile_stale_comment_reply(factory, reply_id=reply_id, now=now, card_timeout=timedelta(minutes=10), send_timeout=timedelta(minutes=10))
+    confirm_comment_reply_card_absent(factory, reply_id=reply_id, operator="ou_admin", reason="verified absent")
+
+    class RetryStealingClient(FakeCardClient):
+        def send_interactive_card(self, *, chat_id: str, card: dict[str, Any]) -> dict[str, str]:
+            with factory() as session:
+                current = session.get(LeadCommentReply, reply_id)
+                new_claim = current.feishu_chat_id
+                session.execute(
+                    update(LeadCommentReply)
+                    .where(LeadCommentReply.id == reply_id, LeadCommentReply.feishu_chat_id == "card-claim:old")
+                    .values(feishu_message_id="om_late_original", feishu_card_status="card_pending")
+                )
+                session.commit()
+                assert session.get(LeadCommentReply, reply_id).feishu_chat_id == new_claim
+            return {"message_id": "om_retry", "chat_id": chat_id}
+
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        create_comment_reply_for_valid_screening(session, screening_id=reply.screening_result_id, generator=FakeCommentReplyGenerator(), card_client=RetryStealingClient(), chat_id="oc_review")
+    with factory() as session:
+        saved = session.get(LeadCommentReply, reply_id)
+        assert saved.feishu_message_id == "om_retry"
 
 
 def test_reconciliation_does_not_change_fresh_or_completed_card_claim(factory: sessionmaker[Session]) -> None:
