@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -12,7 +13,21 @@ from storage.models import LeadScreeningResult
 
 DEFAULT_COMMENT_REPLY_MODEL_NAME = "deepseek-v4-flash"
 DEFAULT_API_URL = "https://api.deepseek.com"
-_BLOCKED_TERMS = ("加微信", "微信号", "手机号", "留下电话", "保证提分", "包过", "百分百")
+_WHITESPACE_RE = re.compile(r"\s+")
+_REPEATED_PUNCTUATION_RE = re.compile(r"([，。！？；：,.!?;:])\1+")
+_CONTACT_PATTERNS = (
+    re.compile(r"(?:加|留|给|发)?微信(?:号)?"),
+    re.compile(r"(?:v|w)[xX信]\s*[:：]?[\w-]*"),
+    re.compile(r"(?:手机号|手机号码|电话(?:号码)?|联系方式|联系我)"),
+    re.compile(r"1[3-9]\d{9}"),
+)
+_GUARANTEE_PATTERNS = (
+    re.compile(r"保证(?:提分|通过|考过|拿证|成功|结果)"),
+    re.compile(r"包(?:过|通过|提分|拿证)"),
+    re.compile(r"百分百(?:通过|提分|考过|成功)"),
+    re.compile(r"一定(?:通过|提分|考过|成功)"),
+    re.compile(r"稳(?:过|通过|提分|考过|拿证)"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,34 +105,66 @@ class OpenAICompatibleCommentReplyGenerator:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+                outer_content = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"comment reply LLM request failed: HTTP {exc.code} {detail}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"comment reply LLM request failed: {exc.reason}") from exc
 
-        content = payload["choices"][0]["message"]["content"]
+        try:
+            payload = json.loads(outer_content)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"comment reply LLM returned invalid outer JSON: {outer_content[:200]!r}") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("comment reply LLM returned non-object outer JSON")
+
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise RuntimeError("comment reply LLM returned missing choices")
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            raise RuntimeError("comment reply LLM returned malformed choice")
+        message = first_choice.get("message")
+        if not isinstance(message, dict):
+            raise RuntimeError("comment reply LLM returned malformed message")
+        content = message.get("content")
+        if not isinstance(content, str):
+            raise RuntimeError("comment reply LLM returned non-string content")
+
         try:
             raw = json.loads(content)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"comment reply LLM returned invalid JSON content: {str(content)[:200]!r}") from exc
+            raise RuntimeError(f"comment reply LLM returned invalid JSON content: {content[:200]!r}") from exc
+        if not isinstance(raw, dict):
+            raise RuntimeError("comment reply LLM returned non-object JSON content")
+        generated_message = raw.get("message")
+        if not isinstance(generated_message, str) or not generated_message.strip():
+            raise RuntimeError("comment reply LLM returned empty message")
         try:
-            text = validate_comment_reply_text(str(raw.get("message") or ""))
+            text = validate_comment_reply_text(generated_message)
         except ValueError as exc:
             raise RuntimeError(f"comment reply LLM returned unsafe message: {exc}") from exc
         return CommentReplyDraft(text=text, model_name=self.model)
 
 
 def validate_comment_reply_text(text: str) -> str:
-    normalized = text.strip()
+    normalized = _normalize_reply_text(text)
     if not normalized:
         raise ValueError("comment reply text is empty")
     if len(normalized) > 300:
         raise ValueError("comment reply text exceeds 300 characters")
-    if any(term in normalized for term in _BLOCKED_TERMS):
+    compact = re.sub(r"[\s\W_]+", "", normalized, flags=re.UNICODE).lower()
+    if any(pattern.search(compact) for pattern in _CONTACT_PATTERNS) or any(
+        pattern.search(compact) for pattern in _GUARANTEE_PATTERNS
+    ):
         raise ValueError("comment reply text contains blocked marketing or privacy language")
     return normalized
+
+
+def _normalize_reply_text(text: str) -> str:
+    normalized = _WHITESPACE_RE.sub("", text.strip())
+    return _REPEATED_PUNCTUATION_RE.sub(r"\1", normalized)
 
 
 def _screening_payload(screening: LeadScreeningResult) -> dict[str, Any]:
