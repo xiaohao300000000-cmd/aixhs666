@@ -39,6 +39,22 @@ class FeishuBitableSettings:
             lark_cli_as=os.getenv("FEISHU_LARK_CLI_AS", "user"),
         )
 
+    @classmethod
+    def from_customer_followup_env(cls) -> "FeishuBitableSettings":
+        settings = cls.from_env()
+        return cls(
+            enabled=settings.enabled,
+            app_id=settings.app_id,
+            app_secret=settings.app_secret,
+            app_token=_empty_to_none(os.getenv("FEISHU_CUSTOMER_FOLLOWUP_APP_TOKEN")),
+            table_id=_empty_to_none(os.getenv("FEISHU_CUSTOMER_FOLLOWUP_TABLE_ID")),
+            timeout_seconds=settings.timeout_seconds,
+            page_size=settings.page_size,
+            transport=settings.transport,
+            lark_cli_bin=settings.lark_cli_bin,
+            lark_cli_as=settings.lark_cli_as,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class FeishuBitableWriteResult:
