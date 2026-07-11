@@ -34,6 +34,7 @@ _CONTACT_CHANNEL = r"(?:微信|wx|vx|v信|v号|qq|电话|手机号|联系方式|
 _CONTACT_ACTION = r"(?:加|添加|留(?:下|个)?|发(?:送)?|给|告诉|联系)"
 _ACTION_CHANNEL_RE = re.compile(rf"{_CONTACT_ACTION}(?:一下|个)?(?:家庭)?{_CONTACT_CHANNEL}")
 _CHANNEL_ACTION_RE = re.compile(rf"{_CONTACT_CHANNEL}{_CONTACT_ACTION}")
+_ACTION_ADDRESS_RE = re.compile(r"(?:留|留下|发|发送|给|告诉)(?:一下|我|你的|您的|给我){0,2}(?:家庭)?(?:住址|地址)")
 _GUARANTEE_TOKENS = ("必定", "一定", "保证", "包", "稳", "百分百", "肯定")
 _OUTCOME_TOKENS = ("提分", "通过", "考过", "考上", "录取", "上岸", "拿证")
 _COMPACT_GUARANTEE_RE = re.compile(r"(?:必|保|包|稳)过")
@@ -188,7 +189,11 @@ def _contains_contact_solicitation(normalized: str, canonical: str) -> bool:
         or _PHONE_NUMBER_RE.search(canonical)
     ):
         return True
-    return _ACTION_CHANNEL_RE.search(canonical) is not None or _CHANNEL_ACTION_RE.search(canonical) is not None
+    return (
+        _ACTION_CHANNEL_RE.search(canonical) is not None
+        or _CHANNEL_ACTION_RE.search(canonical) is not None
+        or _ACTION_ADDRESS_RE.search(canonical) is not None
+    )
 
 
 def _contains_guarantee_claim(compact: str) -> bool:
