@@ -16,12 +16,28 @@ DEFAULT_API_URL = "https://api.deepseek.com"
 _WHITESPACE_RE = re.compile(r"\s+")
 _REPEATED_PUNCTUATION_RE = re.compile(r"([，。！？；：,.!?;:])\1+")
 _PUNCTUATION_RE = re.compile(r"[\s\W_]+", flags=re.UNICODE)
-_CONTACT_CHANNELS = ("微信", "威信", "wx", "vx", "v信", "v", "v号", "qq", "电话", "手机号", "联系方式", "住址", "地址")
-_CONTACT_ACTIONS = ("加", "添加", "留", "留下", "发", "发送", "给", "告诉", "联系")
-_VALUE_CONTACT_RE = re.compile(r"(?:微信|威信|wx|vx|v信|v号|qq)[:：=]\S+", flags=re.IGNORECASE)
+_ACCOUNT_VALUE = r"[a-z0-9][a-z0-9_-]{2,}"
+_VALUE_CONTACT_RE = re.compile(
+    rf"(?:我的|我)?\s*(?:微信|威信|wx|vx|v信|v号|qq)\s*(?:是|为|[:：=]|\s+)\s*{_ACCOUNT_VALUE}",
+    flags=re.IGNORECASE,
+)
+_STANDALONE_V_VALUE_RE = re.compile(
+    rf"(?<![a-z0-9])v\s*(?:是|为|[:：=]|\s+)\s*{_ACCOUNT_VALUE}",
+    flags=re.IGNORECASE,
+)
+_COMPACT_VALUE_CONTACT_RE = re.compile(
+    rf"(?:微信|wx|vx|v信|v号|qq)(?:是)?{_ACCOUNT_VALUE}",
+    flags=re.IGNORECASE,
+)
 _PHONE_NUMBER_RE = re.compile(r"1[3-9]\d{9}")
-_GUARANTEE_TOKENS = ("保证", "包", "一定", "稳", "百分百", "肯定")
-_OUTCOME_TOKENS = ("提分", "通过", "考过", "考上", "录取", "上岸", "过")
+_CONTACT_CHANNEL = r"(?:微信|wx|vx|v信|v号|qq|电话|手机号|联系方式|住址|地址|v(?![a-z0-9]))"
+_CONTACT_ACTION = r"(?:加|添加|留(?:下|个)?|发(?:送)?|给|告诉|联系)"
+_ACTION_CHANNEL_RE = re.compile(rf"{_CONTACT_ACTION}(?:一下|个)?(?:家庭)?{_CONTACT_CHANNEL}")
+_CHANNEL_ACTION_RE = re.compile(rf"{_CONTACT_CHANNEL}{_CONTACT_ACTION}")
+_GUARANTEE_TOKENS = ("必定", "一定", "保证", "包", "稳", "百分百", "肯定")
+_OUTCOME_TOKENS = ("提分", "通过", "考过", "考上", "录取", "上岸", "拿证")
+_COMPACT_GUARANTEE_RE = re.compile(r"(?:必|保|包|稳)过")
+_NO_PROBLEM_OUTCOME_RE = re.compile(r"(?:拿证|通过|录取)没问题")
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +165,7 @@ def validate_comment_reply_text(text: str) -> str:
     if len(normalized) > 300:
         raise ValueError("comment reply text exceeds 300 characters")
     canonical = _canonical_safety_text(normalized)
-    if _contains_contact_solicitation(normalized.lower(), canonical) or _contains_guarantee_claim(canonical):
+    if _contains_contact_solicitation(text.lower(), canonical) or _contains_guarantee_claim(canonical):
         raise ValueError("comment reply text contains blocked marketing or privacy language")
     return normalized
 
@@ -165,15 +181,20 @@ def _canonical_safety_text(text: str) -> str:
 
 
 def _contains_contact_solicitation(normalized: str, canonical: str) -> bool:
-    if _VALUE_CONTACT_RE.search(normalized) or _PHONE_NUMBER_RE.search(canonical):
+    if (
+        _VALUE_CONTACT_RE.search(normalized)
+        or _STANDALONE_V_VALUE_RE.search(normalized)
+        or _COMPACT_VALUE_CONTACT_RE.search(canonical)
+        or _PHONE_NUMBER_RE.search(canonical)
+    ):
         return True
-    return any(channel in canonical for channel in _CONTACT_CHANNELS) and any(action in canonical for action in _CONTACT_ACTIONS)
+    return _ACTION_CHANNEL_RE.search(canonical) is not None or _CHANNEL_ACTION_RE.search(canonical) is not None
 
 
 def _contains_guarantee_claim(compact: str) -> bool:
-    return any(guarantee in compact for guarantee in _GUARANTEE_TOKENS) and any(
-        outcome in compact for outcome in _OUTCOME_TOKENS
-    )
+    if _COMPACT_GUARANTEE_RE.search(compact) or _NO_PROBLEM_OUTCOME_RE.search(compact):
+        return True
+    return any(guarantee in compact for guarantee in _GUARANTEE_TOKENS) and any(outcome in compact for outcome in _OUTCOME_TOKENS)
 
 
 def _screening_payload(screening: LeadScreeningResult) -> dict[str, Any]:
