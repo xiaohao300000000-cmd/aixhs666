@@ -79,6 +79,40 @@ def test_comment_reply_reconcile_stale_uses_guarded_recovery(monkeypatch: pytest
     assert json.loads(capsys.readouterr().out)["comment_reply_reconciliation"]["status"] == "result_unknown"
 
 
+@pytest.mark.parametrize(
+    ("argument", "value"),
+    [
+        ("--card-timeout-seconds", "0"),
+        ("--card-timeout-seconds", "-1"),
+        ("--send-timeout-seconds", "0"),
+        ("--send-timeout-seconds", "-1"),
+    ],
+)
+def test_comment_reply_reconcile_stale_rejects_nonpositive_timeouts_without_calling_service(
+    monkeypatch: pytest.MonkeyPatch,
+    argument: str,
+    value: str,
+) -> None:
+    _runtime(monkeypatch)
+    monkeypatch.setattr(
+        "integrations.feishu.comment_replies.reconcile_stale_comment_reply",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("invalid timeout must not call reconciliation")),
+    )
+    arguments = [
+        "comment-reply-reconcile-stale",
+        "--reply-id",
+        "43",
+        "--card-timeout-seconds",
+        "60",
+        "--send-timeout-seconds",
+        "120",
+    ]
+    arguments[arguments.index(argument) + 1] = value
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(arguments)
+    assert exc_info.value.code != 0
+
+
 def test_comment_reply_adopt_card_requires_audited_identity(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _runtime(monkeypatch)
     calls: list[dict[str, object]] = []

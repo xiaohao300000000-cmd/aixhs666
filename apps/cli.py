@@ -91,8 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
     comment_followup.add_argument("--reply-id", type=int, required=True, help="Persisted comment reply id to sync.")
     comment_reconcile = subparsers.add_parser("comment-reply-reconcile-stale", help="Mark stale card/send claims for operator reconciliation without retrying XHS.")
     comment_reconcile.add_argument("--reply-id", type=int, required=True, help="Comment reply id to reconcile.")
-    comment_reconcile.add_argument("--card-timeout-seconds", type=int, required=True, help="Minimum stale age for an unresolved card claim.")
-    comment_reconcile.add_argument("--send-timeout-seconds", type=int, required=True, help="Minimum stale age for an unresolved XHS send claim.")
+    comment_reconcile.add_argument("--card-timeout-seconds", type=_positive_integer, required=True, help="Minimum stale age for an unresolved card claim.")
+    comment_reconcile.add_argument("--send-timeout-seconds", type=_positive_integer, required=True, help="Minimum stale age for an unresolved XHS send claim.")
     comment_adopt = subparsers.add_parser("comment-reply-adopt-card", help="Adopt a verified Feishu card after reconciliation without sending XHS.")
     comment_adopt.add_argument("--reply-id", type=int, required=True, help="Comment reply id to update.")
     comment_adopt.add_argument("--message-id", required=True, help="Verified Feishu message id.")
@@ -402,6 +402,16 @@ def _comment_reply_result_payload(result: Any) -> dict[str, Any]:
         "status": result.status,
         "reconciliation_required": result.reconciliation_required,
     }
+
+
+def _positive_integer(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer greater than zero") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
 
 
 def _has_pending_feishu(session: Any, model: Any, status: str) -> bool:
