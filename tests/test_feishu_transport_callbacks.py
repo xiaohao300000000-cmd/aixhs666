@@ -8,6 +8,7 @@ import json
 import httpx
 import pytest
 import storage.models  # noqa: F401
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,7 @@ from integrations.feishu import (
 )
 from storage.database import Base
 from storage.models import CollectionEvent, Query
+from apps.api.main import create_app
 
 
 def test_feishu_client_dry_run_does_not_require_webhook_url() -> None:
@@ -179,6 +181,58 @@ def test_callback_rejects_invalid_verification_token() -> None:
     with _session() as session:
         with pytest.raises(ValueError, match="invalid Feishu verification token"):
             apply_phrase_review_callback(session, _phrase_payload("evt-1", "cand-1", "approve"), verification_token="expected")
+
+
+def test_comment_reply_callback_routes_before_generic_and_syncs_followup_separately(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, object]] = []
+    card_client = object()
+    sender = object()
+    monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_comment_reply_callback", lambda payload: True)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_outreach_callback", lambda payload: (_ for _ in ()).throw(AssertionError("generic callback inspected")))
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.FeishuIMClient", lambda: card_client)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.XiaohongshuCommentReplySender", lambda: sender)
+
+    class Result:
+        reply_id = 17
+        status = "sent"
+
+    def apply_callback(session_factory, payload, *, card_client, sender, verification_token):
+        calls.append(("send", (session_factory, card_client, sender, verification_token)))
+        return Result()
+
+    def push_followup(session_factory, *, reply_id):
+        calls.append(("followup", (session_factory, reply_id)))
+        raise RuntimeError("followup unavailable")
+
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", apply_callback)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.push_customer_followup", push_followup)
+    response = TestClient(create_app()).post(
+        "/feishu/callback/llm-review",
+        json={"token": "token", "event": {"action": {"name": "confirm_comment_reply_17"}}},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"code": 0, "msg": "accepted", "type": "comment_reply"}
+    assert [name for name, _ in calls] == ["send", "followup"]
+    assert calls[0][1][1:] == (card_client, sender, "token")
+
+
+def test_comment_reply_send_failure_does_not_push_followup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_comment_reply_callback", lambda payload: True)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.FeishuIMClient", object)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.XiaohongshuCommentReplySender", object)
+
+    class Result:
+        reply_id = 18
+        status = "failed"
+
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", lambda *args, **kwargs: Result())
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.push_customer_followup", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("failed send must not sync followup")))
+    response = TestClient(create_app()).post(
+        "/feishu/callback/llm-review",
+        json={"event": {"action": {"name": "confirm_comment_reply_18"}}},
+    )
+    assert response.status_code == 200
 
 
 def _settings(

@@ -83,6 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
     outreach = subparsers.add_parser("outreach-generate-once", help="Generate one Feishu outreach approval card for a valid screening.")
     outreach.add_argument("--screening-id", type=int, required=True, help="Lead screening result id already marked valid.")
     outreach.add_argument("--chat-id", default=None, help="Feishu chat id that receives the outreach approval card.")
+    comment_reply = subparsers.add_parser("comment-reply-generate-once", help="Generate one Feishu comment reply approval card without sending to XHS.")
+    comment_reply.add_argument("--screening-id", type=int, required=True, help="Valid comment screening result id.")
+    comment_reply.add_argument("--chat-id", default=None, help="Feishu chat id that receives the comment reply approval card.")
+    comment_followup = subparsers.add_parser("comment-reply-sync-followup", help="Retry customer followup sync for a persisted comment reply result.")
+    comment_followup.add_argument("--reply-id", type=int, required=True, help="Persisted comment reply id to sync.")
     control_panel = subparsers.add_parser("run-control-panel-once", help="Run one human-started Feishu control panel command.")
     control_panel.add_argument("--base-token", default=None, help="Feishu Base token for the control panel.")
     control_panel.add_argument("--table-id", default=None, help="Feishu table ID for the control panel.")
@@ -236,6 +241,36 @@ def main(argv: list[str] | None = None) -> int:
                         "feishu_message_id": outreach.feishu_message_id if outreach is not None else None,
                     }
                 }
+        elif args.command == "comment-reply-generate-once":
+            import os
+
+            from integrations.feishu.comment_replies import create_comment_reply_for_valid_screening
+            from services.comment_reply_generation import OpenAICompatibleCommentReplyGenerator
+
+            chat_id = args.chat_id or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID")
+            if not chat_id:
+                parser.error("comment-reply-generate-once requires --chat-id or FEISHU_LLM_REVIEW_CHAT_ID")
+            with SessionLocal() as session:
+                reply = create_comment_reply_for_valid_screening(
+                    session,
+                    screening_id=args.screening_id,
+                    generator=OpenAICompatibleCommentReplyGenerator(),
+                    card_client=FeishuIMClient(),
+                    chat_id=chat_id,
+                )
+                session.commit()
+                payload = {
+                    "comment_reply": {
+                        "created": reply is not None,
+                        "reply_id": reply.id if reply is not None else None,
+                        "status": reply.status if reply is not None else None,
+                        "feishu_message_id": reply.feishu_message_id if reply is not None else None,
+                    }
+                }
+        elif args.command == "comment-reply-sync-followup":
+            from services.feishu_customer_followup import push_customer_followup
+
+            payload = {"comment_reply_followup": push_customer_followup(SessionLocal, reply_id=args.reply_id)}
         elif args.command == "run-control-panel-once":
             payload = {
                 "control_panel": run_control_panel_once(
