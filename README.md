@@ -64,7 +64,7 @@
 第一阶段暂不做：
 
 - 自动私信
-- 自动评论
+- 未经飞书人工逐条审批的自动评论
 - CRM
 - 自动成交预测
 - 多账号矩阵运营
@@ -88,6 +88,7 @@
 
 - [产品需求](docs/PRD.md)
 - [系统架构](docs/ARCHITECTURE.md)
+- [评论回复运营与安全验收](docs/COMMENT_REPLY_OPERATIONS.md)
 - [数据模型](docs/DATA_MODEL.md)
 - [开发路线](docs/ROADMAP.md)
 - [验收标准](docs/ACCEPTANCE_TESTS.md)

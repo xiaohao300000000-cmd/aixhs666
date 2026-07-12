@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from integrations.feishu.comment_replies import CommentReplyPreSubmitError
+
 
 class XiaohongshuAdapterError(RuntimeError):
     """Base error for Xiaohongshu collection failures."""
@@ -27,3 +29,7 @@ class ContentNotFoundError(XiaohongshuAdapterError):
 
 class SelectorChangedError(XiaohongshuAdapterError):
     """Raised when expected page structures or selectors are no longer present."""
+
+
+class XiaohongshuCommentReplyDefiniteFailure(CommentReplyPreSubmitError):
+    """Raised when an XHS comment reply definitely was not submitted."""

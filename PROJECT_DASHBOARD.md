@@ -127,6 +127,7 @@ gantt
 | 2026-07-09 | 客户判断工作台与角色边界 | `/leads` 增加业务摘要、为什么推荐、证据展开、新鲜度/SLA 和人工判断动作；飞书 AI 筛选字段业务前置；`/ops` 增加管理员边界和危险操作确认 | `README.md` / `HANDOFF.md` |
 | 2026-07-09 | 飞书 AI 筛选增量同步 | 新增 `feishu-ai-review-sync`，把 `lead_screening_results` 的 DeepSeek 新结果增量写入 `AI筛选客户线索` / `AI筛选证据明细`，重复执行不重复创建 | `README.md` |
 | 2026-07-09 | 主线整理与话术发送降风险 | `feat/v15-agent-neutral-runtime` 已合并推送到 `main`；飞书话术审批按钮改为 `approved_to_send`，不再在回调线程里直接发送小红书；完整测试 `301 passed, 4 skipped, 1 warning` | `HANDOFF.md` |
+| 2026-07-12 | 飞书审批后评论回复 | 自动化实现、运行手册和默认关闭的 live contract 完成；真实发送验收阻塞于专用测试目标、selector probe 和飞书人工明确批准，不得宣称已真实发送 | `docs/COMMENT_REPLY_OPERATIONS.md` |
 | 2026-07-07 | Campaign 资格判断与地区证据模型 | 新增可配置 Campaign、LocationPolicy、LocationEvidence、资格判断字段和小红书公开 IP 属地映射基础 | `docs/QUALIFICATION_ARCHITECTURE_AUDIT.md` |
 | 2026-07-06 | 飞书系统控制台 | 新增 `系统控制台` 表和 `run-control-panel-once`，人工改 `开始执行=是，开始` 后系统只执行一次并写回结果 | `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` |
 | 2026-07-06 | 飞书 AI 筛选工作台 | 71 个客户线索、72 条证据写入 Base；新增待人工确认卡片、高意向、可跟进、已忽略视图 | `docs/reports/FEISHU_WORKBENCH_VERIFICATION.md` |
@@ -162,7 +163,7 @@ gantt
 2. 把 `feishu-ai-review-sync` 挂到飞书 `系统控制台` 或后续 worker，让普通用户能显式触发。
 3. 在 `待人工确认卡片` 视图审核 61 个候选客户，标记 `可跟进` 或 `已忽略`，记录误判类型并反哺 `/leads` 判断文案。
 4. 新建“客户审核卡片表”或调整主字段，让卡片标题直接显示 `需求摘要`。
-5. 为 `approved_to_send` 增加受控发送入口或 worker；浏览器/网络问题解决前不要真实触发小红书发送。
+5. 评论回复 live acceptance：准备专用测试评论，先做只读 selector probe，再由飞书人工明确批准一次发送；`result_unknown` 不得盲目重试。
 
 
 ## 并发管理

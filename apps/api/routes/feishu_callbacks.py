@@ -7,6 +7,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
+from collectors.xiaohongshu.comment_reply import XiaohongshuCommentReplySender
+from integrations.feishu.comment_replies import apply_comment_reply_callback, is_comment_reply_callback
 from integrations.feishu.im import FeishuIMClient
 from integrations.feishu.llm_review import (
     LLMReviewCallbackError,
@@ -21,6 +23,7 @@ from integrations.feishu.outreach import (
 )
 from integrations.feishu.webhook import verify_callback_token, verify_webhook_signature
 from services.outreach_generation import OpenAICompatibleOutreachGenerator
+from services.feishu_customer_followup import push_customer_followup
 from storage.database import SessionLocal
 
 
@@ -59,6 +62,33 @@ async def llm_review_callback(
             logger.warning("Feishu LLM review callback rejected: invalid verification token")
             raise HTTPException(status_code=401, detail="invalid Feishu verification token")
         return {"challenge": payload.get("challenge")}
+
+    if is_comment_reply_callback(payload):
+        verification_token = (os.getenv("FEISHU_VERIFICATION_TOKEN") or "").strip()
+        if not verification_token:
+            logger.error("Feishu comment reply callback rejected: FEISHU_VERIFICATION_TOKEN is not configured")
+            raise HTTPException(status_code=503, detail="FEISHU_VERIFICATION_TOKEN is required for comment reply callbacks")
+        try:
+            result = apply_comment_reply_callback(
+                SessionLocal,
+                payload,
+                card_client=FeishuIMClient(),
+                sender=XiaohongshuCommentReplySender(),
+                verification_token=verification_token,
+            )
+        except ValueError as exc:
+            logger.warning("Feishu comment reply callback rejected: %s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        background_tasks.add_task(_sync_comment_reply_followup, result.reply_id, result.status)
+        return {
+            "code": 0,
+            "msg": "success",
+            "type": "comment_reply",
+            "applied": result.applied,
+            "duplicate": result.duplicate,
+            "reply_id": result.reply_id,
+            "status": result.status,
+        }
 
     if is_outreach_callback(payload):
         background_tasks.add_task(_apply_outreach_callback, payload)
@@ -138,6 +168,13 @@ def _apply_outreach_callback(payload: dict[str, Any]) -> None:
         except Exception:
             session.rollback()
             logger.exception("Feishu outreach callback processing failed")
+
+
+def _sync_comment_reply_followup(reply_id: int, status: str) -> None:
+    try:
+        push_customer_followup(SessionLocal, reply_id=reply_id)
+    except Exception:
+        logger.exception("Feishu customer followup sync failed for persisted comment reply status %s", status)
 
 
 def _chat_id_from_payload(payload: dict[str, Any]) -> str | None:

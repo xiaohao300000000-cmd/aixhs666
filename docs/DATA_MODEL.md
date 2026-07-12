@@ -333,6 +333,8 @@ information_completeness
 known_info_json
 missing_info_json
 recommended_next_step
+followup_status
+next_followup_at
 first_seen_at
 last_seen_at
 created_at
@@ -352,6 +354,55 @@ platform + public_profile_id
 - qualified
 - handled
 - ignored
+
+`followup_status` 和 `next_followup_at` 专用于人工客户跟进工作流，不复用自动获客处理状态 `status`。
+
+### lead_comment_replies
+
+保存针对有效评论线索的审批草稿、发送状态和平台结果，是评论回复事实与幂等控制的数据源。
+
+```text
+id
+screening_result_id
+lead_id
+target_comment_id
+target_platform_comment_id
+target_content_id
+target_platform_content_id
+target_url
+draft_text
+approved_text
+status
+model_name
+feishu_chat_id
+feishu_message_id
+feishu_card_status
+approved_by
+approved_at
+attempt_count
+last_attempt_at
+sent_at
+platform_reply_id
+platform_response_json
+last_error
+feishu_sync_error
+created_at
+updated_at
+```
+
+XHS-only v1 以 `target_platform_comment_id` 作为持久业务身份并设置唯一约束，确保同一条小红书评论即使被重新采集或生成新的筛选结果，也只能存在一个回复工作流。创建方应捕获 `IntegrityError`，再按 `target_platform_comment_id` 查询已有记录，实现并发安全的幂等创建。`screening_result_id` 保留唯一约束但允许为空；删除筛选结果时通过 `SET NULL` 保留已经发生的审核与发送事实。
+
+`target_comment_id` 和 `target_content_id` 允许为空，删除本地评论或帖子记录时同样通过 `SET NULL` 保留回复审计记录；对应的平台 ID 始终必填，保证目标证据可追溯。`target_comment_id + status` 建索引，支持按目标评论检查发送状态。
+
+`status`：
+
+- `pending_review`：等待人工审核或编辑。
+- `sending`：已领取发送权，禁止并发或重复发送。
+- `sent`：平台明确发送成功，禁止再次发送。
+- `failed`：平台明确失败，可由人工从同一审批流程重试。
+- `result_unknown`：平台结果不确定，必须人工核对目标页面，不能普通重试。
+
+PostgreSQL 中的发送状态、时间、平台回复 ID 和响应证据属于系统事实。飞书卡片和多维表格只用于审批及人工跟进，不得覆盖这些字段。
 
 ### lead_evidence
 

@@ -15,6 +15,16 @@ from integrations.feishu.callbacks import (
     parse_callback_action,
 )
 from integrations.feishu.client import FeishuAPIError, FeishuClient, FeishuSendResult, FeishuSettings
+from integrations.feishu.comment_replies import (
+    CommentReplyCallbackResult,
+    CommentReplyPreSubmitError,
+    CommentReplySendResult,
+    apply_comment_reply_callback,
+    adopt_reconciled_comment_reply_card,
+    create_comment_reply_for_valid_screening,
+    is_comment_reply_callback,
+    reconcile_stale_comment_reply,
+)
 from integrations.feishu.im import FeishuIMClient, FeishuIMError, FeishuIMSettings
 from integrations.feishu.llm_review import (
     LLMReviewAction,
@@ -58,6 +68,9 @@ __all__ = [
     "FeishuCallbackAction",
     "FeishuCallbackError",
     "FeishuCallbackResult",
+    "CommentReplyCallbackResult",
+    "CommentReplyPreSubmitError",
+    "CommentReplySendResult",
     "FeishuPhraseReviewPayload",
     "FeishuClient",
     "FeishuIMClient",
@@ -75,6 +88,8 @@ __all__ = [
     "PhraseReviewStatus",
     "QueryCreationRequest",
     "apply_llm_review_callback",
+    "apply_comment_reply_callback",
+    "adopt_reconciled_comment_reply_card",
     "apply_phrase_review_callback",
     "apply_phrase_review_action",
     "apply_signal_alert_callback",
@@ -85,6 +100,9 @@ __all__ = [
     "build_signal_alert_payloads",
     "build_webhook_body",
     "claim_pending_llm_review_cards",
+    "create_comment_reply_for_valid_screening",
+    "is_comment_reply_callback",
+    "reconcile_stale_comment_reply",
     "parse_callback_action",
     "phrase_review_to_query_request",
     "send_interactive_card",

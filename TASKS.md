@@ -19,6 +19,7 @@
 | 统一 LLM/飞书流程编排 | DONE_CODE：复用 `lead_screening_results` 增加 `workflow_status`、`attempt_count`、`last_error`，`lead-flow-once` 可按状态推进下一步；LLM 使用 `screening` 领取态，飞书发送使用 `sending` 领取态，`send_uncertain` 暴露不能自动重发的不确定结果 |
 | 飞书 LLM 审核闭环 | DONE_REAL：真实点击“有效/无效/暂时观察”已更新数据库并把原卡片改成“已处理”；当前 live 验收未启用签名密钥，签名路径由测试覆盖 |
 | 飞书话术审批闭环 | DONE_CODE：点击“有效”后可生成话术审批卡；飞书内点击“发送”现在只审批入库为 `approved_to_send`，真实小红书发送拆到独立入口，避免回调卡住 |
+| Task 7 飞书审批评论回复 | DONE_AUTOMATED / LIVE_BLOCKED：实现、运维文档和安全合同测试完成；真实小红书发送仍待准备专用目标、selector probe 和飞书人工明确批准，禁止声称已发送成功 |
 | 飞书 AI 筛选工作台 | DONE：`AI筛选客户线索` 71 条、`AI筛选证据明细` 72 条已写入 Base，证据已双向关联，卡片视图已创建 |
 | 飞书 AI 筛选增量同步 | DONE_CODE：`feishu-ai-review-sync` 可把 `lead_screening_results` 的 DeepSeek 新结果增量写入 AI 筛选客户线索/证据明细表，重复执行不重复创建；字段顺序已按运营视角业务字段前置 |
 | 飞书系统控制台 | DONE：`系统控制台` 表已创建，`run-control-panel-once` 只在人为设置 `开始执行=是，开始` 后执行一次并写回结果 |

@@ -53,3 +53,43 @@ XHS_RESPONSE_URL_MARKERS = (
     "/comment/",
     "/user/",
 )
+
+# Observed data fields normalized by parsers.py are comment_id and commentId.
+# Their DOM attribute spellings remain unverified until an opt-in live selector
+# probe records an exact one-container match, so production sending stays
+# fail-closed when the canonical data-comment-id selector is absent.
+COMMENT_TARGET_CONTAINER_TEMPLATES = (
+    '[data-comment-id="{platform_comment_id}"]',
+)
+# The following selectors are a sanitized fixture contract, not evidence that
+# Xiaohongshu currently exposes these live attributes. Live usability requires
+# explicit platform acceptance after the inspection-only probe matches exactly.
+# Every control is resolved relative to the proven target comment container.
+COMMENT_REPLY_TRIGGER_SELECTOR = "[data-xhs-role='comment-reply-trigger']"
+COMMENT_REPLY_EDITOR_SELECTOR = "[data-xhs-role='comment-reply-editor']"
+COMMENT_REPLY_SUBMIT_SELECTOR = "[data-xhs-role='comment-reply-submit']"
+COMMENT_REPLY_VISIBLE_TEXT_SELECTOR = "[data-xhs-role='comment-reply-text']"
+COMMENT_REPLY_RESPONSE_URL_MARKERS = (
+    "/comment/post",
+    "/comment/create",
+    "/comment/reply",
+)
+COMMENT_REPLY_LOGIN_OR_CAPTCHA_MARKERS = (
+    "login-container",
+    "验证码",
+    "滑块验证",
+    "登录后查看",
+    "手机号登录",
+)
+
+# Explicitly disabled speculative alternatives. Do not promote these into the
+# production selector lists without a captured, reviewed live page contract.
+DISABLED_SPECULATIVE_COMMENT_REPLY_SELECTORS = (
+    "[role='button']",
+    "textarea",
+    "input[type='text']",
+    "[contenteditable='true']",
+    "button[type='submit']",
+    "[data-commentid]",
+    "[data-id]",
+)

@@ -253,6 +253,8 @@ class Lead(TimestampMixin, Base):
     recommended_next_step: Mapped[str | None] = mapped_column(Text)
     owner_name: Mapped[str | None] = mapped_column(String(255))
     operator_note: Mapped[str | None] = mapped_column(Text)
+    followup_status: Mapped[str | None] = mapped_column(String(50))
+    next_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -362,6 +364,47 @@ class LeadOutreachMessage(TimestampMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class LeadCommentReply(TimestampMixin, Base):
+    __tablename__ = "lead_comment_replies"
+    __table_args__ = (
+        UniqueConstraint("screening_result_id", name="uq_lead_comment_replies_screening_result_id"),
+        UniqueConstraint(
+            "target_platform_comment_id",
+            name="uq_lead_comment_replies_target_platform_comment_id",
+        ),
+        Index("ix_lead_comment_replies_target_status", "target_comment_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    screening_result_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lead_screening_results.id", ondelete="SET NULL")
+    )
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"))
+    target_comment_id: Mapped[int | None] = mapped_column(ForeignKey("comments.id", ondelete="SET NULL"))
+    target_platform_comment_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_content_id: Mapped[int | None] = mapped_column(ForeignKey("contents.id", ondelete="SET NULL"))
+    target_platform_content_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_url: Mapped[str | None] = mapped_column(Text)
+    draft_text: Mapped[str] = mapped_column(Text, nullable=False)
+    approved_text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="pending_review", server_default="pending_review"
+    )
+    model_name: Mapped[str | None] = mapped_column(String(255))
+    feishu_chat_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_message_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_card_status: Mapped[str | None] = mapped_column(String(50))
+    approved_by: Mapped[str | None] = mapped_column(String(255))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    platform_reply_id: Mapped[str | None] = mapped_column(String(255))
+    platform_response_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    feishu_sync_error: Mapped[str | None] = mapped_column(Text)
 
 
 class EnrichmentTask(TimestampMixin, Base):

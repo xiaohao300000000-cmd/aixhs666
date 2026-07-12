@@ -39,6 +39,22 @@ class FeishuBitableSettings:
             lark_cli_as=os.getenv("FEISHU_LARK_CLI_AS", "user"),
         )
 
+    @classmethod
+    def from_customer_followup_env(cls) -> "FeishuBitableSettings":
+        settings = cls.from_env()
+        return cls(
+            enabled=settings.enabled,
+            app_id=settings.app_id,
+            app_secret=settings.app_secret,
+            app_token=_empty_to_none(os.getenv("FEISHU_CUSTOMER_FOLLOWUP_APP_TOKEN")),
+            table_id=_empty_to_none(os.getenv("FEISHU_CUSTOMER_FOLLOWUP_TABLE_ID")),
+            timeout_seconds=settings.timeout_seconds,
+            page_size=settings.page_size,
+            transport=settings.transport,
+            lark_cli_bin=settings.lark_cli_bin,
+            lark_cli_as=settings.lark_cli_as,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class FeishuBitableWriteResult:
@@ -112,19 +128,64 @@ class FeishuBitableClient:
             return []
         if self.settings.transport == "lark_cli":
             return self._lark_cli_list_records()
+        records: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"page_size": self.settings.page_size}
+            if page_token:
+                params["page_token"] = page_token
+            data = self._openapi_get_records(params, operation="list")
+            inner = data.get("data", {})
+            records.extend(record for record in inner.get("items") or [] if isinstance(record, dict))
+            if not inner.get("has_more"):
+                return records
+            page_token = _empty_to_none(inner.get("page_token"))
+            if page_token is None:
+                raise FeishuBitableError("Feishu Bitable list reported has_more without page_token")
+
+    def find_records_by_exact_field(self, field_name: str, value: str) -> list[dict[str, Any]]:
+        if not self._ready():
+            return []
+        if self.settings.transport == "lark_cli":
+            return self._lark_cli_find_records_by_exact_field(field_name, value)
+        payload = {
+            "filter": {
+                "conjunction": "and",
+                "conditions": [{"field_name": field_name, "operator": "is", "value": [value]}],
+            }
+        }
         try:
-            response = self._client.get(
-                self._records_url(),
-                params={"page_size": self.settings.page_size},
+            response = self._client.post(
+                f"{self._records_url()}/search",
+                params={"page_size": 2},
+                json=payload,
                 headers=self._headers(),
                 timeout=self.settings.timeout_seconds,
             )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
-            raise FeishuBitableError(self._request_error("list", exc)) from exc
+            raise FeishuBitableError(self._request_error("exact search", exc)) from exc
         data = _json(response)
         if response.status_code >= 300 or data.get("code", 0) != 0:
-            raise FeishuBitableError(f"Feishu Bitable list failed: {data}")
-        return list(data.get("data", {}).get("items") or [])
+            raise FeishuBitableError(f"Feishu Bitable exact search failed: {data}")
+        inner = data.get("data", {})
+        if inner.get("has_more"):
+            raise FeishuBitableError("Feishu Bitable exact search returned more than two matches")
+        return [record for record in inner.get("items") or [] if isinstance(record, dict) and _field_equals(record, field_name, value)]
+
+    def _openapi_get_records(self, params: dict[str, Any], *, operation: str) -> dict[str, Any]:
+        try:
+            response = self._client.get(
+                self._records_url(),
+                params=params,
+                headers=self._headers(),
+                timeout=self.settings.timeout_seconds,
+            )
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            raise FeishuBitableError(self._request_error(operation, exc)) from exc
+        data = _json(response)
+        if response.status_code >= 300 or data.get("code", 0) != 0:
+            raise FeishuBitableError(f"Feishu Bitable {operation} failed: {data}")
+        return data
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -212,15 +273,44 @@ class FeishuBitableClient:
         )
 
     def _lark_cli_list_records(self) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            args = self._base_cli_args("+record-list") + [
+                "--limit",
+                str(self.settings.page_size),
+                "--format",
+                "json",
+                "--as",
+                self.settings.lark_cli_as,
+            ]
+            if offset:
+                args.extend(["--offset", str(offset)])
+            page = self._normalize_cli_records(self._run_lark_cli_json(args, "list"))
+            records.extend(page)
+            if len(page) < self.settings.page_size:
+                return records
+            offset += len(page)
+
+    def _lark_cli_find_records_by_exact_field(self, field_name: str, value: str) -> list[dict[str, Any]]:
         args = self._base_cli_args("+record-list") + [
+            "--filter-json",
+            json.dumps({"logic": "and", "conditions": [[field_name, "==", value]]}, ensure_ascii=False, separators=(",", ":")),
+            "--field-id",
+            field_name,
+            "--offset",
+            "0",
             "--limit",
-            str(self.settings.page_size),
+            "2",
             "--format",
             "json",
             "--as",
             self.settings.lark_cli_as,
         ]
-        data = self._run_lark_cli_json(args, "list")
+        records = self._normalize_cli_records(self._run_lark_cli_json(args, "exact search"))
+        return [record for record in records if _field_equals(record, field_name, value)]
+
+    def _normalize_cli_records(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         inner = data.get("data", {})
         records = inner.get("records") or inner.get("items")
         if isinstance(records, list):
@@ -315,6 +405,11 @@ def _first(value: Any) -> Any:
     if isinstance(value, list) and value:
         return value[0]
     return None
+
+
+def _field_equals(record: dict[str, Any], field_name: str, value: str) -> bool:
+    fields = record.get("fields")
+    return isinstance(fields, dict) and str(fields.get(field_name) or "") == value
 
 
 def _mask_cli_output(data: dict[str, Any], settings: FeishuBitableSettings) -> str:

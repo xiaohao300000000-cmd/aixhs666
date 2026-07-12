@@ -330,3 +330,9 @@ class PlatformAdapter(Protocol):
 - 许可证
 - 替代方案
 - 为什么选择它
+
+## 12. 飞书审批后的小红书评论回复
+
+评论回复使用独立 `LeadCommentReply` 聚合，不复用私信对象。有效评论线索先生成 `pending_review` 草稿和飞书卡片；人工确认后回调原子领取 `sending`，再由 `XiaohongshuCommentReplySender` 定位唯一目标评论并最多点击一次提交。最终状态只有 `sent`、`failed` 或 `result_unknown`。
+
+平台发送与飞书/Base 同步分离：平台结果先持久化，客户跟进同步失败只能重跑同步，不得重发评论。`result_unknown` 表示点击可能已到达平台但缺少相关证据，必须人工核对且禁止盲目重试。真实上线前还必须在准备好的专用目标上先完成只读 selector probe，再获得飞书明确批准；完整操作合同见 `docs/COMMENT_REPLY_OPERATIONS.md`。
