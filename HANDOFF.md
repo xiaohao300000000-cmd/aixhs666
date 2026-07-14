@@ -299,4 +299,5 @@ python -m apps.cli --json run-control-panel-once
 - 支持预览、进度事件、Worker 断点恢复、安全取消、明确失败重试、结果、复制和可选“任务运行记录”Base 投影。
 - 本轮未运行 live selector probe，未访问小红书，未发送评论或私信。
 - 最终自动化证据见 `docs/reports/V16_TASK_PRODUCTIZATION_VERIFICATION.md`。
-- 最终全量测试：`504 passed, 7 skipped, 1 warning in 26.54s`；Alembic head 为 `0016_skill_runs`；`git diff --check` 与编译检查通过。
+- 最终全量测试：`504 passed, 7 skipped, 1 warning in 25.81s`；Alembic head 为 `0016_skill_runs`；`git diff --check` 与编译检查通过。
+- 2026-07-14 已完成真实安全验收：Run `#1`/Task `#357` 处理 3 条历史评论，结果为有效需求 1、待确认 3；飞书消息 `om_x100b6a569a7d60a4b04c75cc36b0d05` 同卡片更新成功，AI 审核 Base 新增客户 1、证据 1。按钮公网回调仍待开发者后台 URL/token 配置。

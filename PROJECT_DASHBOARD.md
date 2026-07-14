@@ -195,3 +195,5 @@ gantt
 | 小红书访问/发送 | NOT IN SCOPE | V16 全程禁止 |
 
 V16 自动化验收：`504 passed, 7 skipped, 1 warning`；迁移 head `0016_skill_runs`。
+
+V16 真实安全验收：Run `#1` 成功，处理 3 / 有效需求 1 / 待确认 3；飞书同卡片更新成功，AI 审核 Base 新增 2 条记录。公网按钮回调配置仍为外部待办。

@@ -31,8 +31,19 @@
 ## Automated Evidence
 
 - 聚焦测试：`58 passed, 1 warning`（Skill/Feishu/Worker/CLI/复用服务）。
-- 最终全量测试：`504 passed, 7 skipped, 1 warning in 26.54s`。
+- 最终全量测试：`504 passed, 7 skipped, 1 warning in 25.81s`。
 - `python -m compileall`：通过。
 - `python -m alembic heads`：`0016_skill_runs (head)`。
 - `git diff --check`：通过。
 - 禁止项扫描：Skill Runtime/Worker/任务中心无 subprocess 项目 CLI、无小红书适配器或发送器导入。
+
+## Real Acceptance Evidence — 2026-07-14
+
+- 真实 PostgreSQL 从 `0015_lead_comment_replies` 升级到 `0016_skill_runs`，两张事实表创建成功。
+- 飞书任务中心真实消息：`om_x100b6a569a7d60a4b04c75cc36b0d05`，群：`oc_1623b52748f4cf5cfb6f6e9174008f55`。
+- Skill Run `#1` 只读取历史评论 `516/515/514`，真实调用 DeepSeek，Worker task `#357` 完成。
+- 结果：处理 3、有效需求 1、高意向 0、待确认 3；事件序列覆盖 created/parameters/preview/queued/prepare/screen/sync/succeeded。
+- 飞书 AI 审核 Base 实写：客户新增 1、证据新增 1、失败 0；同一消息 PATCH 后显示“新增 2 / 更新 0 / 失败 0”。
+- 从飞书重新读取消息确认 `updated=true`，标题为“任务完成”，结果数字与 PostgreSQL 一致。
+- 本次未访问小红书、未运行 selector probe、未发送评论或私信。
+- 未完成的外部配置：飞书开发者后台回调 URL 与 `FEISHU_VERIFICATION_TOKEN` 尚未配置，因此真实按钮点击回调未纳入本次验收。
