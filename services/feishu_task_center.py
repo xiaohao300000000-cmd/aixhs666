@@ -20,8 +20,11 @@ def _card(title: str, elements: list[dict[str, Any]], template: str = "blue") ->
 
 
 def _button(text: str, name: str, *, primary: bool = False, form_submit: bool = False) -> dict[str, Any]:
-    item: dict[str, Any] = {"tag": "button", "name": name, "text": {"tag": "plain_text", "content": text}, "type": "primary" if primary else "default"}
-    if form_submit: item["action_type"] = "form_submit"
+    item: dict[str, Any] = {"tag": "button", "name": name, "text": {"tag": "plain_text", "content": text}, "type": "primary_filled" if primary else "default"}
+    if form_submit:
+        item["form_action_type"] = "submit"
+    else:
+        item["behaviors"] = [{"type": "callback", "value": {"action": name}}]
     return item
 
 

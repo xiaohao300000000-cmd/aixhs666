@@ -24,7 +24,6 @@ from integrations.feishu.webhook import verify_callback_token, verify_webhook_si
 from services.outreach_generation import OpenAICompatibleOutreachGenerator
 from services.feishu_customer_followup import push_customer_followup
 from services.feishu_task_center import TaskCenterCallbackError, apply_task_center_callback, is_task_center_callback
-from services.feishu_task_center import TaskCenterCallbackError, apply_task_center_callback, is_task_center_callback
 from storage.database import SessionLocal
 
 
@@ -66,28 +65,9 @@ async def llm_review_callback(
 
     if is_task_center_callback(payload):
         verification_token = (os.getenv("FEISHU_VERIFICATION_TOKEN") or "").strip()
-        if not verification_token:
-            raise HTTPException(status_code=503, detail="FEISHU_VERIFICATION_TOKEN is required for task center callbacks")
         with SessionLocal() as session:
             try:
-                result = apply_task_center_callback(session, payload, verification_token=verification_token, client=None)
-                session.commit()
-            except (TaskCenterCallbackError, ValueError) as exc:
-                session.rollback()
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        update_token = result.pop("update_token", None)
-        card = result.pop("card", None)
-        if update_token and card:
-            background_tasks.add_task(_update_task_center_card, str(update_token), card)
-        return {"code": 0, "msg": "accepted", "type": "task_center", **result}
-
-    if is_task_center_callback(payload):
-        verification_token = (os.getenv("FEISHU_VERIFICATION_TOKEN") or "").strip()
-        if not verification_token:
-            raise HTTPException(status_code=503, detail="FEISHU_VERIFICATION_TOKEN is required for task center callbacks")
-        with SessionLocal() as session:
-            try:
-                result = apply_task_center_callback(session, payload, verification_token=verification_token, client=None)
+                result = apply_task_center_callback(session, payload, verification_token=verification_token or None, client=None)
                 session.commit()
             except (TaskCenterCallbackError, ValueError) as exc:
                 session.rollback()
@@ -163,13 +143,6 @@ def _update_llm_review_card(payload: dict[str, Any]) -> None:
             )
         except Exception:
             logger.exception("Feishu LLM review card update failed after callback was applied")
-
-
-def _update_task_center_card(token: str, card: dict[str, Any]) -> None:
-    try:
-        FeishuIMClient().update_interactive_card(token=token, card=card)
-    except Exception:
-        logger.exception("Feishu task center immediate card update failed")
 
 
 def _update_task_center_card(token: str, card: dict[str, Any]) -> None:

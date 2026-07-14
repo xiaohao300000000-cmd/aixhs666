@@ -55,3 +55,12 @@
 - 在新会话真实读取确认三条可见消息：测试文本 `om_x100b6a52a2b3c8a4b3b4af6f8625da5`、任务中心 `om_x100b6a52a3f2c0a0b2a11638703fcbd`、Run #1 完成结果 `om_x100b6a52a19c6ca4b14bcd52009fe1d`。
 - 本机 `.env` 已把默认 chat 改为该 P2P 会话，并把 `FEISHU_LARK_CLI_AS` 改为 `bot`。
 - 后续验收必须同时满足“目标用户 P2P/群成员正确”和“用户身份读取到消息”，不得仅凭发送 API 成功判定用户已收到。
+
+### Interaction Correction — 2026-07-15
+
+- 用户真实点击旧版 Card 2.0 按钮返回 `200671`。根因一：普通按钮缺少 `behaviors.callback`，表单按钮错误使用 `action_type`，现已改为 `form_action_type: submit`。
+- 根因二：应用 `cli_aac1e28d6a399bfc` 的真实点击既未到达当前 HTTP 回调，也未进入已连接的 `card.action.trigger` WebSocket Listener，说明飞书开发者后台尚未把该应用的卡片回调切到当前 URL 或长连接模式。
+- 当前本地 API、公网 localtunnel、卡片事件 Listener 和专用 Skill Worker 已运行；公网人工探针返回 HTTP 200，但探针不能代替真实点击。
+- 新增 `apps/feishu_task_center_listener.py` 和 `apps/worker/skill_run_service.py`，分别负责快速卡片事件持久化和只领取 `skill_run_execute`，不触碰小红书任务。
+- 最新全量测试：`505 passed, 7 skipped, 1 warning in 26.42s`。
+- 剩余真实门槛：在飞书开发者后台应用 `cli_aac1e28d6a399bfc` 的“事件与回调 → 回调配置”启用长连接，并启用卡片回调；完成前不得宣称按钮闭环可用。
