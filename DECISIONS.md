@@ -343,3 +343,12 @@
 - 每次只反馈一个高价值改进点，必须引用具体事实并提供可复用表达。
 - 不进行心理诊断、人格推断或敏感属性推断；没有足够证据时不输出反馈。
 - 详细规则以 `docs/FOUNDER_COPILOT.md` 和 `docs/FOUNDER_COPILOT_HANDOFF.md` 为准。
+
+## D-2026-07-15-MIAODA-CONSOLE：妙搭负责产品层，FastAPI/PostgreSQL 保持事实源
+
+- 妙搭全栈应用负责运营工作台的页面、交互、飞书内入口和同源 BFF，不重写现有采集、筛选、任务和 Campaign 核心逻辑。
+- Miaoda NestJS 服务只通过受控服务端凭证调用 FastAPI；浏览器不得接触 `OPS_TOKEN` 或其他后端密钥。
+- FastAPI 新增面向运营产品的聚合接口，PostgreSQL 继续作为线索、Skill Run、任务和审核事实源。
+- 第一阶段只交付可发布的只读“今日工作台”；写操作按线索审核、任务中心、Campaign 中心顺序逐步开放。
+- 后端不可达时前端必须显式进入降级状态，禁止以演示数据伪装线上状态。
+- 完整设计以 `docs/superpowers/specs/2026-07-15-feishu-miaoda-operations-console-design.md` 为准，V18-01 实施以对应 plan 为准。
