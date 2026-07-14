@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from integrations.feishu.im import FeishuIMClient
 from integrations.feishu.webhook import verify_callback_token
+from services.feishu_ai_review_sync import DEFAULT_CUSTOMER_TABLE_ID, DEFAULT_EVIDENCE_TABLE_ID
 from services.skill_registry import list_campaign_options
 from services.skill_runtime import copy_skill_run, create_skill_run, preview_skill_run, queue_skill_run, request_skill_run_cancel, retry_skill_run, skill_run_result_view, update_skill_run_parameters
 from storage.models import SkillRun, SkillRunEvent
@@ -57,6 +59,44 @@ def build_skill_run_card(run: SkillRun) -> dict[str, Any]:
     elements = [{"tag": "markdown", "content": f"**任务 #{run.id}**\n状态：{run.status}\n当前阶段：{run.current_stage or '等待 Worker'}\n进度：{run.progress_current}/{run.progress_total}（{run.progress_percent}%）"}]
     if cancellable: elements.append(_button("取消任务", f"skill_cancel_{run.id}"))
     return _card("任务运行中" if run.status != "cancelled" else "任务已取消", elements, "orange" if run.status != "cancelled" else "grey")
+
+
+def build_skill_result_card(run: SkillRun) -> dict[str, Any]:
+    view = skill_run_result_view(run)
+    result = view["result"]
+    sync = result.get("feishu_sync", {})
+    dry_run = int(sync.get("dry_run", 0) or 0)
+    failed = int(sync.get("failed", 0) or 0)
+    created = int(sync.get("created", 0) or 0)
+    updated = int(sync.get("updated", 0) or 0)
+    if dry_run:
+        sync_text = f"⚠️ **未写入多维表格**：当前为 dry-run，预演 {dry_run} 条写入。"
+    elif failed:
+        sync_text = f"⚠️ **多维表格同步部分失败**：新增 {created} / 更新 {updated} / 失败 {failed}。"
+    else:
+        sync_text = f"✅ **已写入多维表格**：新增 {created} / 更新 {updated} / 失败 0。"
+    parameters = view["parameters"]
+    content = (
+        f"**任务 #{run.id} · 历史线索智能筛选**\n"
+        f"Campaign：{parameters.get('campaign_id', '-')}\n"
+        f"处理上限：{parameters.get('limit', '-')}\n\n"
+        f"处理数量：**{result.get('processed_count', 0)}**\n"
+        f"有效需求：**{result.get('valid_demands', 0)}**\n"
+        f"高意向客户：**{result.get('high_intent_customers', 0)}**\n"
+        f"待确认数量：**{result.get('needs_confirmation', 0)}**\n\n"
+        f"{sync_text}{_result_links()}"
+    )
+    return _card("任务结果详情", [{"tag": "markdown", "content": content}, _button("复制任务", f"skill_copy_{run.id}", primary=True)], "green")
+
+
+def _result_links() -> str:
+    app_token = (os.getenv("FEISHU_BITABLE_APP_TOKEN") or "").strip()
+    if not app_token:
+        return ""
+    customer_table = (os.getenv("FEISHU_AI_REVIEW_CUSTOMER_TABLE_ID") or DEFAULT_CUSTOMER_TABLE_ID).strip()
+    evidence_table = (os.getenv("FEISHU_AI_REVIEW_EVIDENCE_TABLE_ID") or DEFAULT_EVIDENCE_TABLE_ID).strip()
+    base_url = f"https://my.feishu.cn/base/{app_token}"
+    return f"\n\n[打开 AI 筛选客户线索]({base_url}?table={customer_table}) · [打开证据明细]({base_url}?table={evidence_table})"
 
 
 def send_task_center_card(*, chat_id: str, client: FeishuIMClient | None = None) -> dict[str, str]:
@@ -111,7 +151,13 @@ def apply_task_center_callback(session: Session, payload: dict[str, Any], *, ver
         elif name.startswith("skill_retry_"): retry_skill_run(session, run.id, event_key=key)
         elif name.startswith("skill_copy_"):
             run = copy_skill_run(session, run.id, requested_by=requested_by, event_key=key); run.feishu_chat_id = chat_id; run.feishu_message_id = message_id; card = build_task_form_card(run); session.flush(); return {"accepted": True, "run_id": run.id, "card": card, "update_token": event.get("token")}
-        elif not name.startswith("skill_result_"): raise TaskCenterCallbackError("unsupported task action")
+        elif name.startswith("skill_result_"):
+            card = build_skill_result_card(run)
+            session.flush()
+            if client is not None and event.get("token"): client.update_interactive_card(token=str(event["token"]), card=card)
+            return {"accepted": True, "run_id": run.id, "status": run.status, "card": card, "update_token": event.get("token")}
+        else:
+            raise TaskCenterCallbackError("unsupported task action")
         card = build_skill_run_card(run)
     session.flush()
     if client is not None and event.get("token"): client.update_interactive_card(token=str(event["token"]), card=card)

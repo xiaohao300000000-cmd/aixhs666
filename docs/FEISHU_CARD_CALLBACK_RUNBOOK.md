@@ -487,3 +487,36 @@ load_dotenv()
 - 不在本 Runbook 验收中访问小红书。
 - 不运行 live selector probe。
 - 不发送真实评论或私信。
+
+## 15. “查看结果”与多维表格同步验收（2026-07-15）
+
+### 15.1 正确产品行为
+
+- Worker 完成 `screen_historical_leads` 后，直接复用 `sync_feishu_ai_review_rows()` 将本次 `screening_ids` 写入“AI 筛选客户线索”和“AI 筛选证据明细”。
+- 完成卡只展示摘要；点击“查看结果”必须返回标题为“任务结果详情”的独立卡片，不能重新渲染同一张完成卡。
+- 结果详情必须区分三种同步状态：已写入、部分失败、dry-run 未写入。dry-run 不得显示成看似成功的“新增 0 / 失败 0”。
+- 配置 `FEISHU_BITABLE_APP_TOKEN` 后，结果详情展示客户线索表和证据明细表入口。
+
+### 15.2 本机真实写入配置
+
+```text
+FEISHU_ENABLED=true
+FEISHU_BITABLE_TRANSPORT=lark_cli
+FEISHU_LARK_CLI_AS=user
+FEISHU_BITABLE_APP_TOKEN=RVtDb7nGkabAMbsDkA0cvxdOnld
+FEISHU_SYNC_DRY_RUN=false
+```
+
+`lark-cli auth status --json` 必须确认 user identity 可用，并拥有 Base record read/create/update 权限。应用消息卡片 PATCH 仍固定使用 bot identity。
+
+### 15.3 Run #8 恢复与验收结果
+
+- Run `#8` 已有 50 个 `screening_ids`，未重新调用 DeepSeek。
+- 第一次补同步已在飞书远端完成写入，但本地一次性汇总脚本错误使用 `slots` dataclass 的 `__dict__`，导致 PostgreSQL 事务回滚；禁止直接重跑，否则会重复创建远端记录。
+- 通过证据标题中的 `screening-{id}` 和“关联客户线索”字段恢复映射：客户 50 条、证据 50 条。
+- PostgreSQL 已恢复 100 条 `feishu_bitable_records` 映射，Run `#8` 结果更新为新增 100、更新 0、失败 0、dry-run 0。
+- 同一飞书消息 `om_x100b6a5c096318a4b1ca479dccbd4b8` 已更新为“任务结果详情”，并包含两个 Base 入口。
+
+### 15.4 事故处理原则
+
+飞书远端写入成功、本地事务失败时，不得盲目重试。必须先读取远端记录，用稳定业务键恢复 `feishu_bitable_records`，再更新 Skill Run 结果。否则会产生重复客户和证据记录。

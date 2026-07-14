@@ -479,3 +479,10 @@ AI筛选证据明细：72
 - [x] V16-02 修复真实 Card 2.0 回调：解析 `event.action.value.action`，返回官方 `toast + raw card`，修正签名算法并支持加密回调；当时公网协议探针 HTTP 200，真实用户点击由 V16-03 完成。
 - [x] V16-03 完成真实“创建任务”回调验收并新增 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`：发布应用 `1.0.2`、重启同域名 localtunnel、发送新卡后真实点击创建 Skill Run `#8`，API 返回 HTTP 200。
 - [x] V16-04 完成 Run `#8` 全流程真实验收：修复 Card 2.0 select/form submit、启动 Worker task `#358` 处理 50/50、修复 Worker `.env` 加载和 bot 身份消息 PATCH，最终同卡显示任务完成。
+
+### V16-LIVE-RESULT — 结果详情与 Base 真实同步补验收（DONE，2026-07-15）
+
+- 修复 `skill_result_<id>` 重复渲染完成摘要的问题，交付独立结果详情卡。
+- dry-run 明确提示未写入，不再显示成误导性的成功摘要。
+- Run `#8` 复用现有 50 个筛选结果，真实同步客户 50、证据 50，失败 0。
+- 恢复 PostgreSQL 远端映射并更新同一张飞书任务卡；未访问小红书、未发送评论或私信。

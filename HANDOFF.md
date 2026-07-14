@@ -331,3 +331,13 @@ python -m apps.cli --json run-control-panel-once
 - Worker task `#358` 完成 50/50，Run 状态 `succeeded`；有效需求 0、高意向 0、待确认 50，飞书同步为 dry-run，失败 0。
 - Worker 首次没有更新进度卡，是因为专用入口未加载 `.env`，且消息 PATCH 继承 `FEISHU_LARK_CLI_AS=user`。现已让 Worker 入口加载 `.env`，并将应用消息 PATCH 固定为 bot 身份；无额外环境变量的新进程已成功更新 Run `#8` 最终完成卡。
 - 最终自动化：`510 passed, 7 skipped, 1 warning in 26.29s`；编译、`git diff --check` 和公网 `/health` HTTP 200 通过。
+
+## 2026-07-15 Run #8 结果详情与 Base 真实同步修复
+
+- 用户点击“查看结果”后无明显变化的根因：`skill_result_<id>` 旧实现仍调用 `build_skill_run_card()`，只是重复渲染完成摘要。
+- 新增独立“任务结果详情”卡，展示运行参数、处理统计、同步状态、客户线索表入口、证据明细表入口和复制任务按钮。
+- dry-run 现在明确显示“未写入多维表格”和预演条数，不再伪装成成功的 0/0/0。
+- 本机已切换为已验证的 `lark_cli` Base 写入配置；Run `#8` 未重跑 DeepSeek，复用 screening `51-100` 完成真实同步。
+- 远端实际新增客户 50、证据 50；PostgreSQL 已恢复 100 条映射，Run `#8` 同步摘要为新增 100、失败 0、dry-run 0。
+- 飞书消息 `om_x100b6a5c096318a4b1ca479dccbd4b8` 已直接更新为“任务结果详情”。公网 `/health` 当前 HTTP 200。
+- 最终全量验证：`513 passed, 7 skipped, 1 warning in 26.51s`；编译检查与 `git diff --check` 通过。

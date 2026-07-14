@@ -88,3 +88,12 @@
 - Worker 完成 50/50，Run 状态 `succeeded`；有效需求 0、高意向 0、待确认 50，飞书同步 dry-run 失败 0。
 - 修复 Worker 入口 `.env` 加载和应用消息 bot 身份 PATCH；最终同一消息显示任务完成卡。
 - localtunnel 在流程中曾返回 HTTP 503，重启相同 subdomain 后恢复；这是当前唯一明确的长期运行阻塞。
+
+## 2026-07-15 Result Detail / Live Base Sync Addendum
+
+- Run: `#8`; reused screening IDs `51-100`; DeepSeek was not rerun.
+- Live Base writes: 50 customer records + 50 evidence records; failed 0; dry-run 0.
+- PostgreSQL mappings recovered: 100 `feishu_bitable_records` rows for the Run #8 entities.
+- Feishu message `om_x100b6a5c096318a4b1ca479dccbd4b8` patched to a distinct `任务结果详情` card with Base links.
+- Public callback health: `https://three-emus-kick.loca.lt/health` returned HTTP 200 after API restart.
+- Final automated verification: `513 passed, 7 skipped, 1 warning in 26.51s`; compileall and `git diff --check` passed.

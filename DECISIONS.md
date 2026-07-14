@@ -329,3 +329,9 @@
 - `FeishuIMClient.patch_interactive_message()` 的 lark-cli transport 固定使用 `--as bot`。
 - Worker 入口必须主动加载 `.env`，不能依赖调用终端提前 export 配置。
 - Card 2.0 表单提交按钮必须同时包含 `form_action_type=submit` 和 `behaviors.callback`；`select_static` 使用 `placeholder`，不使用非法 `label`。
+
+## D-2026-07-15-RESULT-CARD：结果详情与 Base 同步状态必须显式区分
+
+- 完成摘要卡和结果详情卡是两个不同产品状态；“查看结果”不得只刷新原摘要。
+- `dry_run` 属于“未写入”，必须显式提示，不能与真实同步成功共用文案。
+- Skill Worker 正式运行时自动写入 AI Review Base；PostgreSQL 继续作为事实源，并保存远端 record 映射用于幂等与事故恢复。
