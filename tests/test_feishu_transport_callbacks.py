@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
 import json
 
 import httpx
@@ -21,6 +20,7 @@ from integrations.feishu import (
     build_phrase_review_payload,
     build_webhook_body,
     send_interactive_card,
+    decode_callback_payload,
     verify_callback_token,
     verify_webhook_signature,
 )
@@ -106,9 +106,7 @@ def test_callback_token_and_signature_verification() -> None:
     timestamp = "1782970000"
     nonce = "nonce"
     encrypt_key = "secret"
-    expected = base64.b64encode(
-        hmac.new(encrypt_key.encode("utf-8"), f"{timestamp}{nonce}".encode("utf-8") + body, hashlib.sha256).digest()
-    ).decode("utf-8")
+    expected = hashlib.sha256(f"{timestamp}{nonce}{encrypt_key}".encode("utf-8") + body).hexdigest()
 
     assert (
         verify_webhook_signature(
@@ -130,6 +128,24 @@ def test_callback_token_and_signature_verification() -> None:
         )
         is False
     )
+
+
+def test_decode_callback_payload_supports_feishu_encrypted_body() -> None:
+    encrypted = (
+        "AAECAwQFBgcICQoLDA0OD6VqgEYsGxsuO1CMI5TRI8YCAILXiJT7bws/K+9Xo1uy"
+        "AjjuBM06qRLJs4XqwOGLXqmaqpqtpc7TqmZvIwwmS7BM51edt+nq8uYjUw/mCn5kI"
+        "d7rRWK5mGRLulzHACQ4iqiqy41RLJWpJJ923kMDujwpeVE9gnywl7rn1xt42gv4Fg"
+        "96Xv29Zmjjd3gw0gBlvw=="
+    )
+
+    payload = decode_callback_payload(
+        json.dumps({"encrypt": encrypted}).encode("utf-8"),
+        encrypt_key="test-encrypt-key",
+    )
+
+    assert payload["schema"] == "2.0"
+    assert payload["header"]["event_id"] == "evt-encrypted"
+    assert payload["event"]["action"]["name"] == "skill_create_screen_historical_leads"
 
 
 def test_phrase_review_callback_records_approve_reject_and_convert_idempotently() -> None:
@@ -213,18 +229,107 @@ def test_comment_reply_callback_persists_task_and_returns_without_constructing_s
         json={"token": "token", "event": {"action": {"name": "confirm_comment_reply_17"}}},
     )
     assert response.status_code == 200
-    assert response.json() == {
-        "code": 0,
-        "msg": "accepted",
-        "type": "comment_reply",
-        "applied": True,
-        "duplicate": False,
-        "reply_id": 17,
-        "status": "approved_to_send",
-    }
+    assert response.json() == {"toast": {"type": "success", "content": "操作已受理"}}
     assert [name for name, _ in calls] == ["enqueue", "background"]
     assert calls[0][1][1] == "token"
     assert calls[1][1][1] == (17, "approved_to_send")
+
+
+def test_task_center_callback_returns_feishu_card_response_without_background_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    card = {"schema": "2.0", "header": {"title": {"tag": "plain_text", "content": "任务参数"}}, "body": {"elements": []}}
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def commit(self) -> None:
+            return None
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.SessionLocal", FakeSession)
+    monkeypatch.setattr(
+        "apps.api.routes.feishu_callbacks.apply_task_center_callback",
+        lambda *args, **kwargs: {
+            "accepted": True,
+            "run_id": 7,
+            "status": "draft",
+            "card": card,
+            "update_token": "callback-token",
+        },
+    )
+    monkeypatch.setattr(
+        "fastapi.BackgroundTasks.add_task",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("task center response must update the card inline")),
+    )
+
+    response = TestClient(create_app()).post(
+        "/feishu/callback/llm-review",
+        json={"schema": "2.0", "event": {"action": {"value": {"action": "skill_create_screen_historical_leads"}}}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "toast": {"type": "success", "content": "任务已受理"},
+        "card": {"type": "raw", "data": card},
+    }
+
+
+def test_task_center_route_verifies_and_decrypts_feishu_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    encrypted = (
+        "AAECAwQFBgcICQoLDA0OD6VqgEYsGxsuO1CMI5TRI8YCAILXiJT7bws/K+9Xo1uy"
+        "AjjuBM06qRLJs4XqwOGLXqmaqpqtpc7TqmZvIwwmS7BM51edt+nq8uYjUw/mCn5kI"
+        "d7rRWK5mGRLulzHACQ4iqiqy41RLJWpJJ923kMDujwpeVE9gnywl7rn1xt42gv4Fg"
+        "96Xv29Zmjjd3gw0gBlvw=="
+    )
+    body = json.dumps({"encrypt": encrypted}).encode("utf-8")
+    timestamp = "1782970000"
+    nonce = "nonce"
+    signature = hashlib.sha256(f"{timestamp}{nonce}test-encrypt-key".encode("utf-8") + body).hexdigest()
+    captured: list[dict] = []
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def commit(self) -> None:
+            return None
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setenv("FEISHU_ENCRYPT_KEY", "test-encrypt-key")
+    monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.SessionLocal", FakeSession)
+    monkeypatch.setattr(
+        "apps.api.routes.feishu_callbacks.apply_task_center_callback",
+        lambda session, payload, **kwargs: captured.append(payload)
+        or {"accepted": True, "run_id": 9, "status": "draft", "card": {"schema": "2.0"}},
+    )
+
+    response = TestClient(create_app()).post(
+        "/feishu/callback/llm-review",
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "x-lark-request-timestamp": timestamp,
+            "x-lark-request-nonce": nonce,
+            "x-lark-signature": signature,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured[0]["header"]["event_id"] == "evt-encrypted"
+    assert response.json()["card"] == {"type": "raw", "data": {"schema": "2.0"}}
 
 
 def test_comment_reply_duplicate_returns_persisted_status_and_syncs_followup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -246,8 +351,7 @@ def test_comment_reply_duplicate_returns_persisted_status_and_syncs_followup(mon
         json={"event": {"action": {"name": "confirm_comment_reply_18"}}},
     )
     assert response.status_code == 200
-    assert response.json()["duplicate"] is True
-    assert response.json()["status"] == "failed"
+    assert response.json() == {"toast": {"type": "success", "content": "操作已受理"}}
     assert queued == [(18, "failed")]
 
 

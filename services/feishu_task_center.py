@@ -68,7 +68,12 @@ def send_task_center_card(*, chat_id: str, client: FeishuIMClient | None = None)
 def is_task_center_callback(payload: dict[str, Any]) -> bool:
     event = payload.get("event") if isinstance(payload.get("event"), dict) else payload
     action = event.get("action") if isinstance(event.get("action"), dict) else {}
-    return str(action.get("name") or "").startswith("skill_")
+    return _action_name(action).startswith("skill_")
+
+
+def _action_name(action: dict[str, Any]) -> str:
+    value = action.get("value") if isinstance(action.get("value"), dict) else {}
+    return str(action.get("name") or value.get("action") or value.get("name") or "")
 
 
 def apply_task_center_callback(session: Session, payload: dict[str, Any], *, verification_token: str | None, client: FeishuIMClient | None = None) -> dict[str, Any]:
@@ -76,7 +81,7 @@ def apply_task_center_callback(session: Session, payload: dict[str, Any], *, ver
     event = payload.get("event") if isinstance(payload.get("event"), dict) else payload
     action = event.get("action") if isinstance(event.get("action"), dict) else {}
     context = event.get("context") if isinstance(event.get("context"), dict) else {}
-    name = str(action.get("name") or "")
+    name = _action_name(action)
     event_id = str((payload.get("header") or {}).get("event_id") or payload.get("event_id") or event.get("event_id") or event.get("token") or name)
     operator = event.get("operator") if isinstance(event.get("operator"), dict) else {}
     requested_by = operator.get("open_id")

@@ -10,7 +10,7 @@
 2. 配置 Feishu IM、`FEISHU_VERIFICATION_TOKEN`、回调地址；可选配置 `FEISHU_SKILL_RUN_TABLE_ID`。
 3. 执行 `aixhs feishu-task-center --chat-id <CHAT_ID>`。
 4. 点击“创建任务”，填写范围、数量、Campaign，点击“预览任务”。
-5. 核对候选数量，点击“确认运行”，确认回调快速返回 `accepted`。
+5. 核对候选数量，点击“确认运行”，确认回调在 3 秒内返回官方 toast/card 响应。
 6. 启动独立 Worker，观察同一张卡片阶段从 prepare/screen/sync_feishu/summarize 更新。
 7. 完成卡核对处理数量、有效需求、高意向客户、待确认数量和飞书同步结果。
 8. 创建另一任务并在 screen 前取消；人为注入 LLM 失败后明确点击重试；点击复制并修改参数重新预览。
@@ -58,12 +58,14 @@
 
 ### Interaction Correction — 2026-07-15
 
-- 用户真实点击旧版 Card 2.0 按钮返回 `200671`。根因一：普通按钮缺少 `behaviors.callback`，表单按钮错误使用 `action_type`，现已改为 `form_action_type: submit`。
-- 根因二：应用 `cli_aac1e28d6a399bfc` 的真实点击既未到达当前 HTTP 回调，也未进入已连接的 `card.action.trigger` WebSocket Listener，说明飞书开发者后台尚未把该应用的卡片回调切到当前 URL 或长连接模式。
-- 当前本地 API、公网 localtunnel、卡片事件 Listener 和专用 Skill Worker 已运行；公网人工探针返回 HTTP 200，但探针不能代替真实点击。
+- 用户真实点击旧版 Card 2.0 按钮返回 `200671`。普通按钮缺少 `behaviors.callback`、表单按钮错误使用 `action_type` 的问题已先行修复。
+- 2026-07-15 重启旧 API 时读取到此前真实请求日志：`skill_create_screen_historical_leads` 已到达现有 HTTP 回调，但动作位于 `event.action.value.action`；旧代码只读 `event.action.name`，因此误入 LLM 审核并返回 HTTP 400。这是 `200671` 的直接根因，不需要切换长连接或更换应用。
+- 路由现返回飞书官方 `toast + card(type=raw)`，不再返回自定义 `code/msg/accepted`；共享的其他卡片动作返回官方 toast。
+- 飞书签名算法已修正为 `SHA256(timestamp + nonce + encrypt_key + raw_body)`，并支持外层 `encrypt` AES-CBC 解密。
+- 修复后本地原路由探针 HTTP 200 / 0.05 秒，公网原地址探针 HTTP 200 / 0.81 秒，均返回完整 Card 2.0 参数表单；探针事件幂等绑定 Run `#6`。
 - 新增 `apps/feishu_task_center_listener.py` 和 `apps/worker/skill_run_service.py`，分别负责快速卡片事件持久化和只领取 `skill_run_execute`，不触碰小红书任务。
-- 最新全量测试：`505 passed, 7 skipped, 1 warning in 26.42s`。
+- 最新全量测试：`509 passed, 7 skipped, 1 warning in 25.97s`。
 - `lulu大王` 仅出现在旧私群成员列表中，不能据此推断它是历史回调应用；此前关于复用 `lulu大王` 的结论错误并已撤回。
-- 当前唯一证实的发卡应用是 lark-cli 应用 `cli_aac1e28d6a399bfc`。用户真实点击未命中当前 HTTP API，也未进入 WebSocket Listener；在读取该应用开发者后台现有配置前，不得建议切换回调模式或修改旧配置。
-- 按钮闭环保持未验收，不再发送误导性卡片。
-- 本机 `.env` 已恢复到测试前的 chat、发送身份和 Base dry-run 配置；V16 Listener/专用 Worker已停止，原 API 与原 HTTP 公网隧道继续运行。
+- 当前唯一证实的发卡应用是 lark-cli 应用 `cli_aac1e28d6a399bfc`。开发者后台截图确认继续使用原 HTTP 回调地址；不得建议切换回调模式或修改旧配置。
+- 协议和公网链路已经自动化验证；按钮闭环仍需用户进行一次真实点击复验后才能标记 LIVE DONE。
+- 本机 `.env` 保持测试前的 chat、发送身份和 Base dry-run 配置；V16 Listener/专用 Worker停止，原 API 与原 HTTP 公网隧道继续运行。

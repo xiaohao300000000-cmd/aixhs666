@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
+import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
@@ -20,7 +20,7 @@ from integrations.feishu.outreach import (
     create_outreach_for_valid_screening,
     is_outreach_callback,
 )
-from integrations.feishu.webhook import verify_callback_token, verify_webhook_signature
+from integrations.feishu.webhook import decode_callback_payload, verify_callback_token, verify_webhook_signature
 from services.outreach_generation import OpenAICompatibleOutreachGenerator
 from services.feishu_customer_followup import push_customer_followup
 from services.feishu_task_center import TaskCenterCallbackError, apply_task_center_callback, is_task_center_callback
@@ -39,6 +39,7 @@ async def llm_review_callback(
     x_lark_request_nonce: Annotated[str | None, Header()] = None,
     x_lark_signature: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
+    started_at = time.monotonic()
     body = await request.body()
     if not _verify_signature(
         body=body,
@@ -49,13 +50,13 @@ async def llm_review_callback(
         logger.warning("Feishu LLM review callback rejected: invalid signature")
         raise HTTPException(status_code=401, detail="invalid Feishu signature")
     try:
-        payload = json.loads(body.decode("utf-8"))
-    except json.JSONDecodeError as exc:
-        logger.warning("Feishu LLM review callback rejected: invalid JSON payload")
-        raise HTTPException(status_code=400, detail="invalid JSON payload") from exc
-    if not isinstance(payload, dict):
-        logger.warning("Feishu LLM review callback rejected: invalid payload type")
-        raise HTTPException(status_code=400, detail="invalid payload")
+        payload = decode_callback_payload(body, encrypt_key=os.getenv("FEISHU_ENCRYPT_KEY"))
+    except ValueError as exc:
+        logger.warning("Feishu callback rejected while decoding payload: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    event_id, action_name = _callback_identity(payload)
+    logger.info("Feishu callback received event_id=%s action=%s", event_id, action_name)
 
     if payload.get("type") == "url_verification":
         if not verify_callback_token(payload, os.getenv("FEISHU_VERIFICATION_TOKEN")):
@@ -71,12 +72,15 @@ async def llm_review_callback(
                 session.commit()
             except (TaskCenterCallbackError, ValueError) as exc:
                 session.rollback()
+                logger.warning("Feishu task center callback rejected event_id=%s action=%s: %s", event_id, action_name, exc)
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-        update_token = result.pop("update_token", None)
-        card = result.pop("card", None)
-        if update_token and card:
-            background_tasks.add_task(_update_task_center_card, str(update_token), card)
-        return {"code": 0, "msg": "accepted", "type": "task_center", **result}
+            except Exception:
+                session.rollback()
+                logger.exception("Feishu task center callback failed event_id=%s action=%s", event_id, action_name)
+                raise
+        response = _card_callback_response(card=result.get("card"), content="任务已受理")
+        _log_callback_accepted(started_at, event_id=event_id, action_name=action_name, callback_type="task_center")
+        return response
 
     if is_comment_reply_callback(payload):
         verification_token = (os.getenv("FEISHU_VERIFICATION_TOKEN") or "").strip()
@@ -93,19 +97,13 @@ async def llm_review_callback(
             logger.warning("Feishu comment reply callback rejected: %s", exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         background_tasks.add_task(_sync_comment_reply_followup, result.reply_id, result.status)
-        return {
-            "code": 0,
-            "msg": "accepted",
-            "type": "comment_reply",
-            "applied": result.applied,
-            "duplicate": result.duplicate,
-            "reply_id": result.reply_id,
-            "status": result.status,
-        }
+        _log_callback_accepted(started_at, event_id=event_id, action_name=action_name, callback_type="comment_reply")
+        return _card_callback_response(content="操作已受理")
 
     if is_outreach_callback(payload):
         background_tasks.add_task(_apply_outreach_callback, payload)
-        return {"code": 0, "msg": "accepted", "type": "outreach"}
+        _log_callback_accepted(started_at, event_id=event_id, action_name=action_name, callback_type="outreach")
+        return _card_callback_response(content="操作已受理")
 
     with SessionLocal() as session:
         try:
@@ -122,14 +120,8 @@ async def llm_review_callback(
     background_tasks.add_task(_update_llm_review_card, payload)
     if result.applied and result.human_review_status == "valid":
         background_tasks.add_task(_create_outreach_after_valid_review, result.screening_result_id, payload)
-    return {
-        "code": 0,
-        "msg": "success",
-        "applied": result.applied,
-        "duplicate": result.duplicate,
-        "screening_result_id": result.screening_result_id,
-        "human_review_status": result.human_review_status,
-    }
+    _log_callback_accepted(started_at, event_id=event_id, action_name=action_name, callback_type="llm_review")
+    return _card_callback_response(content="操作成功")
 
 
 def _update_llm_review_card(payload: dict[str, Any]) -> None:
@@ -145,11 +137,32 @@ def _update_llm_review_card(payload: dict[str, Any]) -> None:
             logger.exception("Feishu LLM review card update failed after callback was applied")
 
 
-def _update_task_center_card(token: str, card: dict[str, Any]) -> None:
-    try:
-        FeishuIMClient().update_interactive_card(token=token, card=card)
-    except Exception:
-        logger.exception("Feishu task center immediate card update failed")
+def _card_callback_response(*, content: str, card: dict[str, Any] | None = None) -> dict[str, Any]:
+    response: dict[str, Any] = {"toast": {"type": "success", "content": content}}
+    if card is not None:
+        response["card"] = {"type": "raw", "data": card}
+    return response
+
+
+def _callback_identity(payload: dict[str, Any]) -> tuple[str, str]:
+    header = payload.get("header") if isinstance(payload.get("header"), dict) else {}
+    event = payload.get("event") if isinstance(payload.get("event"), dict) else payload
+    action = event.get("action") if isinstance(event.get("action"), dict) else {}
+    value = action.get("value") if isinstance(action.get("value"), dict) else {}
+    event_id = str(header.get("event_id") or payload.get("event_id") or event.get("event_id") or "unknown")
+    action_name = str(action.get("name") or value.get("action") or value.get("name") or "unknown")
+    return event_id, action_name
+
+
+def _log_callback_accepted(started_at: float, *, event_id: str, action_name: str, callback_type: str) -> None:
+    elapsed_ms = round((time.monotonic() - started_at) * 1000, 1)
+    logger.info(
+        "Feishu callback accepted type=%s event_id=%s action=%s elapsed_ms=%s",
+        callback_type,
+        event_id,
+        action_name,
+        elapsed_ms,
+    )
 
 
 def _create_outreach_after_valid_review(screening_result_id: int, payload: dict[str, Any]) -> None:

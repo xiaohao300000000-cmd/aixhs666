@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import hashlib
-import hmac
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -263,9 +261,7 @@ def test_fastapi_llm_review_callback_verifies_signature_and_applies(
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     timestamp = "1782970000"
     nonce = "nonce"
-    signature = base64.b64encode(
-        hmac.new("secret".encode("utf-8"), f"{timestamp}{nonce}".encode("utf-8") + body, hashlib.sha256).digest()
-    ).decode("utf-8")
+    signature = hashlib.sha256(f"{timestamp}{nonce}secret".encode("utf-8") + body).hexdigest()
 
     response = TestClient(create_app()).post(
         "/feishu/callback/llm-review",
@@ -279,7 +275,7 @@ def test_fastapi_llm_review_callback_verifies_signature_and_applies(
     )
 
     assert response.status_code == 200
-    assert response.json()["applied"] is True
+    assert response.json() == {"toast": {"type": "success", "content": "操作成功"}}
     with factory() as session:
         assert session.get(LeadScreeningResult, screening_id).human_review_status == "watch"
 
@@ -301,7 +297,7 @@ def test_fastapi_llm_review_callback_returns_success_when_card_update_fails(
     )
 
     assert response.status_code == 200
-    assert response.json()["applied"] is True
+    assert response.json() == {"toast": {"type": "success", "content": "操作成功"}}
     with factory() as session:
         screening = session.get(LeadScreeningResult, screening_id)
         assert screening is not None

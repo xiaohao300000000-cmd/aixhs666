@@ -307,3 +307,11 @@
 - `collection_tasks.skill_run_execute` 仅供 Worker 领取，不承载产品语义。
 - 飞书回调不得执行 DeepSeek；同卡片更新和多维表格都是可失败、可重建投影。
 - V16 唯一 Skill 不访问小红书且不发送评论/私信。
+
+## 2026-07-15：飞书卡片回调严格使用官方协议
+
+- 保留现有 HTTP 回调模式和原请求地址，不切换长连接，不更换发卡应用。
+- Card 2.0 普通按钮从 `event.action.value.action` 读取动作；兼容表单提交的 `event.action.name`。
+- 卡片回调只返回飞书支持的 `{}`、`toast` 或 `toast + card(type=raw)`，不再返回自定义 `code/msg/accepted` JSON。
+- `FEISHU_ENCRYPT_KEY` 启用时，签名使用 `SHA256(timestamp + nonce + encrypt_key + raw_body)` 十六进制摘要；外层 `encrypt` 载荷按飞书 AES-CBC 规则解密。
+- Worker 仍通过 `message_id` 更新后续进度；回调内不得运行 DeepSeek 或完整 Skill 流程。

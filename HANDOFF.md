@@ -303,3 +303,12 @@ python -m apps.cli --json run-control-panel-once
 - 2026-07-14 已完成真实安全验收：Run `#1`/Task `#357` 处理 3 条历史评论，结果为有效需求 1、待确认 3；飞书消息 `om_x100b6a569a7d60a4b04c75cc36b0d05` 同卡片更新成功，AI 审核 Base 新增客户 1、证据 1。按钮公网回调仍待开发者后台 URL/token 配置。
 - 2026-07-15 修正飞书可见性验收：旧 chat 是单人私群，用户未实际看到；已改用 bot P2P `oc_db1d787a662278e05ce8a5c035a66ee0`，并重新发送任务中心和 Run #1 完成卡。后续不得把“API 可读”直接等同于“用户已收到”。
 - 2026-07-15 用户真实点击返回 `200671`。Card 2.0 字段已修；`lulu大王` 只是旧私群成员，不能推断为历史回调应用，此前复用它的判断已撤回。当前唯一证实的发卡应用是 `cli_aac1e28d6a399bfc`；在读取其开发者后台现有配置前，不再建议切换回调模式。V16 按钮闭环保持未验收，本机配置和后台进程已恢复。
+
+## 2026-07-15 V16 Card 2.0 回调协议修复
+
+- 从重启前 API 真实日志确认 `200671` 的直接根因：飞书真实按钮事件把动作放在 `event.action.value.action`，旧代码只识别 `event.action.name`，导致 `skill_create_screen_historical_leads` 被误送入 LLM 审核处理并返回 HTTP 400。
+- `services/feishu_task_center.py` 现兼容 Card 2.0 普通按钮 `action.value.action` 与表单提交 `action.name`；不改开发者后台 HTTP 模式，不改原回调地址，不引入其他应用。
+- `POST /feishu/callback/llm-review` 现对任务中心立即返回官方 `toast + card(type=raw)`，其他卡片动作返回官方 toast；不再返回自定义 `code/msg/accepted` 包装。
+- 修正飞书签名算法为 `SHA256(timestamp + nonce + encrypt_key + raw_body)`，并新增外层 `encrypt` AES-CBC 解密；新增依赖 `pycryptodome`。
+- 自动化：`509 passed, 7 skipped, 1 warning in 25.97s`；编译与 `git diff --check` 通过。
+- 协议探针：本地原路由 HTTP 200 / 0.05 秒，公网原地址 HTTP 200 / 0.81 秒，响应为官方 `toast + raw Card 2.0`；固定事件创建幂等测试 Run `#6`。这证明地址、隧道、路由和响应协议当前可用，但最终按钮闭环仍需用户在飞书中进行一次真实点击复验。
