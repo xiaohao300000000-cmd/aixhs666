@@ -63,4 +63,7 @@
 - 当前本地 API、公网 localtunnel、卡片事件 Listener 和专用 Skill Worker 已运行；公网人工探针返回 HTTP 200，但探针不能代替真实点击。
 - 新增 `apps/feishu_task_center_listener.py` 和 `apps/worker/skill_run_service.py`，分别负责快速卡片事件持久化和只领取 `skill_run_execute`，不触碰小红书任务。
 - 最新全量测试：`505 passed, 7 skipped, 1 warning in 26.42s`。
-- 剩余真实门槛：在飞书开发者后台应用 `cli_aac1e28d6a399bfc` 的“事件与回调 → 回调配置”启用长连接，并启用卡片回调；完成前不得宣称按钮闭环可用。
+- `lulu大王` 仅出现在旧私群成员列表中，不能据此推断它是历史回调应用；此前关于复用 `lulu大王` 的结论错误并已撤回。
+- 当前唯一证实的发卡应用是 lark-cli 应用 `cli_aac1e28d6a399bfc`。用户真实点击未命中当前 HTTP API，也未进入 WebSocket Listener；在读取该应用开发者后台现有配置前，不得建议切换回调模式或修改旧配置。
+- 按钮闭环保持未验收，不再发送误导性卡片。
+- 本机 `.env` 已恢复到测试前的 chat、发送身份和 Base dry-run 配置；V16 Listener/专用 Worker已停止，原 API 与原 HTTP 公网隧道继续运行。

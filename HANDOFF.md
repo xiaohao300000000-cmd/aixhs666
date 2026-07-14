@@ -302,4 +302,4 @@ python -m apps.cli --json run-control-panel-once
 - 最终全量测试：`504 passed, 7 skipped, 1 warning in 25.81s`；Alembic head 为 `0016_skill_runs`；`git diff --check` 与编译检查通过。
 - 2026-07-14 已完成真实安全验收：Run `#1`/Task `#357` 处理 3 条历史评论，结果为有效需求 1、待确认 3；飞书消息 `om_x100b6a569a7d60a4b04c75cc36b0d05` 同卡片更新成功，AI 审核 Base 新增客户 1、证据 1。按钮公网回调仍待开发者后台 URL/token 配置。
 - 2026-07-15 修正飞书可见性验收：旧 chat 是单人私群，用户未实际看到；已改用 bot P2P `oc_db1d787a662278e05ce8a5c035a66ee0`，并重新发送任务中心和 Run #1 完成卡。后续不得把“API 可读”直接等同于“用户已收到”。
-- 2026-07-15 用户真实点击返回 `200671`。已修 Card 2.0 callback/form 字段，恢复 API/public tunnel，并新增 WebSocket Listener 与专用 Skill Worker；但真实点击既未命中 HTTP 也未进入 Listener，确认应用 `cli_aac1e28d6a399bfc` 的开发者后台卡片回调尚未指向当前链路。必须手工切换“事件与回调 → 回调配置”为长连接并启用卡片回调后再验收。全量测试 `505 passed, 7 skipped`。
+- 2026-07-15 用户真实点击返回 `200671`。Card 2.0 字段已修；`lulu大王` 只是旧私群成员，不能推断为历史回调应用，此前复用它的判断已撤回。当前唯一证实的发卡应用是 `cli_aac1e28d6a399bfc`；在读取其开发者后台现有配置前，不再建议切换回调模式。V16 按钮闭环保持未验收，本机配置和后台进程已恢复。
