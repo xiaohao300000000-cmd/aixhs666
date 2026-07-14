@@ -472,3 +472,7 @@ AI筛选证据明细：72
 - 未配置 `POSTGRES_TEST_DATABASE_URL`，PostgreSQL 并发测试跳过。
 - 未配置小红书 live 登录 profile。
 - 未配置飞书真实凭证。
+
+## V16 飞书任务中心与 Skill Runtime
+
+- [x] V16-01 `screen_historical_leads` 完整纵向任务产品闭环：模型、Registry、Runtime、Worker、飞书卡片/回调、可选 Base 投影、测试与文档。

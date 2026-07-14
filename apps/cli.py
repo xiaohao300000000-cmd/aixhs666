@@ -106,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     control_panel = subparsers.add_parser("run-control-panel-once", help="Run one human-started Feishu control panel command.")
     control_panel.add_argument("--base-token", default=None, help="Feishu Base token for the control panel.")
     control_panel.add_argument("--table-id", default=None, help="Feishu table ID for the control panel.")
+    task_center = subparsers.add_parser("feishu-task-center", help="Send the Feishu operator task center card.")
+    task_center.add_argument("--chat-id", required=True)
     return parser
 
 
@@ -336,6 +338,9 @@ def main(argv: list[str] | None = None) -> int:
                     actions=_build_control_panel_actions(runner),
                 )
             }
+        elif args.command == "feishu-task-center":
+            from services.feishu_task_center import send_task_center_card
+            payload = {"task_center": send_task_center_card(chat_id=args.chat_id)}
         else:
             parser.error(f"unknown command: {args.command}")
     except PipelineRunError as exc:

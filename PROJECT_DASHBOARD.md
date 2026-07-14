@@ -183,3 +183,15 @@ gantt
 - `orchestration/WORKER_REGISTRY.md`
 - `orchestration/FILE_LOCKS.md`
 - `docs/CONCURRENCY_POLICY.md`
+
+## V16 状态（2026-07-14）
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| Skill Registry | DONE | 仅 `screen_historical_leads` |
+| Skill Run/Event | DONE | PostgreSQL 事实源、事件幂等、断点恢复 |
+| Worker | DONE | `skill_run_execute` 直接复用 Python service |
+| 飞书任务中心 | DONE | 选择、参数、预览、确认、进度、取消、重试、结果、复制 |
+| 小红书访问/发送 | NOT IN SCOPE | V16 全程禁止 |
+
+V16 自动化验收：`504 passed, 7 skipped, 1 warning`；迁移 head `0016_skill_runs`。

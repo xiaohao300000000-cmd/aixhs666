@@ -290,3 +290,13 @@ python -m apps.cli --json run-control-panel-once
 - 全量测试首次收集发现 `integrations.feishu.comment_replies` 顶层导入 `scheduler` 导致循环依赖；已把 `create_task` 改为入队函数内延迟导入，并用 `tests/test_agent_runtime.py` 和评论入队测试验证。
 - 定向测试：`84 passed, 3 skipped, 1 warning`。全量测试：`494 passed, 7 skipped, 1 warning`。
 - 本次没有运行 live selector probe 或真实评论发送。Windows CDP/SSH、专用测试目标、最终批准文本和客户跟进 Base live 配置仍是外部阻塞，Task 7 保持 `DONE_AUTOMATED / LIVE_BLOCKED`。
+
+## 2026-07-14 V16 飞书任务中心与 Skill Runtime
+
+- 分支：`feat/v16-task-productization`。
+- 新增唯一 Skill `screen_historical_leads / 历史线索智能筛选`，使用现有 PostgreSQL 历史数据、DeepSeek、Campaign 资格判断和 `feishu-ai-review-sync`。
+- 飞书回调只持久化/入队并返回 `accepted`；独立 Worker 执行并 PATCH 同一消息卡片。
+- 支持预览、进度事件、Worker 断点恢复、安全取消、明确失败重试、结果、复制和可选“任务运行记录”Base 投影。
+- 本轮未运行 live selector probe，未访问小红书，未发送评论或私信。
+- 最终自动化证据见 `docs/reports/V16_TASK_PRODUCTIZATION_VERIFICATION.md`。
+- 最终全量测试：`504 passed, 7 skipped, 1 warning in 26.54s`；Alembic head 为 `0016_skill_runs`；`git diff --check` 与编译检查通过。

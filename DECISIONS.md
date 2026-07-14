@@ -299,3 +299,11 @@
 - 评论发送 Worker 必须读取 `COMMENT_REPLY_BROWSER_MODE=remote_cdp` 和 `COMMENT_REPLY_CDP_URL`，连接远程 Windows Chrome 的现有 context，不在 Mac 启动本地浏览器。
 - 页面流程必须先定位目标评论并点击“回复”，再等待编辑框和提交按钮出现；selector probe 可点击“回复”展开控件，但禁止填写和提交。
 - `approved_to_send` 表示已人工批准、等待独立任务执行；客户跟进表映射为“评论已批准，等待发送”。
+
+## 2026-07-14：Skill Run 是任务产品事实，CollectionTask 仅负责执行投递
+
+- 飞书任务中心面向普通运营；系统控制台保留为管理员兼容入口。
+- PostgreSQL `skill_runs`/`skill_run_events` 保存参数、状态、事件、断点和结果。
+- `collection_tasks.skill_run_execute` 仅供 Worker 领取，不承载产品语义。
+- 飞书回调不得执行 DeepSeek；同卡片更新和多维表格都是可失败、可重建投影。
+- V16 唯一 Skill 不访问小红书且不发送评论/私信。

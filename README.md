@@ -658,3 +658,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 - 当日真实飞书凭证、真实发送和真实回调仍未验收；2026-07-06 已通过本机 `lark-cli` 用户身份验证飞书 Base 建表、写入、更新和视图创建。
 - 长期无人值守运行仍未完成。
 - 桌面启动器目前面向 macOS 本机；Windows/Linux 启动入口尚未制作。
+
+## 飞书任务中心（V16）
+
+普通运营人员使用 `aixhs feishu-task-center --chat-id <CHAT_ID>` 发出的任务中心卡片，完成“历史线索智能筛选”的参数填写、预览、确认、进度、取消、重试、结果和复制。管理员系统控制台继续保留。详细边界见 `docs/TASK_PRODUCTIZATION.md`。

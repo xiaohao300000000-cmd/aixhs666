@@ -99,6 +99,17 @@ class FeishuIMClient:
             operation="update interactive card",
         )
 
+    def patch_interactive_message(self, *, message_id: str, card: dict[str, Any]) -> dict[str, Any]:
+        if not self._ready():
+            raise FeishuIMError("Feishu IM is not configured")
+        content = json.dumps(card, ensure_ascii=False, separators=(",", ":"))
+        if self.settings.transport == "lark_cli":
+            return self._run_lark_cli_json([
+                self.settings.lark_cli_bin, "api", "PATCH", f"/open-apis/im/v1/messages/{message_id}",
+                "--as", "bot", "--data", json.dumps({"content": content}, ensure_ascii=False, separators=(",", ":")),
+            ], "patch interactive message")
+        return self._request("PATCH", f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}", json_body={"content": content}, operation="patch interactive message")
+
     def _ready(self) -> bool:
         if self.settings.transport == "lark_cli":
             return bool(self.settings.enabled and self.settings.lark_cli_bin)

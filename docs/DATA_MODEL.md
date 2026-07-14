@@ -497,3 +497,10 @@ lead_id + task_type
 - collection_tasks(status, scheduled_at, priority)
 - demand_events(profile_id, event_time)
 - phrase_candidates(status, novelty_score)
+
+## Skill Runtime（V16）
+
+- `skill_runs`：Skill/version、参数、预览、状态/阶段/进度、断点、结果摘要、错误、取消/重试、飞书消息绑定和复制来源。
+- `skill_run_events`：每次状态/阶段/进度/回调事件，按 `(skill_run_id, sequence)` 排序，`event_key` 全局唯一用于回调幂等。
+- `collection_tasks` 中 `skill_run_execute` 仅是执行投递记录，不替代 Skill Run 产品事实。
+- `feishu_bitable_records(local_entity_type=skill_run)` 可选保存“任务运行记录”投影映射。
