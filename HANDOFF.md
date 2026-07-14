@@ -341,3 +341,12 @@ python -m apps.cli --json run-control-panel-once
 - 远端实际新增客户 50、证据 50；PostgreSQL 已恢复 100 条映射，Run `#8` 同步摘要为新增 100、失败 0、dry-run 0。
 - 飞书消息 `om_x100b6a5c096318a4b1ca479dccbd4b8` 已直接更新为“任务结果详情”。公网 `/health` 当前 HTTP 200。
 - 最终全量验证：`513 passed, 7 skipped, 1 warning in 26.51s`；编译检查与 `git diff --check` 通过。
+
+## 2026-07-15 Founder Copilot 与人工审核工作台约定
+
+- 用户要求把多维表格从结果展示页升级为人工审核工作台，通过卡片、审核动作和工作流完成有效、无效、待二审、重新分析和进入跟进。
+- 正式设计见 `docs/FOUNDER_COPILOT.md`；后续 Codex 必读的专用交接见 `docs/FOUNDER_COPILOT_HANDOFF.md`。
+- Founder Copilot 应在完成真实任务时静默观察表达完整性、产品建立、决策推进和协作需要。
+- 默认约每 2–3 天反馈一次，具体时机由 Codex 根据有效证据判断；没有新证据、正在处理线上事故或反馈会干扰执行时可以延后。
+- 反馈一次只指出一个高杠杆改进点，并提供具体事实和可直接复用的表达示例；不得进行心理诊断或空泛评价。
+- 当前只有设计与交接，Base 审核字段、审核记录表和工作流尚未实施，已列入 V17。

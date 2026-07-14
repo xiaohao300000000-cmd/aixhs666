@@ -209,3 +209,14 @@ Run `#8` 后续真实闭环：修复 `select_static.label` 非法字段和表单
 - 同步可见性：结果卡明确区分 live / partial failure / dry-run，并提供客户线索和证据明细入口。
 - 数据一致性：PostgreSQL 已恢复 100 条飞书 record 映射；同一任务卡已更新为结果详情。
 - 自动化验证：`513 passed, 7 skipped, 1 warning in 26.51s`；编译和 diff 检查通过。
+
+## V17 人工审核工作台与 Founder Copilot
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| 产品设计 | DONE | `docs/FOUNDER_COPILOT.md` |
+| Codex 专用交接 | DONE | 约每 2–3 天基于证据反馈，Codex 自主判断时机 |
+| Base 审核工作台 | TODO | 主表审核字段、卡片视图、审核记录表 |
+| Base 工作流 | TODO | 有效、无效、待二审、重新分析、进入跟进 |
+| PostgreSQL 回写 | TODO | 审核动作幂等同步，PostgreSQL 保持事实源 |
+| 成长观察自动化 | DESIGN_ONLY | 先按文档人工执行，不提前增加复杂模型或定时系统 |

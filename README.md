@@ -91,6 +91,8 @@
 - [系统架构](docs/ARCHITECTURE.md)
 - [评论回复运营与安全验收](docs/COMMENT_REPLY_OPERATIONS.md)
 - [飞书交互卡片回调部署与排障](docs/FEISHU_CARD_CALLBACK_RUNBOOK.md)
+- [Founder Copilot：人工审核工作台与伴随式产品教练](docs/FOUNDER_COPILOT.md)
+- [Founder Copilot 专用交接](docs/FOUNDER_COPILOT_HANDOFF.md)
 - [数据模型](docs/DATA_MODEL.md)
 - [开发路线](docs/ROADMAP.md)
 - [验收标准](docs/ACCEPTANCE_TESTS.md)
