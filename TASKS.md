@@ -25,7 +25,7 @@
 | 飞书系统控制台 | DONE：`系统控制台` 表已创建，`run-control-panel-once` 只在人为设置 `开始执行=是，开始` 后执行一次并写回结果 |
 | `/ops` 管理员边界 | DONE_CODE：普通运营入口改为 `/leads`/飞书表，`/ops` 明确为管理员控制台，采集、恢复、重试、创建任务等危险操作增加提示和确认 |
 | Pipeline 自动闭环测试 | DONE：Mock 完整闭环、幂等、失败恢复、API/CLI 已覆盖 |
-| 自动测试通过 | DONE：`pytest -q` 为 305 passed, 4 skipped |
+| 自动测试通过 | DONE：2026-07-14 `pytest -q` 为 494 passed, 7 skipped, 1 warning |
 | SQLite 验证通过 | DONE：默认测试覆盖 |
 | PostgreSQL 验证通过 | DONE：migration、runtime check、`pytest -m postgres -q` 已在本机 PostgreSQL 执行 |
 | 真实小红书验证通过 | DONE：MediaCrawler 持久登录态已创建，live PostgreSQL 已入库 114 内容、309 评论、403 用户 |
@@ -34,11 +34,11 @@
 | 真实飞书验证通过 | DONE：lark-cli 用户身份已验证 Base 建表、建字段、写记录、更新记录、创建视图和读记录 |
 | 完整闭环通过 | PARTIAL：飞书人工审核和话术审批入库已通过；真实小红书私信发送因当前浏览器/网络环境暂时搁置；长期无人值守运行和新数据自动进入 AI 筛选表未完成 |
 
-V15 本机自动测试结果：
+当前本机自动测试结果：
 
 ```text
 .venv/bin/pytest -q
-305 passed, 4 skipped, 1 warning
+494 passed, 7 skipped, 1 warning
 
 .venv/bin/python -m pytest -m postgres -q
 1 skipped, 170 deselected, 1 warning
@@ -462,6 +462,8 @@ AI筛选证据明细：72
 ## V06 真实闭环验收
 
 状态：BLOCKED
+
+2026-07-14 评论回复子项进展：代码已改为远程 Windows CDP + 持久发送任务，回调快速返回，真实控件顺序已修复；Worker 强制要求 `remote_cdp` 和非空 CDP URL，禁止配置遗漏时回退到 Mac 本地浏览器。定向测试 `84 passed, 3 skipped, 1 warning`，全量测试 `494 passed, 7 skipped, 1 warning`。live selector probe 与单条发送仍阻塞于远程发射器 CDP/SSH 当前主动断开，以及测试目标和飞书/Base live 配置未提供。
 
 阻塞：
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from playwright.sync_api import BrowserContext, Error as PlaywrightError, Page, Playwright, TimeoutError as PlaywrightTimeoutError, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Error as PlaywrightError, Page, Playwright, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from collectors.xiaohongshu import selectors
 from collectors.xiaohongshu.exceptions import LoginRequiredError, PageExpiredError, PageTimeoutError, XiaohongshuNetworkError
@@ -32,6 +32,8 @@ class XiaohongshuBrowserConfig:
     page_timeout_ms: int
     manual_login_timeout_ms: int
     proxy_server: str | None
+    browser_mode: str = "local"
+    cdp_url: str | None = None
 
     @classmethod
     def from_env(cls) -> "XiaohongshuBrowserConfig":
@@ -44,6 +46,8 @@ class XiaohongshuBrowserConfig:
             page_timeout_ms=int(os.getenv("XHS_PAGE_TIMEOUT_MS", "30000")),
             manual_login_timeout_ms=int(os.getenv("XHS_MANUAL_LOGIN_TIMEOUT_MS", "120000")),
             proxy_server=_empty_to_none(os.getenv("XHS_PROXY_SERVER")) or _empty_to_none(os.getenv("MEDIACRAWLER_PROXY_SERVER")),
+            browser_mode=_browser_mode(os.getenv("COMMENT_REPLY_BROWSER_MODE")),
+            cdp_url=_empty_to_none(os.getenv("COMMENT_REPLY_CDP_URL")),
         )
 
 
@@ -51,12 +55,16 @@ class XiaohongshuBrowser:
     def __init__(self, config: XiaohongshuBrowserConfig | None = None) -> None:
         self.config = config or XiaohongshuBrowserConfig.from_env()
         self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
         self._context: BrowserContext | None = None
+        self._owns_context = False
 
     def close(self) -> None:
-        if self._context is not None:
+        if self._context is not None and self._owns_context:
             self._context.close()
-            self._context = None
+        self._context = None
+        self._browser = None
+        self._owns_context = False
         if self._playwright is not None:
             self._playwright.stop()
             self._playwright = None
@@ -161,6 +169,17 @@ class XiaohongshuBrowser:
         self.config.screenshot_dir.mkdir(parents=True, exist_ok=True)
         self._playwright = sync_playwright().start()
         browser_type = self._browser_type()
+        if self.config.browser_mode == "remote_cdp":
+            if self.config.browser_engine != "chromium":
+                raise ValueError("remote CDP comment replies require Chromium")
+            if not self.config.cdp_url:
+                raise ValueError("COMMENT_REPLY_CDP_URL is required in remote_cdp mode")
+            self._browser = browser_type.connect_over_cdp(self.config.cdp_url)
+            if not self._browser.contexts:
+                raise RuntimeError("remote CDP browser has no reusable context")
+            self._context = self._browser.contexts[0]
+            self._owns_context = False
+            return self._context
         self._context = browser_type.launch_persistent_context(
             user_data_dir=str(self.config.profile_dir),
             headless=self.config.headless,
@@ -168,6 +187,7 @@ class XiaohongshuBrowser:
             locale="zh-CN",
             proxy={"server": self.config.proxy_server} if self.config.proxy_server else None,
         )
+        self._owns_context = True
         return self._context
 
     def _browser_type(self) -> Any:
@@ -250,6 +270,13 @@ def _browser_engine(value: str | None) -> str:
     if engine not in {"chromium", "webkit"}:
         raise ValueError("XHS_BROWSER_ENGINE must be chromium or webkit")
     return engine
+
+
+def _browser_mode(value: str | None) -> str:
+    mode = (value or "local").strip().casefold()
+    if mode not in {"local", "remote_cdp"}:
+        raise ValueError("COMMENT_REPLY_BROWSER_MODE must be local or remote_cdp")
+    return mode
 
 
 def _wait_for_captured_response(

@@ -288,3 +288,14 @@
 - 真实验收必须使用明确准备的单条目标，先执行不提交的 selector probe，再获得飞书人工对最终文本和本次发送的明确批准。
 - `result_unknown` 一律人工核对，禁止盲目重试；飞书/Base 同步重试不得触发平台重发。
 - 运营、恢复、卡片认领和 Base 配置统一以 `docs/COMMENT_REPLY_OPERATIONS.md` 为准。
+
+## D022 评论回复通过持久任务复用远程 Windows CDP
+
+状态：已确认
+
+规则：
+
+- 飞书“确认发送”回调只完成审批入库并创建 `comment_reply_send` 持久任务，立即返回 `accepted`；不得在回调请求内运行 Playwright。
+- 评论发送 Worker 必须读取 `COMMENT_REPLY_BROWSER_MODE=remote_cdp` 和 `COMMENT_REPLY_CDP_URL`，连接远程 Windows Chrome 的现有 context，不在 Mac 启动本地浏览器。
+- 页面流程必须先定位目标评论并点击“回复”，再等待编辑框和提交按钮出现；selector probe 可点击“回复”展开控件，但禁止填写和提交。
+- `approved_to_send` 表示已人工批准、等待独立任务执行；客户跟进表映射为“评论已批准，等待发送”。

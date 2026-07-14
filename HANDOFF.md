@@ -274,3 +274,19 @@ python -m apps.cli --json run-control-panel-once
 - 独立执行对话不从项目经理对话派生
 - 所需上下文由项目经理写入任务包
 - 2026-07-12 Task 7 评论回复文档与安全验收合同已完成自动化侧整理：新增 `docs/COMMENT_REPLY_OPERATIONS.md` 和默认跳过的 `tests/test_comment_reply_live_contract.py`。当前不得宣称真实小红书评论发送成功；live acceptance 仍阻塞于一个明确准备的测试帖子/评论、只读 selector probe 通过，以及飞书人工对最终文本和本次单条发送的明确批准。`result_unknown` 禁止盲目重试，只能人工核对平台后处理。
+
+## 2026-07-13 评论回复真实验收推进
+
+- 已修复评论 sender 未读取远程 CDP 配置的问题：`COMMENT_REPLY_BROWSER_MODE=remote_cdp` 时使用 Playwright `connect_over_cdp` 复用 Windows Chrome 现有 context，不在 Mac 启动浏览器。
+- 已修正真实页面交互顺序：先点击目标评论“回复”，再等待并定位编辑框和提交按钮；selector probe 只展开回复控件，不填写、不提交。
+- 已把飞书评论回调改为快速审批入队：状态写为 `approved_to_send`，创建 `comment_reply_send` 持久任务并立即返回；独立 Worker 才执行浏览器发送、飞书结果卡片和客户跟进同步。
+- 相关定向回归测试已通过；完整测试结果以本次最终验证记录为准。
+- 真实验收仍未完成：2026-07-13 从 Mac 连接 `100.124.24.8:19223` 时 TCP 可建立，但 DevTools HTTP 返回 empty reply、Playwright 报 socket hang up；SSH 22 端口也被远端立即关闭。当前 `.env` 同时缺少 live test URL/comment ID/content ID/最终批准文本和客户跟进 Base token/table ID。不得宣称真实评论已发送。
+
+## 2026-07-14 评论回复中断恢复与自动化验收
+
+- 已同步 `docs/COMMENT_REPLY_OPERATIONS.md`：飞书回调只写入 `approved_to_send` 并创建 `comment_reply_send`，Worker 独立通过 Windows Chrome CDP 发送，不再描述同步回调发送。
+- diff 审查发现并修复一个安全缺口：评论发送 Worker 现在强制要求 `COMMENT_REPLY_BROWSER_MODE=remote_cdp` 和非空 `COMMENT_REPLY_CDP_URL`；配置遗漏时任务失败且回复保留 `approved_to_send`，不会在 Mac 启动本地浏览器。
+- 全量测试首次收集发现 `integrations.feishu.comment_replies` 顶层导入 `scheduler` 导致循环依赖；已把 `create_task` 改为入队函数内延迟导入，并用 `tests/test_agent_runtime.py` 和评论入队测试验证。
+- 定向测试：`84 passed, 3 skipped, 1 warning`。全量测试：`494 passed, 7 skipped, 1 warning`。
+- 本次没有运行 live selector probe 或真实评论发送。Windows CDP/SSH、专用测试目标、最终批准文本和客户跟进 Base live 配置仍是外部阻塞，Task 7 保持 `DONE_AUTOMATED / LIVE_BLOCKED`。

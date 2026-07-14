@@ -183,35 +183,30 @@ def test_callback_rejects_invalid_verification_token() -> None:
             apply_phrase_review_callback(session, _phrase_payload("evt-1", "cand-1", "approve"), verification_token="expected")
 
 
-@pytest.mark.parametrize("status", ["sent", "failed", "result_unknown"])
-def test_comment_reply_callback_sends_synchronously_and_queues_final_status_sync(
+def test_comment_reply_callback_persists_task_and_returns_without_constructing_sender(
     monkeypatch: pytest.MonkeyPatch,
-    status: str,
 ) -> None:
     calls: list[tuple[str, object]] = []
     card_client = object()
-    sender = object()
     monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_comment_reply_callback", lambda payload: True)
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_outreach_callback", lambda payload: (_ for _ in ()).throw(AssertionError("generic callback inspected")))
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.FeishuIMClient", lambda: card_client)
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.XiaohongshuCommentReplySender", lambda: sender)
 
     class Result:
         reply_id = 17
         applied = True
         duplicate = False
+        status = "approved_to_send"
 
-    def apply_callback(session_factory, payload, *, card_client, sender, verification_token):
-        calls.append(("send", (session_factory, card_client, sender, verification_token)))
-        result = Result()
-        result.status = status
-        return result
+    def enqueue_callback(session_factory, payload, *, verification_token):
+        calls.append(("enqueue", (session_factory, verification_token)))
+        return Result()
 
     def add_task(self, function, *args, **kwargs):
         calls.append(("background", (function, args, kwargs)))
 
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", apply_callback)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.enqueue_comment_reply_callback", enqueue_callback)
     monkeypatch.setattr("fastapi.BackgroundTasks.add_task", add_task)
     response = TestClient(create_app()).post(
         "/feishu/callback/llm-review",
@@ -220,23 +215,22 @@ def test_comment_reply_callback_sends_synchronously_and_queues_final_status_sync
     assert response.status_code == 200
     assert response.json() == {
         "code": 0,
-        "msg": "success",
+        "msg": "accepted",
         "type": "comment_reply",
         "applied": True,
         "duplicate": False,
         "reply_id": 17,
-        "status": status,
+        "status": "approved_to_send",
     }
-    assert [name for name, _ in calls] == ["send", "background"]
-    assert calls[0][1][1:] == (card_client, sender, "token")
-    assert calls[1][1][1] == (17, status)
+    assert [name for name, _ in calls] == ["enqueue", "background"]
+    assert calls[0][1][1] == "token"
+    assert calls[1][1][1] == (17, "approved_to_send")
 
 
 def test_comment_reply_duplicate_returns_persisted_status_and_syncs_followup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_comment_reply_callback", lambda payload: True)
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.FeishuIMClient", object)
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.XiaohongshuCommentReplySender", object)
     queued: list[tuple[object, ...]] = []
 
     class Result:
@@ -245,7 +239,7 @@ def test_comment_reply_duplicate_returns_persisted_status_and_syncs_followup(mon
         applied = False
         duplicate = True
 
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", lambda *args, **kwargs: Result())
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.enqueue_comment_reply_callback", lambda *args, **kwargs: Result())
     monkeypatch.setattr("fastapi.BackgroundTasks.add_task", lambda self, function, *args, **kwargs: queued.append(args))
     response = TestClient(create_app()).post(
         "/feishu/callback/llm-review",
@@ -261,7 +255,7 @@ def test_comment_reply_duplicate_returns_persisted_status_and_syncs_followup(mon
 def test_comment_reply_invalid_callback_rejects_before_ack(monkeypatch: pytest.MonkeyPatch, error: str) -> None:
     monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_comment_reply_callback", lambda payload: True)
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", lambda *args, **kwargs: (_ for _ in ()).throw(ValueError(error)))
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.enqueue_comment_reply_callback", lambda *args, **kwargs: (_ for _ in ()).throw(ValueError(error)))
     monkeypatch.setattr("fastapi.BackgroundTasks.add_task", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("invalid callback must not queue work")))
     response = TestClient(create_app()).post(
         "/feishu/callback/llm-review",
@@ -278,7 +272,7 @@ def test_comment_reply_callback_fails_closed_without_verification_token(monkeypa
     else:
         monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", configured)
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.is_comment_reply_callback", lambda payload: True)
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("sender boundary must not be called")))
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.enqueue_comment_reply_callback", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("enqueue boundary must not be called")))
     response = TestClient(create_app()).post(
         "/feishu/callback/llm-review",
         json={"event": {"action": {"name": "confirm_comment_reply_18"}}},
@@ -290,7 +284,7 @@ def test_comment_reply_callback_fails_closed_without_verification_token(monkeypa
 def test_comment_reply_followup_sync_failure_never_resends(monkeypatch: pytest.MonkeyPatch) -> None:
     send_calls = 0
     monkeypatch.setattr("apps.api.routes.feishu_callbacks.push_customer_followup", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("sync failed")))
-    monkeypatch.setattr("apps.api.routes.feishu_callbacks.apply_comment_reply_callback", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("followup recovery must not resend")))
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.enqueue_comment_reply_callback", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("followup recovery must not enqueue or resend")))
     from apps.api.routes.feishu_callbacks import _sync_comment_reply_followup
 
     _sync_comment_reply_followup(19, "result_unknown")

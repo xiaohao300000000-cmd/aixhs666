@@ -28,13 +28,14 @@
 
 长期目标是形成一套可迁移到装修、留学、移民、本地生活等行业的“公开市场需求感知引擎”。
 
-2026-07-09 当前主线：
+2026-07-14 当前工作区：
 
 - GitHub 主分支：`main`
-- 最新提交：`f4e24c9 fix: defer outreach sending after approval`
-- 完整测试：`305 passed, 4 skipped, 1 warning`
+- 远端 `main` 最新提交：`26931d7 Merge pull request #1 from xiaohao300000000-cmd/feat/approved-comment-replies`
+- 当前未提交工作区完整测试：`494 passed, 7 skipped, 1 warning`
 - 当前不再把新更新只推到功能分支；主线代码已合并并推送到 `origin/main`。
 - 小红书真实私信发送暂时搁置：当前本机浏览器/网络环境无法稳定打开小红书私信页，且用户要求不要改 Clash。飞书“发送”按钮已改为只审批入库为 `approved_to_send`，不再在飞书回调线程里直接触发小红书发送。后续等浏览器/网络问题解决后，再通过独立发送入口或 worker 执行真实发送。
+- 小红书评论回复同样通过独立持久任务执行：飞书确认后快速返回，Worker 复用 Tailscale 上的 Windows Chrome CDP；不在 Mac 本机另开浏览器。真实单条验收必须先恢复远程发射器并完成只读 selector probe。
 
 ## 2. 核心价值
 
@@ -208,7 +209,7 @@ Codex 与 Claude Code 的切换规则见 `docs/AGENT_HANDOFF.md`。
 结果：
 
 ```text
-305 passed, 4 skipped, 1 warning
+494 passed, 7 skipped, 1 warning
 ```
 
 主采集后端固定为 MediaCrawler：

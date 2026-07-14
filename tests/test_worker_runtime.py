@@ -11,7 +11,7 @@ from apps.worker.main import WorkerConfig, WorkerRunner, build_parser
 from collectors import MockPlatformAdapter
 from scheduler import TaskStatus, claim_next_task, create_task
 from storage.database import Base
-from storage.models import CollectionTask, Content, DiscoveryRelation, PublicProfile, Query, Snapshot
+from storage.models import CollectionTask, Content, DiscoveryRelation, LeadCommentReply, PublicProfile, Query, Snapshot
 
 
 def test_worker_once_processes_search_task_and_commits(tmp_path: Path) -> None:
@@ -125,6 +125,169 @@ def test_worker_processes_profile_task(tmp_path: Path) -> None:
         snapshot = session.scalar(select(Snapshot).where(Snapshot.entity_type == "profile"))
         assert snapshot is not None
         assert Path(snapshot.object_storage_path).exists()
+
+
+def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: Path) -> None:
+    factory = _session_factory()
+    calls: list[tuple[int, str | None]] = []
+    monkeypatch.setenv("COMMENT_REPLY_BROWSER_MODE", "remote_cdp")
+    monkeypatch.setenv("COMMENT_REPLY_CDP_URL", "http://100.124.24.8:19223")
+    with factory() as session:
+        reply = LeadCommentReply(
+            screening_result_id=1,
+            target_comment_id=1,
+            target_platform_comment_id="comment-1",
+            target_content_id=1,
+            target_platform_content_id="note-1",
+            draft_text="草稿",
+            approved_text="最终回复",
+            status="approved_to_send",
+        )
+        session.add(reply)
+        session.flush()
+        create_task(
+            session,
+            task_type="comment_reply_send",
+            platform="xhs",
+            target_id=str(reply.id),
+            payload_json={"update_token": "card-token"},
+            max_attempts=1,
+        )
+        session.commit()
+
+    class Result:
+        status = "sent"
+
+    def execute(session_factory, *, reply_id, update_token, card_client, sender):
+        del session_factory, card_client, sender
+        calls.append((reply_id, update_token))
+        with factory() as session:
+            reply = session.get(LeadCommentReply, reply_id)
+            assert reply is not None
+            reply.status = "sent"
+            session.commit()
+        return Result()
+
+    monkeypatch.setattr("apps.worker.comment_reply_send.execute_approved_comment_reply", execute)
+    monkeypatch.setattr("apps.worker.comment_reply_send.push_customer_followup", lambda *args, **kwargs: None)
+    monkeypatch.setattr("apps.worker.comment_reply_send.FeishuIMClient", object)
+    monkeypatch.setattr("apps.worker.comment_reply_send.XiaohongshuCommentReplySender", lambda config: object())
+
+    runner = _runner(factory, tmp_path)
+    first = runner.run_once()
+    second = runner.run_once()
+
+    assert first is not None
+    assert second is None
+    assert calls == [(1, "card-token")]
+    with factory() as session:
+        task = session.get(CollectionTask, first.id)
+        assert task is not None
+        assert task.status == TaskStatus.COMPLETED.value
+        reply = session.get(LeadCommentReply, 1)
+        assert reply is not None
+        assert reply.status == "sent"
+
+
+def test_worker_refuses_local_browser_for_comment_reply_send(monkeypatch, tmp_path: Path) -> None:
+    factory = _session_factory()
+    calls: list[int] = []
+    monkeypatch.setenv("COMMENT_REPLY_BROWSER_MODE", "local")
+    monkeypatch.delenv("COMMENT_REPLY_CDP_URL", raising=False)
+    with factory() as session:
+        reply = LeadCommentReply(
+            screening_result_id=1,
+            target_comment_id=1,
+            target_platform_comment_id="comment-1",
+            target_content_id=1,
+            target_platform_content_id="note-1",
+            draft_text="草稿",
+            approved_text="最终回复",
+            status="approved_to_send",
+        )
+        session.add(reply)
+        session.flush()
+        create_task(
+            session,
+            task_type="comment_reply_send",
+            platform="xhs",
+            target_id=str(reply.id),
+            max_attempts=1,
+        )
+        session.commit()
+
+    def execute(*args, **kwargs):
+        del args, kwargs
+        calls.append(1)
+        return type("Result", (), {"status": "sent"})()
+
+    monkeypatch.setattr("apps.worker.comment_reply_send.execute_approved_comment_reply", execute)
+    monkeypatch.setattr("apps.worker.comment_reply_send.push_customer_followup", lambda *args, **kwargs: None)
+
+    runner = _runner(factory, tmp_path)
+    processed = runner.run_once()
+
+    assert processed is not None
+    assert calls == []
+    with factory() as session:
+        task = session.get(CollectionTask, processed.id)
+        assert task is not None
+        assert task.status == TaskStatus.FAILED.value
+        assert task.last_error == "comment reply send tasks require COMMENT_REPLY_BROWSER_MODE=remote_cdp"
+        reply = session.get(LeadCommentReply, 1)
+        assert reply is not None
+        assert reply.status == "approved_to_send"
+
+
+def test_worker_requires_remote_cdp_url_for_comment_reply_send(monkeypatch, tmp_path: Path) -> None:
+    factory = _session_factory()
+    calls: list[int] = []
+    monkeypatch.setenv("COMMENT_REPLY_BROWSER_MODE", "remote_cdp")
+    monkeypatch.delenv("COMMENT_REPLY_CDP_URL", raising=False)
+    with factory() as session:
+        reply = LeadCommentReply(
+            screening_result_id=1,
+            target_comment_id=1,
+            target_platform_comment_id="comment-1",
+            target_content_id=1,
+            target_platform_content_id="note-1",
+            draft_text="草稿",
+            approved_text="最终回复",
+            status="approved_to_send",
+        )
+        session.add(reply)
+        session.flush()
+        create_task(
+            session,
+            task_type="comment_reply_send",
+            platform="xhs",
+            target_id=str(reply.id),
+            max_attempts=1,
+        )
+        session.commit()
+
+    def execute(*args, **kwargs):
+        del args, kwargs
+        calls.append(1)
+        return type("Result", (), {"status": "sent"})()
+
+    monkeypatch.setattr("apps.worker.comment_reply_send.execute_approved_comment_reply", execute)
+    monkeypatch.setattr("apps.worker.comment_reply_send.push_customer_followup", lambda *args, **kwargs: None)
+    monkeypatch.setattr("apps.worker.comment_reply_send.XiaohongshuCommentReplySender", lambda config: object())
+
+    runner = _runner(factory, tmp_path)
+    processed = runner.run_once()
+
+    assert processed is not None
+    assert calls == []
+    with factory() as session:
+        task = session.get(CollectionTask, processed.id)
+        assert task is not None
+        assert task.status == TaskStatus.FAILED.value
+        assert task.last_error == "comment reply send tasks require COMMENT_REPLY_CDP_URL"
+        reply = session.get(LeadCommentReply, 1)
+        assert reply is not None
+        assert reply.status == "approved_to_send"
 
 
 def test_worker_cli_parser_supports_once_and_worker_id() -> None:

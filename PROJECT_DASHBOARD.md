@@ -20,7 +20,7 @@
 | 执行会话 | 主控单会话 |
 | 当前分支 | `main` |
 | 阻塞数量 | 4 |
-| 最后更新 | 2026-07-09：远端 Windows/Tailscale Chrome CDP 已接通；`/leads` 客户判断工作台、飞书字段重排和 `/ops` 管理员边界保持可用；全量测试 305 passed, 4 skipped |
+| 最后更新 | 2026-07-14：评论回复远程 Windows CDP + 独立持久任务已通过全量自动测试（494 passed, 7 skipped）；Worker 禁止本地浏览器回退；live 验收仍因 Windows CDP/SSH 断开及测试目标配置缺失而阻塞 |
 
 ## 阶段进度
 

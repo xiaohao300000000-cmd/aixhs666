@@ -50,16 +50,20 @@ class XiaohongshuCommentReplySender(CommentReplySender):
             browser._handle_login_or_expired(page, html, artifact_name=f"comment-reply-{platform_comment_id}")
             _raise_for_captcha(html)
             target = _target_container(page, platform_comment_id)
-            _require_one(target.locator(selectors.COMMENT_REPLY_TRIGGER_SELECTOR), "target reply trigger")
-            _require_one(target.locator(selectors.COMMENT_REPLY_EDITOR_SELECTOR), "target reply editor")
+            trigger = target.locator(selectors.COMMENT_REPLY_TRIGGER_SELECTOR)
+            _require_one(trigger, "target reply trigger")
+            trigger.first.click(timeout=browser.config.page_timeout_ms)
+
+            editor = target.locator(selectors.COMMENT_REPLY_EDITOR_SELECTOR)
+            editor.first.wait_for(state="visible", timeout=browser.config.page_timeout_ms)
+            _require_one(editor, "target reply editor")
             submit = target.locator(selectors.COMMENT_REPLY_SUBMIT_SELECTOR)
+            submit.first.wait_for(state="visible", timeout=browser.config.page_timeout_ms)
             _require_one(submit, "target reply submit control")
             if not submit.first.is_visible(timeout=browser.config.page_timeout_ms):
                 raise XiaohongshuCommentReplyDefiniteFailure("target reply submit control is not visible")
 
-            target.locator(selectors.COMMENT_REPLY_TRIGGER_SELECTOR).first.click(timeout=browser.config.page_timeout_ms)
-            editor = target.locator(selectors.COMMENT_REPLY_EDITOR_SELECTOR).first
-            editor.fill(text, timeout=browser.config.page_timeout_ms)
+            editor.first.fill(text, timeout=browser.config.page_timeout_ms)
             previous_target_replies = Counter(target.locator(selectors.COMMENT_REPLY_VISIBLE_TEXT_SELECTOR).all_inner_texts())
 
             # From this point a Playwright click failure may mean submission reached XHS.
@@ -128,7 +132,13 @@ def _target_container(page: Any, platform_comment_id: str) -> Any:
     return next(locator.first for locator in matches if locator.count() == 1)
 
 
-def inspect_comment_reply_selectors(page: Any, *, platform_comment_id: str) -> dict[str, int]:
+def inspect_comment_reply_selectors(
+    page: Any,
+    *,
+    platform_comment_id: str,
+    expand_reply: bool = False,
+    timeout_ms: int = 30_000,
+) -> dict[str, int]:
     """Inspect only; real platform acceptance is required before live sending."""
     escaped_id = _css_attribute_value(platform_comment_id)
     report: dict[str, int] = {}
@@ -137,9 +147,10 @@ def inspect_comment_reply_selectors(page: Any, *, platform_comment_id: str) -> d
         container = page.locator(selector)
         report[selector] = container.count()
         if container.count() == 1:
-            report[f"{selector} >> {selectors.COMMENT_REPLY_TRIGGER_SELECTOR}"] = container.locator(
-                selectors.COMMENT_REPLY_TRIGGER_SELECTOR
-            ).count()
+            trigger = container.locator(selectors.COMMENT_REPLY_TRIGGER_SELECTOR)
+            report[f"{selector} >> {selectors.COMMENT_REPLY_TRIGGER_SELECTOR}"] = trigger.count()
+            if expand_reply and trigger.count() == 1:
+                trigger.first.click(timeout=timeout_ms)
             report[f"{selector} >> {selectors.COMMENT_REPLY_EDITOR_SELECTOR}"] = container.locator(
                 selectors.COMMENT_REPLY_EDITOR_SELECTOR
             ).count()

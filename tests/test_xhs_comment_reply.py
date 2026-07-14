@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
+from collectors.xiaohongshu.browser import XiaohongshuBrowser, XiaohongshuBrowserConfig
 from collectors.xiaohongshu.comment_reply import XiaohongshuCommentReplySender, inspect_comment_reply_selectors
 from collectors.xiaohongshu import selectors
 from collectors.xiaohongshu.exceptions import LoginRequiredError, XiaohongshuCommentReplyDefiniteFailure
@@ -42,15 +43,19 @@ class FakeLocator:
         assert timeout == self.page.config.page_timeout_ms
         return not (self.kind == "submit" and self.page.submit_hidden)
 
+    def wait_for(self, *, state: str, timeout: int) -> None:
+        assert state == "visible"
+        assert timeout == self.page.config.page_timeout_ms
+
     def locator(self, selector: str) -> FakeLocator:
         assert self.target_id is not None, "global locator scoping is forbidden"
         if selector == self.page.reply_button_selector:
             return FakeLocator(self.page, "reply", target_id=self.target_id, count=1)
         if selector == self.page.editor_selector:
-            count = self.page.editor_count if self.target_id == TARGET_ID else 0
+            count = self.page.editor_count if self.target_id == TARGET_ID and self.page.controls_are_available else 0
             return FakeLocator(self.page, "editor", target_id=self.target_id, count=count)
         if selector == self.page.submit_selector:
-            count = self.page.submit_count_available if self.target_id == TARGET_ID else 0
+            count = self.page.submit_count_available if self.target_id == TARGET_ID and self.page.controls_are_available else 0
             return FakeLocator(self.page, "submit", target_id=self.target_id, count=count)
         if selector == self.page.visible_reply_selector:
             count = len(self.page.target_reply_texts) if self.target_id == TARGET_ID else 0
@@ -97,6 +102,7 @@ class FakePage:
     login_required: bool = False
     reject_response: bool = False
     target_reply_texts: list[str] = field(default_factory=lambda: ["已有回复"])
+    controls_after_reply_click: bool = False
     submitted_text: str | None = None
     replied_comment_id: str | None = None
     submit_clicks: int = 0
@@ -107,6 +113,10 @@ class FakePage:
     editor_selector: str = "[data-xhs-role='comment-reply-editor']"
     submit_selector: str = "[data-xhs-role='comment-reply-submit']"
     visible_reply_selector: str = "[data-xhs-role='comment-reply-text']"
+
+    @property
+    def controls_are_available(self) -> bool:
+        return not self.controls_after_reply_click or self.replied_comment_id == TARGET_ID
 
     def goto(self, url: str, *, wait_until: str, timeout: int) -> None:
         assert url == "https://www.xiaohongshu.com/explore/xhs-note-001?xsec_token=stored"
@@ -191,6 +201,78 @@ def test_sender_uses_canonical_stored_target_url_and_correlated_response() -> No
     assert page.replied_comment_id == TARGET_ID
     assert page.submitted_text == TEXT
     assert page.submit_clicks == 1
+
+
+def test_sender_waits_for_editor_and_submit_after_clicking_reply() -> None:
+    page = FakePage(controls_after_reply_click=True)
+
+    result = _reply(page)
+
+    assert result.outcome == "sent"
+    assert page.replied_comment_id == TARGET_ID
+    assert page.submit_clicks == 1
+
+
+def test_selector_probe_expands_target_reply_without_filling_or_submitting() -> None:
+    page = FakePage(controls_after_reply_click=True)
+
+    report = inspect_comment_reply_selectors(
+        page,
+        platform_comment_id=TARGET_ID,
+        expand_reply=True,
+        timeout_ms=page.config.page_timeout_ms,
+    )
+
+    assert page.replied_comment_id == TARGET_ID
+    assert page.submitted_text is None
+    assert page.submit_clicks == 0
+    assert any(selector.endswith(selectors.COMMENT_REPLY_EDITOR_SELECTOR) and count == 1 for selector, count in report.items())
+    assert any(selector.endswith(selectors.COMMENT_REPLY_SUBMIT_SELECTOR) and count == 1 for selector, count in report.items())
+
+
+def test_browser_config_uses_remote_comment_reply_cdp(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COMMENT_REPLY_BROWSER_MODE", "remote_cdp")
+    monkeypatch.setenv("COMMENT_REPLY_CDP_URL", "http://100.124.24.8:19223")
+
+    config = XiaohongshuBrowserConfig.from_env()
+
+    assert config.browser_mode == "remote_cdp"
+    assert config.cdp_url == "http://100.124.24.8:19223"
+
+
+def test_browser_remote_cdp_reuses_existing_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+    existing_context = type("Context", (), {"close": lambda self: None})()
+    remote_browser = type("Browser", (), {"contexts": [existing_context], "close": lambda self: None})()
+
+    class Chromium:
+        def connect_over_cdp(self, url: str):
+            calls.append(("connect_over_cdp", url))
+            return remote_browser
+
+        def launch_persistent_context(self, **kwargs):
+            raise AssertionError("remote comment reply must not launch a local browser")
+
+    playwright = type("Playwright", (), {"chromium": Chromium(), "webkit": object(), "stop": lambda self: None})()
+    starter = type("Starter", (), {"start": lambda self: playwright})()
+    monkeypatch.setattr("collectors.xiaohongshu.browser.sync_playwright", lambda: starter)
+    config = XiaohongshuBrowserConfig(
+        profile_dir=Path(".runtime/xhs-profile"),
+        browser_engine="chromium",
+        headless=False,
+        snapshot_dir=Path(".runtime/snapshots"),
+        screenshot_dir=Path(".runtime/screenshots"),
+        page_timeout_ms=5000,
+        manual_login_timeout_ms=5000,
+        proxy_server=None,
+        browser_mode="remote_cdp",
+        cdp_url="http://100.124.24.8:19223",
+    )
+
+    browser = XiaohongshuBrowser(config)
+
+    assert browser._ensure_context() is existing_context
+    assert calls == [("connect_over_cdp", "http://100.124.24.8:19223")]
 
 
 def test_sender_falls_back_to_constructed_url_only_when_target_url_absent() -> None:
@@ -333,7 +415,7 @@ def test_live_selector_probe_is_opt_in_and_never_submits() -> None:
             page = browser.new_page()
             try:
                 page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
-                report = inspect_comment_reply_selectors(page, platform_comment_id=target_id)
+                report = inspect_comment_reply_selectors(page, platform_comment_id=target_id, expand_reply=True)
             finally:
                 browser.close()
     except PlaywrightError as exc:

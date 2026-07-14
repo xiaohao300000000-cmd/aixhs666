@@ -37,7 +37,12 @@ def test_comment_reply_live_acceptance_requires_probe_and_explicit_feishu_approv
     try:
         page = browser._new_page()
         page.goto(target_url, wait_until="domcontentloaded", timeout=browser.config.page_timeout_ms)
-        report = inspect_comment_reply_selectors(page, platform_comment_id=target_comment_id)
+        report = inspect_comment_reply_selectors(
+            page,
+            platform_comment_id=target_comment_id,
+            expand_reply=True,
+            timeout_ms=browser.config.page_timeout_ms,
+        )
     except PlaywrightError as exc:
         pytest.fail(f"selector probe could not complete before live send: {exc}")
     finally:

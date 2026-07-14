@@ -7,8 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
-from collectors.xiaohongshu.comment_reply import XiaohongshuCommentReplySender
-from integrations.feishu.comment_replies import apply_comment_reply_callback, is_comment_reply_callback
+from integrations.feishu.comment_replies import enqueue_comment_reply_callback, is_comment_reply_callback
 from integrations.feishu.im import FeishuIMClient
 from integrations.feishu.llm_review import (
     LLMReviewCallbackError,
@@ -69,11 +68,9 @@ async def llm_review_callback(
             logger.error("Feishu comment reply callback rejected: FEISHU_VERIFICATION_TOKEN is not configured")
             raise HTTPException(status_code=503, detail="FEISHU_VERIFICATION_TOKEN is required for comment reply callbacks")
         try:
-            result = apply_comment_reply_callback(
+            result = enqueue_comment_reply_callback(
                 SessionLocal,
                 payload,
-                card_client=FeishuIMClient(),
-                sender=XiaohongshuCommentReplySender(),
                 verification_token=verification_token,
             )
         except ValueError as exc:
@@ -82,7 +79,7 @@ async def llm_review_callback(
         background_tasks.add_task(_sync_comment_reply_followup, result.reply_id, result.status)
         return {
             "code": 0,
-            "msg": "success",
+            "msg": "accepted",
             "type": "comment_reply",
             "applied": result.applied,
             "duplicate": result.duplicate,

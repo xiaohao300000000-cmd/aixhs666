@@ -33,6 +33,7 @@ OPERATOR_STATUSES = frozenset({"待跟进", "待联系", "暂缓跟进"})
 ALLOWED_HUMAN_STATUSES = TERMINAL_HUMAN_STATUSES | OPERATOR_STATUSES
 AUTOMATIC_STATUSES = {
     "pending_review": "评论待审核",
+    "approved_to_send": "评论已批准，等待发送",
     "sending": "评论发送中",
     "sent": "已评论引导，等待客户私信",
     "failed": "评论发送失败",

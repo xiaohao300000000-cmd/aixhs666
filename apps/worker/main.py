@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from apps.worker.comment_collection import COMMENT_TASK_TYPES, run_comment_task
+from apps.worker.comment_reply_send import COMMENT_REPLY_SEND_TASK_TYPES, run_comment_reply_send_task
 from apps.worker.detail_collection import DETAIL_TASK_TYPES, run_detail_task
 from apps.worker.profile_collection import PROFILE_TASK_TYPES, run_profile_task
 from apps.worker.resume import start_partial_task
@@ -217,6 +218,12 @@ class WorkerRunner:
                 task=task,
                 adapter=self.adapter,
                 snapshot_root=self.config.snapshot_root,
+            )
+        if task.task_type in COMMENT_REPLY_SEND_TASK_TYPES:
+            return run_comment_reply_send_task(
+                session,
+                task=task,
+                session_factory=self.session_factory,
             )
         fail_task(session, task.id, error=f"unsupported task type: {task.task_type}")
         raise ValueError(f"unsupported task type: {task.task_type}")

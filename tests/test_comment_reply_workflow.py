@@ -24,13 +24,14 @@ from integrations.feishu.comment_replies import (
     build_comment_reply_approval_card,
     adopt_reconciled_comment_reply_card,
     create_comment_reply_for_valid_screening,
+    enqueue_comment_reply_callback,
     confirm_comment_reply_not_sent,
     is_comment_reply_callback,
     reconcile_stale_comment_reply,
 )
 from services.comment_reply_generation import CommentReplyDraft
 from storage.database import Base
-from storage.models import Comment, Content, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
+from storage.models import CollectionTask, Comment, Content, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
 
 
 class FakeCommentReplyGenerator:
@@ -139,6 +140,25 @@ def test_valid_comment_screening_creates_one_card(factory: sessionmaker[Session]
     assert generator.calls == 1
     assert len(card_client.sent_cards) == 1
     assert "确认回复" in str(card_client.sent_cards[0]["card"])
+
+
+def test_comment_reply_callback_enqueues_one_persistent_send_task(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory)
+
+    first = enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
+    duplicate = enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
+
+    assert first.status == "approved_to_send"
+    assert first.applied is True
+    assert duplicate.duplicate is True
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        tasks = list(session.scalars(select(CollectionTask).where(CollectionTask.task_type == "comment_reply_send")))
+    assert reply is not None
+    assert reply.status == "approved_to_send"
+    assert reply.attempt_count == 0
+    assert len(tasks) == 1
+    assert tasks[0].target_id == str(reply_id)
 
 
 def test_creation_requires_accepted_valid_comment_with_actual_rows(factory: sessionmaker[Session]) -> None:
