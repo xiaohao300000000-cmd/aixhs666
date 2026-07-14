@@ -301,3 +301,4 @@ python -m apps.cli --json run-control-panel-once
 - 最终自动化证据见 `docs/reports/V16_TASK_PRODUCTIZATION_VERIFICATION.md`。
 - 最终全量测试：`504 passed, 7 skipped, 1 warning in 25.81s`；Alembic head 为 `0016_skill_runs`；`git diff --check` 与编译检查通过。
 - 2026-07-14 已完成真实安全验收：Run `#1`/Task `#357` 处理 3 条历史评论，结果为有效需求 1、待确认 3；飞书消息 `om_x100b6a569a7d60a4b04c75cc36b0d05` 同卡片更新成功，AI 审核 Base 新增客户 1、证据 1。按钮公网回调仍待开发者后台 URL/token 配置。
+- 2026-07-15 修正飞书可见性验收：旧 chat 是单人私群，用户未实际看到；已改用 bot P2P `oc_db1d787a662278e05ce8a5c035a66ee0`，并重新发送任务中心和 Run #1 完成卡。后续不得把“API 可读”直接等同于“用户已收到”。

@@ -47,3 +47,11 @@
 - 从飞书重新读取消息确认 `updated=true`，标题为“任务完成”，结果数字与 PostgreSQL 一致。
 - 本次未访问小红书、未运行 selector probe、未发送评论或私信。
 - 未完成的外部配置：飞书开发者后台回调 URL 与 `FEISHU_VERIFICATION_TOKEN` 尚未配置，因此真实按钮点击回调未纳入本次验收。
+
+### Visibility Correction — 2026-07-15
+
+- 原目标 `oc_1623b52748f4cf5cfb6f6e9174008f55` 实际是名为“张兆尊”的私有单人群，并非正常机器人单聊；消息虽可由 API 读取，但用户未在当前会话列表看到。
+- 通过 bot 对用户 `open_id` 直发后建立真实 P2P 会话 `oc_db1d787a662278e05ce8a5c035a66ee0`。
+- 在新会话真实读取确认三条可见消息：测试文本 `om_x100b6a52a2b3c8a4b3b4af6f8625da5`、任务中心 `om_x100b6a52a3f2c0a0b2a11638703fcbd`、Run #1 完成结果 `om_x100b6a52a19c6ca4b14bcd52009fe1d`。
+- 本机 `.env` 已把默认 chat 改为该 P2P 会话，并把 `FEISHU_LARK_CLI_AS` 改为 `bot`。
+- 后续验收必须同时满足“目标用户 P2P/群成员正确”和“用户身份读取到消息”，不得仅凭发送 API 成功判定用户已收到。
