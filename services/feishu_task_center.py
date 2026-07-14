@@ -20,11 +20,9 @@ def _card(title: str, elements: list[dict[str, Any]], template: str = "blue") ->
 
 
 def _button(text: str, name: str, *, primary: bool = False, form_submit: bool = False) -> dict[str, Any]:
-    item: dict[str, Any] = {"tag": "button", "name": name, "text": {"tag": "plain_text", "content": text}, "type": "primary_filled" if primary else "default"}
+    item: dict[str, Any] = {"tag": "button", "name": name, "text": {"tag": "plain_text", "content": text}, "type": "primary_filled" if primary else "default", "behaviors": [{"type": "callback", "value": {"action": name}}]}
     if form_submit:
         item["form_action_type"] = "submit"
-    else:
-        item["behaviors"] = [{"type": "callback", "value": {"action": name}}]
     return item
 
 
@@ -35,10 +33,10 @@ def build_task_catalog_card() -> dict[str, Any]:
 def build_task_form_card(run: SkillRun) -> dict[str, Any]:
     campaigns = list_campaign_options()
     elements = [{"tag": "markdown", "content": f"**任务 #{run.id}** · 历史线索智能筛选"}, {"tag": "form", "name": f"skill_form_{run.id}", "elements": [
-        {"tag": "select_static", "name": "data_range", "label": {"tag": "plain_text", "content": "数据范围"}, "required": True, "initial_option": "all", "options": [{"text": {"tag": "plain_text", "content": "全部历史数据"}, "value": "all"}, {"text": {"tag": "plain_text", "content": "最近30天"}, "value": "last_30_days"}, {"text": {"tag": "plain_text", "content": "最近90天"}, "value": "last_90_days"}]},
-        {"tag": "select_static", "name": "source_types", "label": {"tag": "plain_text", "content": "数据类型"}, "required": True, "initial_option": "content_and_comment", "options": [{"text": {"tag": "plain_text", "content": "帖子和评论"}, "value": "content_and_comment"}, {"text": {"tag": "plain_text", "content": "仅帖子"}, "value": "content_only"}, {"text": {"tag": "plain_text", "content": "仅评论"}, "value": "comment_only"}]},
+        {"tag": "select_static", "name": "data_range", "placeholder": {"tag": "plain_text", "content": "数据范围"}, "required": True, "initial_option": "all", "options": [{"text": {"tag": "plain_text", "content": "全部历史数据"}, "value": "all"}, {"text": {"tag": "plain_text", "content": "最近30天"}, "value": "last_30_days"}, {"text": {"tag": "plain_text", "content": "最近90天"}, "value": "last_90_days"}]},
+        {"tag": "select_static", "name": "source_types", "placeholder": {"tag": "plain_text", "content": "数据类型"}, "required": True, "initial_option": "content_and_comment", "options": [{"text": {"tag": "plain_text", "content": "帖子和评论"}, "value": "content_and_comment"}, {"text": {"tag": "plain_text", "content": "仅帖子"}, "value": "content_only"}, {"text": {"tag": "plain_text", "content": "仅评论"}, "value": "comment_only"}]},
         {"tag": "input", "name": "limit", "label": {"tag": "plain_text", "content": "处理数量（1-500）"}, "default_value": "50", "required": True},
-        {"tag": "select_static", "name": "campaign_id", "label": {"tag": "plain_text", "content": "Campaign"}, "required": True, "initial_option": campaigns[0].campaign_id, "options": [{"text": {"tag": "plain_text", "content": item.name}, "value": item.campaign_id} for item in campaigns]},
+        {"tag": "select_static", "name": "campaign_id", "placeholder": {"tag": "plain_text", "content": "Campaign"}, "required": True, "initial_option": campaigns[0].campaign_id, "options": [{"text": {"tag": "plain_text", "content": item.name}, "value": item.campaign_id} for item in campaigns]},
         _button("预览任务", f"skill_preview_{run.id}", primary=True, form_submit=True),
     ]}]
     return _card("历史线索智能筛选 - 填写参数", elements)

@@ -64,7 +64,7 @@
 - 飞书签名算法已修正为 `SHA256(timestamp + nonce + encrypt_key + raw_body)`，并支持外层 `encrypt` AES-CBC 解密。
 - 修复后本地原路由探针 HTTP 200 / 0.05 秒，公网原地址探针 HTTP 200 / 0.81 秒，均返回完整 Card 2.0 参数表单；探针事件幂等绑定 Run `#6`。
 - 新增 `apps/feishu_task_center_listener.py` 和 `apps/worker/skill_run_service.py`，分别负责快速卡片事件持久化和只领取 `skill_run_execute`，不触碰小红书任务。
-- 最新全量测试：`509 passed, 7 skipped, 1 warning in 25.97s`。
+- 最新全量测试：`510 passed, 7 skipped, 1 warning in 26.29s`。
 - `lulu大王` 仅出现在旧私群成员列表中，不能据此推断它是历史回调应用；此前关于复用 `lulu大王` 的结论错误并已撤回。
 - 当前唯一证实的发卡应用是 lark-cli 应用 `cli_aac1e28d6a399bfc`。开发者后台截图确认继续使用原 HTTP 回调地址；不得建议切换回调模式或修改旧配置。
 - 协议和公网链路已经自动化验证；按钮闭环仍需用户进行一次真实点击复验后才能标记 LIVE DONE。
@@ -79,3 +79,12 @@
 - PostgreSQL 创建 `Skill Run #8`，状态 `draft`，真实用户、chat 和 message 绑定正确。
 - 结论：代码层根因包括动作解析和响应格式；最终无请求问题来自失效/异常的 localtunnel 会话。开发验收必须同时检查应用配置、线上版本、API 日志和隧道会话。
 - 专门 Runbook：`docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。
+
+### Full Run Live Success — 2026-07-15
+
+- 修复参数表单：`select_static` 删除非法 `label`，使用 `placeholder`；飞书真实 PATCH 校验通过。
+- 修复表单提交：按钮同时使用 `form_action_type=submit` 和 `behaviors.callback`。
+- Run `#8` 真实预览 50 条并确认运行，创建 Worker task `#358`。
+- Worker 完成 50/50，Run 状态 `succeeded`；有效需求 0、高意向 0、待确认 50，飞书同步 dry-run 失败 0。
+- 修复 Worker 入口 `.env` 加载和应用消息 bot 身份 PATCH；最终同一消息显示任务完成卡。
+- localtunnel 在流程中曾返回 HTTP 503，重启相同 subdomain 后恢复；这是当前唯一明确的长期运行阻塞。

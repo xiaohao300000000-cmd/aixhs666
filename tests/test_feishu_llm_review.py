@@ -371,7 +371,7 @@ def test_feishu_im_lark_cli_transport_sends_and_updates_cards() -> None:
     assert "--msg-type" in calls[0][0]
     assert calls[1][0][:4] == ["lark-cli", "api", "POST", "/open-apis/interactive/v1/card/update"]
     assert calls[2][0][:4] == ["lark-cli", "api", "PATCH", "/open-apis/im/v1/messages/om_cli_1"]
-    assert calls[2][0][calls[2][0].index("--as") + 1] == "user"
+    assert calls[2][0][calls[2][0].index("--as") + 1] == "bot"
 
 
 def _seed_pending_screening(

@@ -29,12 +29,16 @@
 - 成功卡片消息：`om_x100b6a5c096318a4b1ca479dccbd4b8`。
 - 飞书服务器真实请求进入 FastAPI，两次访问日志均为 HTTP `200 OK`。
 - 真实点击创建 PostgreSQL `Skill Run #8`。
-- Run `#8` 状态：`draft`。
+- Run `#8` 最终状态：`succeeded`。
 - Run `#8` Skill：`screen_historical_leads`。
 - Run `#8` 的 `requested_by` 为真实操作人的飞书 `open_id`。
 - Run `#8` 正确绑定上述 chat ID 和 message ID。
+- Run `#8` 预览候选 50 条，确认后创建 Worker task `#358`。
+- Worker 完成 50/50，结果为有效需求 0、高意向客户 0、待确认 50。
+- 飞书同步为 dry-run，新增 0、更新 0、失败 0。
+- 同一张消息最终更新为“任务完成”卡片。
 
-成功只证明“创建任务 → 参数表单”回调已打通；完整产品验收仍应继续执行预览、确认运行、Worker 进度和结果卡片。
+本次已经完成“创建任务 → 填写参数 → 预览 → 确认运行 → Worker 执行 → 完成结果卡片”的真实闭环。
 
 ## 3. 最终采用的架构
 
@@ -216,9 +220,34 @@ FEISHU_LARK_CLI_AS=bot \
 {
   "tag": "button",
   "name": "skill_preview_8",
-  "form_action_type": "submit"
+  "form_action_type": "submit",
+  "behaviors": [
+    {
+      "type": "callback",
+      "value": {
+        "action": "skill_preview_8"
+      }
+    }
+  ]
 }
 ```
+
+`form_action_type: submit` 只负责提交表单数据，不能替代 `behaviors.callback`。缺少 behaviors 时，表单可以显示，但点击“预览任务”不会产生 HTTP 回调。
+
+Card 2.0 的 `select_static` 不接受 `label` 属性。应使用：
+
+```json
+{
+  "tag": "select_static",
+  "name": "data_range",
+  "placeholder": {
+    "tag": "plain_text",
+    "content": "数据范围"
+  }
+}
+```
+
+使用 `label` 时，飞书消息 PATCH 会返回 `200621`，错误路径指向 `form -> select_static -> label`。当该非法卡片通过回调响应返回时，用户可能只看到 toast“已受理”，但卡片不会进入参数表单。
 
 真实普通按钮回调的动作位于：
 
@@ -424,7 +453,31 @@ skill_create_screen_historical_leads
 - 增加外部健康检查和回调访问日志。
 - 切换正式入口时一次性修改飞书回调地址并发布应用版本，禁止在多个临时域名之间反复切换。
 
-## 13. 禁止事项
+## 13. Worker 进度卡片要求
+
+Worker 入口必须在导入数据库、飞书客户端和业务 service 前加载仓库 `.env`：
+
+```python
+from runtime_env import load_dotenv
+
+load_dotenv()
+```
+
+专用入口：
+
+```bash
+.venv/bin/python -m apps.worker.skill_run_service --once
+```
+
+应用发送的飞书消息必须使用 bot 身份 PATCH。`FEISHU_LARK_CLI_AS=user` 可以影响普通发送身份，但不能用于更新应用发送的交互卡片。因此 `patch_interactive_message()` 的 lark-cli 路径固定使用：
+
+```text
+--as bot
+```
+
+本次 Worker task `#358` 的业务流程正常完成，但旧 Worker 未加载 `.env`，且消息 PATCH 继承了 `user` 身份，导致进度更新失败并被回调容错忽略。修复后使用无额外环境变量的新进程成功更新 Run `#8` 的最终完成卡片。
+
+## 14. 禁止事项
 
 - 不因单次 `200671` 直接切成长连接。
 - 不在没有证据时更换机器人或应用。

@@ -4,6 +4,10 @@ import argparse
 import time
 from datetime import UTC, datetime
 
+from runtime_env import load_dotenv
+
+load_dotenv()
+
 from sqlalchemy import select
 
 from apps.worker.skill_run import run_skill_run_task

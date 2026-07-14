@@ -11,6 +11,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from runtime_env import load_dotenv
+
+load_dotenv()
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 

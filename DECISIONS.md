@@ -322,3 +322,10 @@
 - 当真实点击没有任何 API 访问日志、但本机公网 curl 正常时，先停止并使用相同 `--subdomain three-emus-kick` 重启 localtunnel，再发送一张新卡验证。
 - 本次发布应用 `1.0.2` 后首次点击仍未到达 API；重建相同 localtunnel 会话后，新卡真实点击立即返回 HTTP 200 并创建 Skill Run `#8`。
 - localtunnel 只作为开发验收入口；长期生产必须迁移到固定域名和稳定托管服务。
+
+## 2026-07-15：应用消息 PATCH 固定使用 bot 身份
+
+- `FEISHU_LARK_CLI_AS` 继续控制普通发送身份，但不能用于更新应用发送的交互卡片。
+- `FeishuIMClient.patch_interactive_message()` 的 lark-cli transport 固定使用 `--as bot`。
+- Worker 入口必须主动加载 `.env`，不能依赖调用终端提前 export 配置。
+- Card 2.0 表单提交按钮必须同时包含 `form_action_type=submit` 和 `behaviors.callback`；`select_static` 使用 `placeholder`，不使用非法 `label`。

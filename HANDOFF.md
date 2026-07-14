@@ -320,4 +320,14 @@ python -m apps.cli --json run-control-panel-once
 - 重启隧道后发送新卡 `om_x100b6a5c096318a4b1ca479dccbd4b8`；用户点击“创建任务”成功，API 真实收到飞书服务器 POST 并返回 HTTP 200。
 - PostgreSQL 创建 `Skill Run #8`：`status=draft`、`skill_key=screen_historical_leads`，真实 `requested_by`、chat ID 和 message ID 均正确持久化。
 - 完整配置、启动顺序、Card 2.0 字段、响应合同、签名/加密、验收命令和 `200671` 排障矩阵已写入 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。
-- 当前只完成“创建任务 → 参数表单”的真实验收。下一步应在同一 Run `#8` 上继续填写参数、预览、确认运行、观察 Worker 阶段进度并核对完成摘要。
+- 此节点当时只完成“创建任务 → 参数表单”的真实验收；后续完整结果见下一节。
+
+## 2026-07-15 Run #8 全流程真实完成
+
+- Run `#8` 的参数表单第一次只显示 toast，是因为 Card 2.0 `select_static` 使用了非法 `label`；飞书 PATCH 明确返回 `200621 unknown property label`。已改为 `placeholder`。
+- 表单首次点击预览没有请求，是因为提交按钮只有 `form_action_type=submit`，缺少 `behaviors.callback`。两者同时配置后，预览和确认运行均真实回调成功。
+- localtunnel 会话中途再次直接返回 HTTP 503；保持同一 subdomain 重启后恢复。该入口不能作为长期生产方案。
+- Run `#8` 实际参数为全部历史数据、帖子和评论、50 条、`education_fuzhou_offline`；预览 50 条，确认后创建 Worker task `#358`。
+- Worker task `#358` 完成 50/50，Run 状态 `succeeded`；有效需求 0、高意向 0、待确认 50，飞书同步为 dry-run，失败 0。
+- Worker 首次没有更新进度卡，是因为专用入口未加载 `.env`，且消息 PATCH 继承 `FEISHU_LARK_CLI_AS=user`。现已让 Worker 入口加载 `.env`，并将应用消息 PATCH 固定为 bot 身份；无额外环境变量的新进程已成功更新 Run `#8` 最终完成卡。
+- 最终自动化：`510 passed, 7 skipped, 1 warning in 26.29s`；编译、`git diff --check` 和公网 `/health` HTTP 200 通过。
