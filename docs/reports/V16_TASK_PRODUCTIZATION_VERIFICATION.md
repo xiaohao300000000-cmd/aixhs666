@@ -69,3 +69,13 @@
 - 当前唯一证实的发卡应用是 lark-cli 应用 `cli_aac1e28d6a399bfc`。开发者后台截图确认继续使用原 HTTP 回调地址；不得建议切换回调模式或修改旧配置。
 - 协议和公网链路已经自动化验证；按钮闭环仍需用户进行一次真实点击复验后才能标记 LIVE DONE。
 - 本机 `.env` 保持测试前的 chat、发送身份和 Base dry-run 配置；V16 Listener/专用 Worker停止，原 API 与原 HTTP 公网隧道继续运行。
+
+### Create Task Live Success — 2026-07-15
+
+- 应用 `cli_aac1e28d6a399bfc` 已发布 `1.0.2`，保留原 HTTP 回调地址和 `card.action.trigger`。
+- 发布后首次新卡点击仍未进入 API；应用身份、订阅和加密策略均已排除。
+- 停止并以相同 `--subdomain three-emus-kick` 重启 localtunnel，没有修改开发者后台地址。
+- 新卡 `om_x100b6a5c096318a4b1ca479dccbd4b8` 真实点击成功；飞书服务器请求进入 FastAPI 并返回 HTTP 200。
+- PostgreSQL 创建 `Skill Run #8`，状态 `draft`，真实用户、chat 和 message 绑定正确。
+- 结论：代码层根因包括动作解析和响应格式；最终无请求问题来自失效/异常的 localtunnel 会话。开发验收必须同时检查应用配置、线上版本、API 日志和隧道会话。
+- 专门 Runbook：`docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。

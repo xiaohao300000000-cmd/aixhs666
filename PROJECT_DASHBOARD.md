@@ -191,9 +191,11 @@ gantt
 | Skill Registry | DONE | 仅 `screen_historical_leads` |
 | Skill Run/Event | DONE | PostgreSQL 事实源、事件幂等、断点恢复 |
 | Worker | DONE | `skill_run_execute` 直接复用 Python service |
-| 飞书任务中心 | DONE_AUTOMATED / LIVE_RETEST_REQUIRED | 选择、参数、预览、确认、进度、取消、重试、结果、复制；真实 Card 2.0 动作解析和官方响应协议已修复 |
+| 飞书任务中心 | LIVE_CREATE_PASSED | 真实新卡点击已创建 Skill Run `#8` 并返回 HTTP 200；参数预览、确认运行和完成结果仍需按 Runbook 继续逐步验收 |
 | 小红书访问/发送 | NOT IN SCOPE | V16 全程禁止 |
 
 V16 自动化验收：`509 passed, 7 skipped, 1 warning`；迁移 head `0016_skill_runs`。
 
-V16 真实安全验收：Run `#1` 成功，处理 3 / 有效需求 1 / 待确认 3；飞书同卡片更新成功，AI 审核 Base 新增 2 条记录。2026-07-15 已从旧 API 日志确认 `200671` 根因是 Card 2.0 动作位于 `event.action.value.action` 却被误路由到 LLM 审核并返回 400；修复后本地探针 0.05 秒、公网原地址探针 0.81 秒均返回 HTTP 200 和官方 `toast + raw card`，仍需一次用户真实点击复验。
+V16 真实安全验收：Run `#1` 成功，处理 3 / 有效需求 1 / 待确认 3；飞书同卡片更新成功，AI 审核 Base 新增 2 条记录。2026-07-15 已从旧 API 日志确认 `200671` 的代码根因是 Card 2.0 动作位于 `event.action.value.action` 却被误路由到 LLM 审核并返回 400；动作解析和官方响应协议已修复。
+
+2026-07-15 最终“创建任务”真实验收：应用 `1.0.2` 已在线；保持原 HTTP 地址不变，重启 `three-emus-kick` localtunnel 会话并发送新卡 `om_x100b6a5c096318a4b1ca479dccbd4b8` 后，用户点击成功，飞书服务器请求进入 API 并返回 HTTP 200，PostgreSQL 创建 `Skill Run #8`。完整配置和排障步骤见 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。

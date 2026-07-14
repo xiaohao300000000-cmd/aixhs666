@@ -315,3 +315,10 @@
 - 卡片回调只返回飞书支持的 `{}`、`toast` 或 `toast + card(type=raw)`，不再返回自定义 `code/msg/accepted` JSON。
 - `FEISHU_ENCRYPT_KEY` 启用时，签名使用 `SHA256(timestamp + nonce + encrypt_key + raw_body)` 十六进制摘要；外层 `encrypt` 载荷按飞书 AES-CBC 规则解密。
 - Worker 仍通过 `message_id` 更新后续进度；回调内不得运行 DeepSeek 或完整 Skill 流程。
+
+## 2026-07-15：飞书回调开发验收保持固定 subdomain，失败先重建隧道会话
+
+- 开发验收继续使用 `https://three-emus-kick.loca.lt/feishu/callback/llm-review`，不在多个临时域名之间切换。
+- 当真实点击没有任何 API 访问日志、但本机公网 curl 正常时，先停止并使用相同 `--subdomain three-emus-kick` 重启 localtunnel，再发送一张新卡验证。
+- 本次发布应用 `1.0.2` 后首次点击仍未到达 API；重建相同 localtunnel 会话后，新卡真实点击立即返回 HTTP 200 并创建 Skill Run `#8`。
+- localtunnel 只作为开发验收入口；长期生产必须迁移到固定域名和稳定托管服务。

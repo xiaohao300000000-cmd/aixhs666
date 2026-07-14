@@ -476,4 +476,5 @@ AI筛选证据明细：72
 ## V16 飞书任务中心与 Skill Runtime
 
 - [x] V16-01 `screen_historical_leads` 完整纵向任务产品闭环：模型、Registry、Runtime、Worker、飞书卡片/回调、可选 Base 投影、测试与文档。
-- [x] V16-02 修复真实 Card 2.0 回调：解析 `event.action.value.action`，返回官方 `toast + raw card`，修正签名算法并支持加密回调；公网协议探针 HTTP 200，真实用户点击待复验。
+- [x] V16-02 修复真实 Card 2.0 回调：解析 `event.action.value.action`，返回官方 `toast + raw card`，修正签名算法并支持加密回调；当时公网协议探针 HTTP 200，真实用户点击由 V16-03 完成。
+- [x] V16-03 完成真实“创建任务”回调验收并新增 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`：发布应用 `1.0.2`、重启同域名 localtunnel、发送新卡后真实点击创建 Skill Run `#8`，API 返回 HTTP 200。

@@ -312,3 +312,12 @@ python -m apps.cli --json run-control-panel-once
 - 修正飞书签名算法为 `SHA256(timestamp + nonce + encrypt_key + raw_body)`，并新增外层 `encrypt` AES-CBC 解密；新增依赖 `pycryptodome`。
 - 自动化：`509 passed, 7 skipped, 1 warning in 25.97s`；编译与 `git diff --check` 通过。
 - 协议探针：本地原路由 HTTP 200 / 0.05 秒，公网原地址 HTTP 200 / 0.81 秒，响应为官方 `toast + raw Card 2.0`；固定事件创建幂等测试 Run `#6`。这证明地址、隧道、路由和响应协议当前可用，但最终按钮闭环仍需用户在飞书中进行一次真实点击复验。
+
+## 2026-07-15 飞书任务中心“创建任务”真实点击成功
+
+- 用户已发布应用版本 `1.0.2`；App ID 仍为 `cli_aac1e28d6a399bfc`，HTTP 回调地址仍为 `https://three-emus-kick.loca.lt/feishu/callback/llm-review`，订阅仍为 `card.action.trigger`。
+- 发布后第一次新卡点击仍没有进入 API。确认应用、版本、订阅、发卡身份和加密策略无误后，停止并使用相同 `--subdomain three-emus-kick` 重启 localtunnel，没有修改飞书后台地址。
+- 重启隧道后发送新卡 `om_x100b6a5c096318a4b1ca479dccbd4b8`；用户点击“创建任务”成功，API 真实收到飞书服务器 POST 并返回 HTTP 200。
+- PostgreSQL 创建 `Skill Run #8`：`status=draft`、`skill_key=screen_historical_leads`，真实 `requested_by`、chat ID 和 message ID 均正确持久化。
+- 完整配置、启动顺序、Card 2.0 字段、响应合同、签名/加密、验收命令和 `200671` 排障矩阵已写入 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。
+- 当前只完成“创建任务 → 参数表单”的真实验收。下一步应在同一 Run `#8` 上继续填写参数、预览、确认运行、观察 Worker 阶段进度并核对完成摘要。

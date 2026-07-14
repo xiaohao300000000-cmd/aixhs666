@@ -90,6 +90,7 @@
 - [产品需求](docs/PRD.md)
 - [系统架构](docs/ARCHITECTURE.md)
 - [评论回复运营与安全验收](docs/COMMENT_REPLY_OPERATIONS.md)
+- [飞书交互卡片回调部署与排障](docs/FEISHU_CARD_CALLBACK_RUNBOOK.md)
 - [数据模型](docs/DATA_MODEL.md)
 - [开发路线](docs/ROADMAP.md)
 - [验收标准](docs/ACCEPTANCE_TESTS.md)
