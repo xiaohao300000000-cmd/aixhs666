@@ -53,6 +53,14 @@
 
 真人体验结论：当前首页已具备“打开即知道先做什么”的最小运营价值；下一步最高价值不是继续加图表，而是完成线索审核动作和失败任务恢复入口。
 
+## 最终全链路技术复验
+
+- 使用妙搭页面签发的 `suda-csrf-token` Cookie 和 `X-Suda-Csrf-Token` Header 请求同源 NestJS BFF。
+- NestJS BFF 返回与 Tailscale Funnel 直连网关逐字段一致的业务载荷。
+- 首条真实队列对象为 `线索 #151`，推荐动作为 `inspect_failure`。
+- 主动结束 operator gateway 后，launchd 更换 PID 并在稳定 `ts.net` 地址恢复 HTTP 200。
+- 发布 release `7662804087717498126` 状态 `finished`，线上入口为 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+
 ## 已知限制
 
 - 当前 PostgreSQL 和只读网关仍依赖这台 Mac 在线。

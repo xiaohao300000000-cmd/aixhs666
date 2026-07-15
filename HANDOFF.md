@@ -372,12 +372,14 @@ python -m apps.cli --json run-control-panel-once
 - 新增 `scripts/install_operator_gateway_launchd.sh`，通过 `com.aixhs.operator-gateway` 和 `com.aixhs.operator-tunnel` 自动启动及异常拉起。
 - 运行与恢复手册：`docs/OPERATOR_GATEWAY_RUNBOOK.md`；真实闭环和真人体验验收：`docs/reports/V18_MIAODA_REAL_CONNECTION_ACCEPTANCE.md`。
 - 安全探针：无 token 为 401，`/api/leads` 与 `/ops/api/system` 为 404；公网业务响应未暴露 token。
-- 当前限制：数据库和网关仍依赖 Mac 在线，localtunnel 不是最终云托管。Tailscale 已登录但账号未启用 Funnel，启用后可升级为稳定 `ts.net`。
+- 此处记录的是 localtunnel 阶段的中间状态；最终已在下一节切换为 Tailscale Funnel。
 
 ## 2026-07-16 V18-05A 切换稳定 Tailscale Funnel
 
 - 用户完成 Tailscale 账号 Funnel 授权后，公网入口切换为 `https://xiaohao30000macbook-pro.tail9daeec.ts.net`，HTTPS 443 代理本机 `127.0.0.1:8020`。
 - 连续 5 次公网健康检查 HTTP 200；真实工作台返回待审核 4、失败任务 6、Worker 8、运行中 Skill Run 0。
 - 安全复验：无 token 工作台 401，`/api/leads`、`/ops/api/system` 和飞书回调均为 404。
-- 妙搭 online `OPERATOR_API_BASE_URL` 已更新为稳定 `ts.net`，release `7662804087717498126` 已发起。
+- 妙搭 online `OPERATOR_API_BASE_URL` 已更新为稳定 `ts.net`；release `7662804087717498126` 状态 `finished`，线上入口 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
 - 已移除 localtunnel launchd 配置；`scripts/install_operator_gateway_launchd.sh` 现在只维护网关 launchd 并确保 Tailscale Funnel 开启。
+- 自愈验收：主动结束网关 PID `61879` 后，launchd 自动以新 PID `61913` 拉起；稳定公网地址继续返回 HTTP 200 和真实工作台数据。
+- 真人链路模拟：使用妙搭实际 CSRF Cookie + `X-Suda-Csrf-Token` 请求同源 BFF；BFF 与公网网关的业务载荷逐字段一致，第一条真实线索为 `线索 #151`，推荐动作为 `inspect_failure`，响应未泄露 token。
