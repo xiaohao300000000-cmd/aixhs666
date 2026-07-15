@@ -17,6 +17,8 @@ cat > "$LAUNCH_AGENTS_DIR/com.aixhs.operator-gateway.plist" <<PLIST
   <key>ProgramArguments</key>
   <array><string>$ROOT_DIR/scripts/run_operator_gateway.sh</string></array>
   <key>WorkingDirectory</key><string>$ROOT_DIR</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$RUNTIME_DIR/operator-gateway.log</string>
