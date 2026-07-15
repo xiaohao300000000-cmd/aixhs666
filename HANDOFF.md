@@ -363,3 +363,13 @@ python -m apps.cli --json run-control-panel-once
 - 当前线上指定范围可见且要求登录。由于没有稳定公网 FastAPI，未配置线上 `OPERATOR_API_BASE_URL` / `OPERATOR_API_TOKEN`，页面会明确显示降级态和完整结构预览；不得改用 localtunnel 冒充生产入口。
 - 下一推荐任务：`V18-02` 线索审核写操作；稳定公网后端、在线环境变量和权限审计统一在 `V18-05` 完成。
 - 浏览器自动验收受宿主内置浏览器信任桥拒绝；已改用 HTTP、CSRF、BFF 数据一致性、降级响应和生产构建验证，不宣称完成视觉截图验收。
+
+## 2026-07-15 V18-05A 妙搭真实数据连接完成
+
+- 新增独立 `apps.operator_gateway` 进程，只注册 `/health` 和受 token 保护的 `/operator/api/workbench`；原线索写接口、管理员接口和飞书回调均未暴露。
+- 公网固定入口为 `https://aixhs-operator-gateway.loca.lt`；公网与本地业务载荷逐字段一致，验收快照为待审核 4、失败任务 6、Worker 8、运行中 Skill Run 0。
+- 妙搭 online 环境已设置 `OPERATOR_API_BASE_URL` 和 `OPERATOR_API_TOKEN`，并完成 release `7662664425467481056`，状态 `finished`。
+- 新增 `scripts/install_operator_gateway_launchd.sh`，通过 `com.aixhs.operator-gateway` 和 `com.aixhs.operator-tunnel` 自动启动及异常拉起。
+- 运行与恢复手册：`docs/OPERATOR_GATEWAY_RUNBOOK.md`；真实闭环和真人体验验收：`docs/reports/V18_MIAODA_REAL_CONNECTION_ACCEPTANCE.md`。
+- 安全探针：无 token 为 401，`/api/leads` 与 `/ops/api/system` 为 404；公网业务响应未暴露 token。
+- 当前限制：数据库和网关仍依赖 Mac 在线，localtunnel 不是最终云托管。Tailscale 已登录但账号未启用 Funnel，启用后可升级为稳定 `ts.net`。
