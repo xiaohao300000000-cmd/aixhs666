@@ -331,6 +331,13 @@
 - `com.aixhs.skill-run-worker` 只领取 `skill_run_execute`，不领取采集、评论回复或私信任务；确认执行后才允许 DeepSeek 与既有飞书审核表同步。
 - 单条重新分析必须形成持久任务并引用明确 Campaign；在该能力完成前，不得用全量历史筛选冒充单条重分析。
 
+## 2026-07-16：妙搭源码属于主仓库，不作为独立产品仓库维护
+
+- `aixhs666/main/miaoda-console/` 是妙搭 React/NestJS 源码的正式位置和统一事实源。
+- 妙搭官方 Git 的 `sprint/default` 继续承担平台发布通道，但不再定义产品源码归属。
+- 主仓库通过显式导出脚本同步到妙搭发布工作区；禁止把 `.git`、`node_modules`、`dist`、`.env.local` 或密钥复制进主仓库。
+- GitHub 首页必须能直接看到 `miaoda-console/`，避免只在文档中提到妙搭却看不到实现。
+
 ## 2026-07-15：应用消息 PATCH 固定使用 bot 身份
 
 - `FEISHU_LARK_CLI_AS` 继续控制普通发送身份，但不能用于更新应用发送的交互卡片。

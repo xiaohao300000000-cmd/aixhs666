@@ -409,3 +409,11 @@ python -m apps.cli --json run-control-panel-once
 - 本地妙搭仓库的 `origin` 继续指向妙搭官方 Git，供 `apps +release-create` 发布；新增 `github` remote 仅用于 GitHub 镜像。
 - GitHub 镜像中的 `sprint/default` 和 `feat/v18-01-workbench` 已删除，避免对外把重要组成部分表现成临时功能分支；本地 `sprint/default` 的 upstream 仍是妙搭官方 `origin/sprint/default`，用于后续开发和发布。
 - 公开前扫描未发现真实 `OPS_TOKEN`、`OPERATOR_API_TOKEN`、飞书预览 token 或 GitHub token；跟踪的 `.env` 仅含日志配置。
+
+## 2026-07-16 妙搭源码并入主仓库 main
+
+- 用户澄清最终要求：妙搭不是独立外围项目，而是 `aixhs666` 的重要组成部分，源码必须直接出现在主仓库 `main`。
+- 已把妙搭受版本控制源码并入根目录 `miaoda-console/`；未包含嵌套 `.git`、`node_modules`、`dist`、`.env.local` 或本地日志。
+- 主仓库 `README.md` 已增加妙搭源码入口，GitHub 首页可以直接进入工作台、线索审核、任务中心和 NestJS BFF 源码。
+- 新增 `scripts/export_miaoda_console.sh`，将主仓库源码单向导出到相邻妙搭发布工作区；脚本不自动提交、推送或发布。
+- 从现在开始 `aixhs666/main` 是统一源码事实源；独立 `aixhs666-console` GitHub 仓库不再作为源码事实源，仅可视为历史镜像，后续是否删除需单独确认。

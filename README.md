@@ -1,5 +1,22 @@
 # AI 教育需求发现与获客效率系统
 
+## 妙搭运营控制台源码
+
+妙搭前端与同源 NestJS BFF 是本项目的正式组成部分，源码直接位于主仓库：
+
+- [`miaoda-console/`](miaoda-console/)：今日工作台、线索审核、任务中心及妙搭服务端 BFF。
+- `apps/api/routes/operator_api.py`：控制台使用的受保护 Operator API。
+- `apps/operator_gateway.py`：Tailscale Funnel 后的最小公网网关。
+- `apps/worker/skill_run_service.py`：任务中心专用 Skill Run Worker。
+
+`aixhs666/main` 是统一源码事实源。需要发布妙搭时，先运行：
+
+```bash
+./scripts/export_miaoda_console.sh
+```
+
+脚本会把 `miaoda-console/` 导出到相邻的妙搭发布工作区 `../aixhs666-console`，但不会自动提交、推送或发布。发布工作区的 `origin/sprint/default` 仅作为妙搭平台交付通道。
+
 ## 1. 项目简介
 
 本项目用于从小红书等公开平台持续发现教育相关需求，采集帖子、评论、回复和公开主页信息，建立可追溯的数据资产，并逐步提升获客效率。
