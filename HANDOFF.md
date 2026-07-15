@@ -290,3 +290,122 @@ python -m apps.cli --json run-control-panel-once
 - 全量测试首次收集发现 `integrations.feishu.comment_replies` 顶层导入 `scheduler` 导致循环依赖；已把 `create_task` 改为入队函数内延迟导入，并用 `tests/test_agent_runtime.py` 和评论入队测试验证。
 - 定向测试：`84 passed, 3 skipped, 1 warning`。全量测试：`494 passed, 7 skipped, 1 warning`。
 - 本次没有运行 live selector probe 或真实评论发送。Windows CDP/SSH、专用测试目标、最终批准文本和客户跟进 Base live 配置仍是外部阻塞，Task 7 保持 `DONE_AUTOMATED / LIVE_BLOCKED`。
+
+## 2026-07-14 V16 飞书任务中心与 Skill Runtime
+
+- 分支：`feat/v16-task-productization`。
+- 新增唯一 Skill `screen_historical_leads / 历史线索智能筛选`，使用现有 PostgreSQL 历史数据、DeepSeek、Campaign 资格判断和 `feishu-ai-review-sync`。
+- 飞书回调只持久化/入队并返回 `accepted`；独立 Worker 执行并 PATCH 同一消息卡片。
+- 支持预览、进度事件、Worker 断点恢复、安全取消、明确失败重试、结果、复制和可选“任务运行记录”Base 投影。
+- 本轮未运行 live selector probe，未访问小红书，未发送评论或私信。
+- 最终自动化证据见 `docs/reports/V16_TASK_PRODUCTIZATION_VERIFICATION.md`。
+- 最终全量测试：`504 passed, 7 skipped, 1 warning in 25.81s`；Alembic head 为 `0016_skill_runs`；`git diff --check` 与编译检查通过。
+- 2026-07-14 已完成真实安全验收：Run `#1`/Task `#357` 处理 3 条历史评论，结果为有效需求 1、待确认 3；飞书消息 `om_x100b6a569a7d60a4b04c75cc36b0d05` 同卡片更新成功，AI 审核 Base 新增客户 1、证据 1。按钮公网回调仍待开发者后台 URL/token 配置。
+- 2026-07-15 修正飞书可见性验收：旧 chat 是单人私群，用户未实际看到；已改用 bot P2P `oc_db1d787a662278e05ce8a5c035a66ee0`，并重新发送任务中心和 Run #1 完成卡。后续不得把“API 可读”直接等同于“用户已收到”。
+- 2026-07-15 用户真实点击返回 `200671`。Card 2.0 字段已修；`lulu大王` 只是旧私群成员，不能推断为历史回调应用，此前复用它的判断已撤回。当前唯一证实的发卡应用是 `cli_aac1e28d6a399bfc`；在读取其开发者后台现有配置前，不再建议切换回调模式。V16 按钮闭环保持未验收，本机配置和后台进程已恢复。
+
+## 2026-07-15 V16 Card 2.0 回调协议修复
+
+- 从重启前 API 真实日志确认 `200671` 的直接根因：飞书真实按钮事件把动作放在 `event.action.value.action`，旧代码只识别 `event.action.name`，导致 `skill_create_screen_historical_leads` 被误送入 LLM 审核处理并返回 HTTP 400。
+- `services/feishu_task_center.py` 现兼容 Card 2.0 普通按钮 `action.value.action` 与表单提交 `action.name`；不改开发者后台 HTTP 模式，不改原回调地址，不引入其他应用。
+- `POST /feishu/callback/llm-review` 现对任务中心立即返回官方 `toast + card(type=raw)`，其他卡片动作返回官方 toast；不再返回自定义 `code/msg/accepted` 包装。
+- 修正飞书签名算法为 `SHA256(timestamp + nonce + encrypt_key + raw_body)`，并新增外层 `encrypt` AES-CBC 解密；新增依赖 `pycryptodome`。
+- 自动化：`509 passed, 7 skipped, 1 warning in 25.97s`；编译与 `git diff --check` 通过。
+- 协议探针：本地原路由 HTTP 200 / 0.05 秒，公网原地址 HTTP 200 / 0.81 秒，响应为官方 `toast + raw Card 2.0`；固定事件创建幂等测试 Run `#6`。这证明地址、隧道、路由和响应协议当前可用，但最终按钮闭环仍需用户在飞书中进行一次真实点击复验。
+
+## 2026-07-15 飞书任务中心“创建任务”真实点击成功
+
+- 用户已发布应用版本 `1.0.2`；App ID 仍为 `cli_aac1e28d6a399bfc`，HTTP 回调地址仍为 `https://three-emus-kick.loca.lt/feishu/callback/llm-review`，订阅仍为 `card.action.trigger`。
+- 发布后第一次新卡点击仍没有进入 API。确认应用、版本、订阅、发卡身份和加密策略无误后，停止并使用相同 `--subdomain three-emus-kick` 重启 localtunnel，没有修改飞书后台地址。
+- 重启隧道后发送新卡 `om_x100b6a5c096318a4b1ca479dccbd4b8`；用户点击“创建任务”成功，API 真实收到飞书服务器 POST 并返回 HTTP 200。
+- PostgreSQL 创建 `Skill Run #8`：`status=draft`、`skill_key=screen_historical_leads`，真实 `requested_by`、chat ID 和 message ID 均正确持久化。
+- 完整配置、启动顺序、Card 2.0 字段、响应合同、签名/加密、验收命令和 `200671` 排障矩阵已写入 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。
+- 此节点当时只完成“创建任务 → 参数表单”的真实验收；后续完整结果见下一节。
+
+## 2026-07-15 Run #8 全流程真实完成
+
+- Run `#8` 的参数表单第一次只显示 toast，是因为 Card 2.0 `select_static` 使用了非法 `label`；飞书 PATCH 明确返回 `200621 unknown property label`。已改为 `placeholder`。
+- 表单首次点击预览没有请求，是因为提交按钮只有 `form_action_type=submit`，缺少 `behaviors.callback`。两者同时配置后，预览和确认运行均真实回调成功。
+- localtunnel 会话中途再次直接返回 HTTP 503；保持同一 subdomain 重启后恢复。该入口不能作为长期生产方案。
+- Run `#8` 实际参数为全部历史数据、帖子和评论、50 条、`education_fuzhou_offline`；预览 50 条，确认后创建 Worker task `#358`。
+- Worker task `#358` 完成 50/50，Run 状态 `succeeded`；有效需求 0、高意向 0、待确认 50，飞书同步为 dry-run，失败 0。
+- Worker 首次没有更新进度卡，是因为专用入口未加载 `.env`，且消息 PATCH 继承 `FEISHU_LARK_CLI_AS=user`。现已让 Worker 入口加载 `.env`，并将应用消息 PATCH 固定为 bot 身份；无额外环境变量的新进程已成功更新 Run `#8` 最终完成卡。
+- 最终自动化：`510 passed, 7 skipped, 1 warning in 26.29s`；编译、`git diff --check` 和公网 `/health` HTTP 200 通过。
+
+## 2026-07-15 Run #8 结果详情与 Base 真实同步修复
+
+- 用户点击“查看结果”后无明显变化的根因：`skill_result_<id>` 旧实现仍调用 `build_skill_run_card()`，只是重复渲染完成摘要。
+- 新增独立“任务结果详情”卡，展示运行参数、处理统计、同步状态、客户线索表入口、证据明细表入口和复制任务按钮。
+- dry-run 现在明确显示“未写入多维表格”和预演条数，不再伪装成成功的 0/0/0。
+- 本机已切换为已验证的 `lark_cli` Base 写入配置；Run `#8` 未重跑 DeepSeek，复用 screening `51-100` 完成真实同步。
+- 远端实际新增客户 50、证据 50；PostgreSQL 已恢复 100 条映射，Run `#8` 同步摘要为新增 100、失败 0、dry-run 0。
+- 飞书消息 `om_x100b6a5c096318a4b1ca479dccbd4b8` 已直接更新为“任务结果详情”。公网 `/health` 当前 HTTP 200。
+- 最终全量验证：`513 passed, 7 skipped, 1 warning in 26.51s`；编译检查与 `git diff --check` 通过。
+
+## 2026-07-15 Founder Copilot 与人工审核工作台约定
+
+- 用户要求把多维表格从结果展示页升级为人工审核工作台，通过卡片、审核动作和工作流完成有效、无效、待二审、重新分析和进入跟进。
+- 正式设计见 `docs/FOUNDER_COPILOT.md`；后续 Codex 必读的专用交接见 `docs/FOUNDER_COPILOT_HANDOFF.md`。
+- Founder Copilot 应在完成真实任务时静默观察表达完整性、产品建立、决策推进和协作需要。
+- 默认约每 2–3 天反馈一次，具体时机由 Codex 根据有效证据判断；没有新证据、正在处理线上事故或反馈会干扰执行时可以延后。
+- 反馈一次只指出一个高杠杆改进点，并提供具体事实和可直接复用的表达示例；不得进行心理诊断或空泛评价。
+- 当前只有设计与交接，Base 审核字段、审核记录表和工作流尚未实施，已列入 V17。
+
+## 2026-07-15 V18-01 妙搭“今日工作台”发布完成
+
+- 正式设计：`docs/superpowers/specs/2026-07-15-feishu-miaoda-operations-console-design.md`。
+- 实施计划：`docs/superpowers/plans/2026-07-15-v18-01-miaoda-today-workbench.md`。
+- 后端新增受 `OPS_TOKEN` 保护的 `GET /operator/api/workbench`，聚合待审核线索、运行中 Skill Run、失败任务和 Worker 心跳，不新增表或迁移。
+- 妙搭仓库新增 NestJS BFF 和 React 今日工作台；浏览器只访问同源 API，token 仅在服务端环境变量中使用。
+- 真实本地联调：FastAPI 与 NestJS 业务载荷一致；验收时读取 4 条待审核、6 个失败任务、8 个过期 Worker；停止 FastAPI 后 BFF 返回结构化 `503` 且无 token 泄露。
+- 自动化：后端 `520 passed, 7 skipped, 1 warning`，编译和差异检查通过；妙搭 `6 passed`，类型检查、ESLint、Stylelint 和完整生产构建通过。
+- 妙搭发布 ID `7662655014494768100`，发布提交 `4bbcd63c7c860293b81e6f08af3e934c950bfc16`，线上入口 `https://tiho2o4ymck.aiforce.cloud/app/app_17a4790srtt`。
+- 当前线上指定范围可见且要求登录。由于没有稳定公网 FastAPI，未配置线上 `OPERATOR_API_BASE_URL` / `OPERATOR_API_TOKEN`，页面会明确显示降级态和完整结构预览；不得改用 localtunnel 冒充生产入口。
+- 下一推荐任务：`V18-02` 线索审核写操作；稳定公网后端、在线环境变量和权限审计统一在 `V18-05` 完成。
+- 浏览器自动验收受宿主内置浏览器信任桥拒绝；已改用 HTTP、CSRF、BFF 数据一致性、降级响应和生产构建验证，不宣称完成视觉截图验收。
+
+## 2026-07-15 V18-05A 妙搭真实数据连接完成
+
+- 新增独立 `apps.operator_gateway` 进程，只注册 `/health` 和受 token 保护的 `/operator/api/workbench`；原线索写接口、管理员接口和飞书回调均未暴露。
+- 公网固定入口为 `https://aixhs-operator-gateway.loca.lt`；公网与本地业务载荷逐字段一致，验收快照为待审核 4、失败任务 6、Worker 8、运行中 Skill Run 0。
+- 妙搭 online 环境已设置 `OPERATOR_API_BASE_URL` 和 `OPERATOR_API_TOKEN`，并完成 release `7662664425467481056`，状态 `finished`。
+- 新增 `scripts/install_operator_gateway_launchd.sh`，通过 `com.aixhs.operator-gateway` 和 `com.aixhs.operator-tunnel` 自动启动及异常拉起。
+- 运行与恢复手册：`docs/OPERATOR_GATEWAY_RUNBOOK.md`；真实闭环和真人体验验收：`docs/reports/V18_MIAODA_REAL_CONNECTION_ACCEPTANCE.md`。
+- 安全探针：无 token 为 401，`/api/leads` 与 `/ops/api/system` 为 404；公网业务响应未暴露 token。
+- 此处记录的是 localtunnel 阶段的中间状态；最终已在下一节切换为 Tailscale Funnel。
+
+## 2026-07-16 V18-05A 切换稳定 Tailscale Funnel
+
+- 用户完成 Tailscale 账号 Funnel 授权后，公网入口切换为 `https://xiaohao30000macbook-pro.tail9daeec.ts.net`，HTTPS 443 代理本机 `127.0.0.1:8020`。
+- 连续 5 次公网健康检查 HTTP 200；真实工作台返回待审核 4、失败任务 6、Worker 8、运行中 Skill Run 0。
+- 安全复验：无 token 工作台 401，`/api/leads`、`/ops/api/system` 和飞书回调均为 404。
+- 妙搭 online `OPERATOR_API_BASE_URL` 已更新为稳定 `ts.net`；release `7662804087717498126` 状态 `finished`，线上入口 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+- 已移除 localtunnel launchd 配置；`scripts/install_operator_gateway_launchd.sh` 现在只维护网关 launchd 并确保 Tailscale Funnel 开启。
+- 自愈验收：主动结束网关 PID `61879` 后，launchd 自动以新 PID `61913` 拉起；稳定公网地址继续返回 HTTP 200 和真实工作台数据。
+- 真人链路模拟：使用妙搭实际 CSRF Cookie + `X-Suda-Csrf-Token` 请求同源 BFF；BFF 与公网网关的业务载荷逐字段一致，第一条真实线索为 `线索 #151`，推荐动作为 `inspect_failure`，响应未泄露 token。
+
+## 2026-07-16 妙搭运行时可见范围修复
+
+- 用户无法在飞书打开应用的根因：运行范围是 `Range`，但只有访问申请审批人，没有任何实际 `users` / `departments` / `chats` 目标。
+- 已确认审批人 open_id `ou_2e31580f74e91be75997d4f6ac1c7cea` 对应用户“张兆尊”。
+- 已将该用户加入 specific 可见名单，并保留访问申请和本人审批；复查结果 `scope=Range` 且 `users` 已包含该 open_id。
+- 这是运行时访问权限修复，不是开发协作者权限，也不需要重新发布代码。
+
+## 2026-07-16 V18-02A/V18-03 线索审核与任务中心真实闭环
+
+- Operator API 新增受 `OPS_TOKEN` 保护的 `/operator/api/leads*` 和 `/operator/api/tasks*`；公网网关仍不暴露原 `/api/leads`、管理员接口和飞书回调。
+- 线索审核页已替换占位页：真实队列、AI/原始证据、有效、无效、观察、补充信息、负责人和进入跟进动作写回 PostgreSQL；真人验收对线索 `#151` 写入 `watch` 后按快照完整恢复为 `needs_enrichment`。
+- 任务中心已替换占位页：模板、Campaign、数据范围、来源类型、数量、创建、预览、确认、取消、重试、复制、进度、事件和结果详情均接入现有 Skill Runtime。
+- 新增 `com.aixhs.skill-run-worker` LaunchAgent，仅消费 `skill_run_execute`；真实 Run `#11` 处理 1/1 并 `succeeded`，飞书同步失败 0，不访问小红书、不发送评论或私信。
+- 后端全量测试 `531 passed, 7 skipped, 1 warning`；妙搭 Jest `9 passed`，双端类型检查、ESLint、Stylelint、生产构建通过。
+- 妙搭提交 `38501e4e777689c93d75e70bddec4ee7f0888566`，release `7662812324507454684` 状态 `finished`，线上入口保持 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+- 可见范围复查仍为 `Range + require_login`，用户列表包含“张兆尊”的 open_id。
+- 未完成：V18-02B 单条重新分析、重复客户合并和飞书深度链接；持续在线云托管与角色审计仍属于 V18-05。
+
+## 2026-07-16 妙搭源码 GitHub 镜像
+
+- 妙搭源码已镜像到公开仓库 `https://github.com/xiaohao300000000-cmd/aixhs666-console`。
+- GitHub 只保留正式 `main` 分支，默认分支也是 `main`；`main` 提交 `0f1b264dc4627b717efd8dfd4555a8571199af7c` 已合并妙搭源码提交 `38501e4e777689c93d75e70bddec4ee7f0888566`，两者文件树一致。
+- 本地妙搭仓库的 `origin` 继续指向妙搭官方 Git，供 `apps +release-create` 发布；新增 `github` remote 仅用于 GitHub 镜像。
+- GitHub 镜像中的 `sprint/default` 和 `feat/v18-01-workbench` 已删除，避免对外把重要组成部分表现成临时功能分支；本地 `sprint/default` 的 upstream 仍是妙搭官方 `origin/sprint/default`，用于后续开发和发布。
+- 公开前扫描未发现真实 `OPS_TOKEN`、`OPERATOR_API_TOKEN`、飞书预览 token 或 GitHub token；跟踪的 `.env` 仅含日志配置。

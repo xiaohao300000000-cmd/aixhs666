@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import hashlib
-import hmac
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -263,9 +261,7 @@ def test_fastapi_llm_review_callback_verifies_signature_and_applies(
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     timestamp = "1782970000"
     nonce = "nonce"
-    signature = base64.b64encode(
-        hmac.new("secret".encode("utf-8"), f"{timestamp}{nonce}".encode("utf-8") + body, hashlib.sha256).digest()
-    ).decode("utf-8")
+    signature = hashlib.sha256(f"{timestamp}{nonce}secret".encode("utf-8") + body).hexdigest()
 
     response = TestClient(create_app()).post(
         "/feishu/callback/llm-review",
@@ -279,7 +275,7 @@ def test_fastapi_llm_review_callback_verifies_signature_and_applies(
     )
 
     assert response.status_code == 200
-    assert response.json()["applied"] is True
+    assert response.json() == {"toast": {"type": "success", "content": "操作成功"}}
     with factory() as session:
         assert session.get(LeadScreeningResult, screening_id).human_review_status == "watch"
 
@@ -301,7 +297,7 @@ def test_fastapi_llm_review_callback_returns_success_when_card_update_fails(
     )
 
     assert response.status_code == 200
-    assert response.json()["applied"] is True
+    assert response.json() == {"toast": {"type": "success", "content": "操作成功"}}
     with factory() as session:
         screening = session.get(LeadScreeningResult, screening_id)
         assert screening is not None
@@ -366,12 +362,16 @@ def test_feishu_im_lark_cli_transport_sends_and_updates_cards() -> None:
 
     sent = client.send_interactive_card(chat_id="oc_cli", card={"config": {}, "elements": []})
     updated = client.update_interactive_card(token="update-token", card={"config": {}, "elements": []})
+    patched = client.patch_interactive_message(message_id="om_cli_1", card={"config": {}, "elements": []})
 
     assert sent == {"message_id": "om_cli_1", "chat_id": "oc_cli"}
     assert updated["code"] == 0
+    assert patched["code"] == 0
     assert calls[0][0][:3] == ["lark-cli", "im", "+messages-send"]
     assert "--msg-type" in calls[0][0]
     assert calls[1][0][:4] == ["lark-cli", "api", "POST", "/open-apis/interactive/v1/card/update"]
+    assert calls[2][0][:4] == ["lark-cli", "api", "PATCH", "/open-apis/im/v1/messages/om_cli_1"]
+    assert calls[2][0][calls[2][0].index("--as") + 1] == "bot"
 
 
 def _seed_pending_screening(

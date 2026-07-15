@@ -54,6 +54,7 @@ from integrations.feishu.signal_alerts import (
 )
 from integrations.feishu.webhook import (
     build_webhook_body,
+    decode_callback_payload,
     send_interactive_card,
     verify_callback_token,
     verify_webhook_signature,
@@ -99,6 +100,7 @@ __all__ = [
     "build_signal_alert_payload",
     "build_signal_alert_payloads",
     "build_webhook_body",
+    "decode_callback_payload",
     "claim_pending_llm_review_cards",
     "create_comment_reply_for_valid_screening",
     "is_comment_reply_callback",

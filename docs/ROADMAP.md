@@ -133,3 +133,10 @@
 - 采集稳定性
 - 实现成本
 - 业务价值
+
+## V16 飞书任务产品化
+
+- [x] 单一静态 Skill Registry：`screen_historical_leads`
+- [x] 持久 Skill Run/Event、预览、Worker、恢复、取消、失败重试、复制、结果摘要
+- [x] 飞书任务中心同卡片闭环和可选运行历史 Base 投影
+- [ ] 后续版本再评估更多 Skill；V16 不增加采集、发送或获客算法

@@ -37,6 +37,14 @@
 - 小红书真实私信发送暂时搁置：当前本机浏览器/网络环境无法稳定打开小红书私信页，且用户要求不要改 Clash。飞书“发送”按钮已改为只审批入库为 `approved_to_send`，不再在飞书回调线程里直接触发小红书发送。后续等浏览器/网络问题解决后，再通过独立发送入口或 worker 执行真实发送。
 - 小红书评论回复同样通过独立持久任务执行：飞书确认后快速返回，Worker 复用 Tailscale 上的 Windows Chrome CDP；不在 Mac 本机另开浏览器。真实单条验收必须先恢复远程发射器并完成只读 selector probe。
 
+2026-07-15 妙搭运营控制台：
+
+- 已创建并发布全栈应用 `AI获客运营控制台`，App ID `app_17a4790srtt`。
+- 发布态入口：<https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt>，当前指定范围可见且要求飞书登录。
+- `V18-01` 今日工作台已完成：FastAPI 聚合接口、NestJS BFF、运营注意力卡片、线索证据、任务进度、失败任务、Worker 心跳和降级结构预览。
+- 本地真实联调读取到 4 条待审核线索、6 个失败任务和 8 个过期 Worker；这些是验收时数据库快照，不是固定产品数据。
+- 线上已通过专用只读运营网关与 Tailscale Funnel 接入真实 PostgreSQL，妙搭服务端环境变量已切换到稳定 `ts.net`；持续在线云托管仍属于 `V18-05` 剩余范围。
+
 ## 2. 核心价值
 
 系统不是简单搜索“谁想报班”，而是持续识别需求正在形成的信号，例如：
@@ -90,6 +98,9 @@
 - [产品需求](docs/PRD.md)
 - [系统架构](docs/ARCHITECTURE.md)
 - [评论回复运营与安全验收](docs/COMMENT_REPLY_OPERATIONS.md)
+- [飞书交互卡片回调部署与排障](docs/FEISHU_CARD_CALLBACK_RUNBOOK.md)
+- [Founder Copilot：人工审核工作台与伴随式产品教练](docs/FOUNDER_COPILOT.md)
+- [Founder Copilot 专用交接](docs/FOUNDER_COPILOT_HANDOFF.md)
 - [数据模型](docs/DATA_MODEL.md)
 - [开发路线](docs/ROADMAP.md)
 - [验收标准](docs/ACCEPTANCE_TESTS.md)
@@ -658,3 +669,7 @@ https://github.com/xiaohao300000000-cmd/aixhs666/tree/main
 - 当日真实飞书凭证、真实发送和真实回调仍未验收；2026-07-06 已通过本机 `lark-cli` 用户身份验证飞书 Base 建表、写入、更新和视图创建。
 - 长期无人值守运行仍未完成。
 - 桌面启动器目前面向 macOS 本机；Windows/Linux 启动入口尚未制作。
+
+## 飞书任务中心（V16）
+
+普通运营人员使用 `aixhs feishu-task-center --chat-id <CHAT_ID>` 发出的任务中心卡片，完成“历史线索智能筛选”的参数填写、预览、确认、进度、取消、重试、结果和复制。管理员系统控制台继续保留。详细边界见 `docs/TASK_PRODUCTIZATION.md`。

@@ -11,6 +11,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from runtime_env import load_dotenv
+
+load_dotenv()
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -20,6 +24,7 @@ from apps.worker.detail_collection import DETAIL_TASK_TYPES, run_detail_task
 from apps.worker.profile_collection import PROFILE_TASK_TYPES, run_profile_task
 from apps.worker.resume import start_partial_task
 from apps.worker.search_collection import SEARCH_TASK_TYPES, run_search_task
+from apps.worker.skill_run import SKILL_RUN_TASK_TYPES, run_skill_run_task
 from collectors import MediaCrawlerXiaohongshuAdapter, MockPlatformAdapter, PlatformAdapter, XiaohongshuAdapter
 from scheduler import TaskStatus, claim_next_task, fail_task, recover_timed_out_tasks
 from storage.database import SessionLocal
@@ -225,6 +230,8 @@ class WorkerRunner:
                 task=task,
                 session_factory=self.session_factory,
             )
+        if task.task_type in SKILL_RUN_TASK_TYPES:
+            return run_skill_run_task(session, task=task, session_factory=self.session_factory)
         fail_task(session, task.id, error=f"unsupported task type: {task.task_type}")
         raise ValueError(f"unsupported task type: {task.task_type}")
 

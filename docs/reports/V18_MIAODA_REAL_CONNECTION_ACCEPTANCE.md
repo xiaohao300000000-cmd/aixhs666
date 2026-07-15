@@ -1,0 +1,68 @@
+# V18 妙搭真实连接与真人视角验收
+
+日期：2026-07-15
+
+## 最小真实闭环
+
+```text
+飞书登录用户
+  → 打开妙搭线上应用
+  → React 请求同源 /api/operator/workbench
+  → 妙搭 NestJS BFF 注入服务端 token
+  → https://xiaohao30000macbook-pro.tail9daeec.ts.net
+  → 本机只读 operator gateway
+  → PostgreSQL 实时查询
+  → 返回线索、任务、Skill Run 和 Worker 状态
+```
+
+验收时真实数据：
+
+- 待审核线索：4
+- 失败任务：6
+- Worker：8，均超过五分钟未心跳
+- 运行中 Skill Run：0
+- 推荐动作：优先检查失败任务
+
+本地网关与公网网关的业务载荷逐字段一致，不是演示数据或静态快照。
+
+## 安全验收
+
+- 无 token 请求 `/operator/api/workbench` 返回 401。
+- `/api/leads` 返回 404。
+- `/ops/api/system` 返回 404。
+- 飞书回调路由不在网关进程中。
+- BFF 降级响应和业务响应均不包含 `OPS_TOKEN`。
+- 妙搭线上仅保存环境变量 key，不在 CLI 日志中回显 value。
+
+## 故障与恢复验收
+
+- 网关使用 launchd 自动拉起，Tailscale Funnel 配置由本机 Tailscale 后台服务持久化。
+- 网关退出后 `KeepAlive` 自动拉起。
+- 网关换新 PID 后，稳定 `ts.net` 地址继续代理到 `127.0.0.1:8020`。
+- PostgreSQL、网关或公网入口不可用时，妙搭保留导航和结构预览，并明确显示连接错误，不伪造指标。
+
+## 真人视角模拟
+
+角色：每天第一次打开系统的负责人，不理解 FastAPI、Worker 或数据库术语，只想知道“今天先做什么”。
+
+1. 打开页面后，第一屏先看到红色失败任务和黄色待审核线索，能够在数秒内判断今天应先排障。
+2. 右侧“Next Best Action”直接给出动作，不要求先理解任务状态机。
+3. 点击线索队列时，右侧保留证据摘要、意向分数和建议下一步，判断上下文不需要跳回 Base 查多张表。
+4. 系统无运行中任务时明确显示“当前没有运行中的 Skill Run”，不把 0 描述成异常。
+5. 后端断线时页面说明具体连接问题，并保留产品结构；用户知道是系统连接问题，而不是误以为所有业务数据变成 0。
+
+真人体验结论：当前首页已具备“打开即知道先做什么”的最小运营价值；下一步最高价值不是继续加图表，而是完成线索审核动作和失败任务恢复入口。
+
+## 最终全链路技术复验
+
+- 使用妙搭页面签发的 `suda-csrf-token` Cookie 和 `X-Suda-Csrf-Token` Header 请求同源 NestJS BFF。
+- NestJS BFF 返回与 Tailscale Funnel 直连网关逐字段一致的业务载荷。
+- 首条真实队列对象为 `线索 #151`，推荐动作为 `inspect_failure`。
+- 主动结束 operator gateway 后，launchd 更换 PID 并在稳定 `ts.net` 地址恢复 HTTP 200。
+- 发布 release `7662804087717498126` 状态 `finished`，线上入口为 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+
+## 已知限制
+
+- 当前 PostgreSQL 和只读网关仍依赖这台 Mac 在线。
+- Tailscale Funnel 已完成稳定地址和真实数据闭环。
+- 最终目标仍是将只读网关和 PostgreSQL 迁到持续在线的云环境。

@@ -73,11 +73,12 @@ def sync_feishu_ai_review_rows(
     customer_client: FeishuBitableClient | None = None,
     evidence_client: FeishuBitableClient | None = None,
     limit: int | None = None,
+    screening_ids: set[int] | None = None,
 ) -> FeishuAIReviewSyncResult:
     customer_client = customer_client or _default_client(DEFAULT_CUSTOMER_TABLE_ID, "FEISHU_AI_REVIEW_CUSTOMER_TABLE_ID")
     evidence_client = evidence_client or _default_client(DEFAULT_EVIDENCE_TABLE_ID, "FEISHU_AI_REVIEW_EVIDENCE_TABLE_ID")
     counters = _SyncCounters()
-    eligible = _eligible_screenings(session, limit=limit, counters=counters)
+    eligible = _eligible_screenings(session, limit=limit, counters=counters, screening_ids=screening_ids)
     groups = _group_by_customer(eligible)
     customer_record_ids: dict[int, str] = {}
     customer_evidence_record_ids: dict[int, list[str]] = {}
@@ -169,10 +170,13 @@ def _eligible_screenings(
     *,
     limit: int | None,
     counters: _SyncCounters,
+    screening_ids: set[int] | None = None,
 ) -> list[LeadScreeningResult]:
     rows = session.scalars(select(LeadScreeningResult).order_by(LeadScreeningResult.id.asc())).all()
     eligible: list[LeadScreeningResult] = []
     for screening in rows:
+        if screening_ids is not None and screening.id not in screening_ids:
+            continue
         if screening.review_status not in ELIGIBLE_REVIEW_STATUSES or screening.valuable is False:
             counters.skipped += 1
             continue

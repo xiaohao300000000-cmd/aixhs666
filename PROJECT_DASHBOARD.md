@@ -183,3 +183,54 @@ gantt
 - `orchestration/WORKER_REGISTRY.md`
 - `orchestration/FILE_LOCKS.md`
 - `docs/CONCURRENCY_POLICY.md`
+
+## V16 状态（2026-07-14）
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| Skill Registry | DONE | 仅 `screen_historical_leads` |
+| Skill Run/Event | DONE | PostgreSQL 事实源、事件幂等、断点恢复 |
+| Worker | DONE | `skill_run_execute` 直接复用 Python service |
+| 飞书任务中心 | LIVE_FULL_RUN_PASSED | Run `#8` 已完成创建、参数、预览、确认、Worker 50/50 和最终结果卡；localtunnel 仍是非生产风险 |
+| 小红书访问/发送 | NOT IN SCOPE | V16 全程禁止 |
+
+V16 自动化验收：`510 passed, 7 skipped, 1 warning`；迁移 head `0016_skill_runs`。
+
+V16 真实安全验收：Run `#1` 成功，处理 3 / 有效需求 1 / 待确认 3；飞书同卡片更新成功，AI 审核 Base 新增 2 条记录。2026-07-15 已从旧 API 日志确认 `200671` 的代码根因是 Card 2.0 动作位于 `event.action.value.action` 却被误路由到 LLM 审核并返回 400；动作解析和官方响应协议已修复。
+
+2026-07-15 最终“创建任务”真实验收：应用 `1.0.2` 已在线；保持原 HTTP 地址不变，重启 `three-emus-kick` localtunnel 会话并发送新卡 `om_x100b6a5c096318a4b1ca479dccbd4b8` 后，用户点击成功，飞书服务器请求进入 API 并返回 HTTP 200，PostgreSQL 创建 `Skill Run #8`。完整配置和排障步骤见 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`。
+
+Run `#8` 后续真实闭环：修复 `select_static.label` 非法字段和表单按钮缺少 callback behavior 后，预览 50 条并确认运行，Worker task `#358` 完成 50/50；结果为有效需求 0、高意向 0、待确认 50，飞书同步 dry-run 无失败。Worker `.env` 和 bot PATCH 修复后，同一张消息更新为“任务完成”。
+
+## 2026-07-15 V16 结果闭环补验收
+
+- `查看结果`：已从重复摘要修正为独立结果详情卡。
+- Base 自动同步：Run `#8` 已真实新增客户 50、证据 50，失败 0；未重新执行 DeepSeek。
+- 同步可见性：结果卡明确区分 live / partial failure / dry-run，并提供客户线索和证据明细入口。
+- 数据一致性：PostgreSQL 已恢复 100 条飞书 record 映射；同一任务卡已更新为结果详情。
+- 自动化验证：`513 passed, 7 skipped, 1 warning in 26.51s`；编译和 diff 检查通过。
+
+## V17 人工审核工作台与 Founder Copilot
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| 产品设计 | DONE | `docs/FOUNDER_COPILOT.md` |
+| Codex 专用交接 | DONE | 约每 2–3 天基于证据反馈，Codex 自主判断时机 |
+| Base 审核工作台 | TODO | 主表审核字段、卡片视图、审核记录表 |
+| Base 工作流 | TODO | 有效、无效、待二审、重新分析、进入跟进 |
+| PostgreSQL 回写 | TODO | 审核动作幂等同步，PostgreSQL 保持事实源 |
+
+## V18 妙搭运营控制台
+
+| 模块 | 状态 | 当前交付 |
+|---|---|---|
+| 今日工作台 | DONE | 妙搭全栈应用已发布；FastAPI 聚合接口、线索/任务/Worker 状态、异常降级和离线结构预览已完成 |
+| 线索审核 | LIVE PRIMARY LOOP | 左侧真实队列 + 右侧证据卡；有效/无效/观察/补充信息/负责人/进入跟进写回 PostgreSQL；待补单条重新分析、重复合并、飞书深链 |
+| 任务中心 | LIVE FULL LOOP | 已注册 Skill 模板、参数、预览、创建、执行、取消、重试、复制、进度、事件与结果；独立 Worker 常驻消费 `skill_run_execute` |
+| Campaign 中心 | TODO | 行业模板、客户配置、版本与样本测试 |
+| 稳定生产入口 | PARTIAL LIVE | 只读网关和稳定 Tailscale Funnel 已真实接通；待迁移持续在线云托管并补角色权限/审计 |
+
+发布态：`https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。Release `7662812324507454684` 已部署提交 `38501e4e777689c93d75e70bddec4ee7f0888566`。当前可见范围为指定范围且要求飞书登录；线上 Operator API 已支持工作台、线索审核和任务中心。机器离线或 Funnel 异常时自动进入明确降级态。
+
+当前 specific 可见用户已包含创建者“张兆尊”；此前只有访问申请审批人、没有实际可见目标的问题已修复。
+| 成长观察自动化 | DESIGN_ONLY | 先按文档人工执行，不提前增加复杂模型或定时系统 |

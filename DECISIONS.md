@@ -299,3 +299,64 @@
 - 评论发送 Worker 必须读取 `COMMENT_REPLY_BROWSER_MODE=remote_cdp` 和 `COMMENT_REPLY_CDP_URL`，连接远程 Windows Chrome 的现有 context，不在 Mac 启动本地浏览器。
 - 页面流程必须先定位目标评论并点击“回复”，再等待编辑框和提交按钮出现；selector probe 可点击“回复”展开控件，但禁止填写和提交。
 - `approved_to_send` 表示已人工批准、等待独立任务执行；客户跟进表映射为“评论已批准，等待发送”。
+
+## 2026-07-14：Skill Run 是任务产品事实，CollectionTask 仅负责执行投递
+
+- 飞书任务中心面向普通运营；系统控制台保留为管理员兼容入口。
+- PostgreSQL `skill_runs`/`skill_run_events` 保存参数、状态、事件、断点和结果。
+- `collection_tasks.skill_run_execute` 仅供 Worker 领取，不承载产品语义。
+- 飞书回调不得执行 DeepSeek；同卡片更新和多维表格都是可失败、可重建投影。
+- V16 唯一 Skill 不访问小红书且不发送评论/私信。
+
+## 2026-07-15：飞书卡片回调严格使用官方协议
+
+- 保留现有 HTTP 回调模式和原请求地址，不切换长连接，不更换发卡应用。
+- Card 2.0 普通按钮从 `event.action.value.action` 读取动作；兼容表单提交的 `event.action.name`。
+- 卡片回调只返回飞书支持的 `{}`、`toast` 或 `toast + card(type=raw)`，不再返回自定义 `code/msg/accepted` JSON。
+- `FEISHU_ENCRYPT_KEY` 启用时，签名使用 `SHA256(timestamp + nonce + encrypt_key + raw_body)` 十六进制摘要；外层 `encrypt` 载荷按飞书 AES-CBC 规则解密。
+- Worker 仍通过 `message_id` 更新后续进度；回调内不得运行 DeepSeek 或完整 Skill 流程。
+
+## 2026-07-15：飞书回调开发验收保持固定 subdomain，失败先重建隧道会话
+
+- 开发验收继续使用 `https://three-emus-kick.loca.lt/feishu/callback/llm-review`，不在多个临时域名之间切换。
+- 当真实点击没有任何 API 访问日志、但本机公网 curl 正常时，先停止并使用相同 `--subdomain three-emus-kick` 重启 localtunnel，再发送一张新卡验证。
+- 本次发布应用 `1.0.2` 后首次点击仍未到达 API；重建相同 localtunnel 会话后，新卡真实点击立即返回 HTTP 200 并创建 Skill Run `#8`。
+- localtunnel 只作为开发验收入口；长期生产必须迁移到固定域名和稳定托管服务。
+
+## 2026-07-16：妙搭写操作继续复用 PostgreSQL 与 Skill Runtime
+
+- 妙搭线索审核不复制业务数据到妙搭数据库；所有判断直接写入 `leads` 和最新匹配的 `lead_screening_results` 人工审核字段。
+- Operator Gateway 只扩展 `/operator/api/leads*` 与 `/operator/api/tasks*`，原 `/api/leads`、管理员接口和飞书回调继续对公网返回 404。
+- 任务中心只展示 `skill_registry` 已注册模板；当前唯一正式模板是 `screen_historical_leads`，不展示尚未实现的假模板。
+- `com.aixhs.skill-run-worker` 只领取 `skill_run_execute`，不领取采集、评论回复或私信任务；确认执行后才允许 DeepSeek 与既有飞书审核表同步。
+- 单条重新分析必须形成持久任务并引用明确 Campaign；在该能力完成前，不得用全量历史筛选冒充单条重分析。
+
+## 2026-07-15：应用消息 PATCH 固定使用 bot 身份
+
+- `FEISHU_LARK_CLI_AS` 继续控制普通发送身份，但不能用于更新应用发送的交互卡片。
+- `FeishuIMClient.patch_interactive_message()` 的 lark-cli transport 固定使用 `--as bot`。
+- Worker 入口必须主动加载 `.env`，不能依赖调用终端提前 export 配置。
+- Card 2.0 表单提交按钮必须同时包含 `form_action_type=submit` 和 `behaviors.callback`；`select_static` 使用 `placeholder`，不使用非法 `label`。
+
+## D-2026-07-15-RESULT-CARD：结果详情与 Base 同步状态必须显式区分
+
+- 完成摘要卡和结果详情卡是两个不同产品状态；“查看结果”不得只刷新原摘要。
+- `dry_run` 属于“未写入”，必须显式提示，不能与真实同步成功共用文案。
+- Skill Worker 正式运行时自动写入 AI Review Base；PostgreSQL 继续作为事实源，并保存远端 record 映射用于幂等与事故恢复。
+
+## D-2026-07-15-FOUNDER-COPILOT：成长反馈采用低打扰、证据驱动机制
+
+- Codex 在真实项目任务中静默观察用户的表达完整性、产品建立和决策推进方式。
+- 默认约每 2–3 天反馈一次，由 Codex 根据证据和任务状态决定具体时机，不机械按日历输出。
+- 每次只反馈一个高价值改进点，必须引用具体事实并提供可复用表达。
+- 不进行心理诊断、人格推断或敏感属性推断；没有足够证据时不输出反馈。
+- 详细规则以 `docs/FOUNDER_COPILOT.md` 和 `docs/FOUNDER_COPILOT_HANDOFF.md` 为准。
+
+## D-2026-07-15-MIAODA-CONSOLE：妙搭负责产品层，FastAPI/PostgreSQL 保持事实源
+
+- 妙搭全栈应用负责运营工作台的页面、交互、飞书内入口和同源 BFF，不重写现有采集、筛选、任务和 Campaign 核心逻辑。
+- Miaoda NestJS 服务只通过受控服务端凭证调用 FastAPI；浏览器不得接触 `OPS_TOKEN` 或其他后端密钥。
+- FastAPI 新增面向运营产品的聚合接口，PostgreSQL 继续作为线索、Skill Run、任务和审核事实源。
+- 第一阶段只交付可发布的只读“今日工作台”；写操作按线索审核、任务中心、Campaign 中心顺序逐步开放。
+- 后端不可达时前端必须显式进入降级状态，禁止以演示数据伪装线上状态。
+- 完整设计以 `docs/superpowers/specs/2026-07-15-feishu-miaoda-operations-console-design.md` 为准，V18-01 实施以对应 plan 为准。

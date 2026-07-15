@@ -472,3 +472,41 @@ AI筛选证据明细：72
 - 未配置 `POSTGRES_TEST_DATABASE_URL`，PostgreSQL 并发测试跳过。
 - 未配置小红书 live 登录 profile。
 - 未配置飞书真实凭证。
+
+## V16 飞书任务中心与 Skill Runtime
+
+- [x] V16-01 `screen_historical_leads` 完整纵向任务产品闭环：模型、Registry、Runtime、Worker、飞书卡片/回调、可选 Base 投影、测试与文档。
+- [x] V16-02 修复真实 Card 2.0 回调：解析 `event.action.value.action`，返回官方 `toast + raw card`，修正签名算法并支持加密回调；当时公网协议探针 HTTP 200，真实用户点击由 V16-03 完成。
+- [x] V16-03 完成真实“创建任务”回调验收并新增 `docs/FEISHU_CARD_CALLBACK_RUNBOOK.md`：发布应用 `1.0.2`、重启同域名 localtunnel、发送新卡后真实点击创建 Skill Run `#8`，API 返回 HTTP 200。
+- [x] V16-04 完成 Run `#8` 全流程真实验收：修复 Card 2.0 select/form submit、启动 Worker task `#358` 处理 50/50、修复 Worker `.env` 加载和 bot 身份消息 PATCH，最终同卡显示任务完成。
+
+### V16-LIVE-RESULT — 结果详情与 Base 真实同步补验收（DONE，2026-07-15）
+
+- 修复 `skill_result_<id>` 重复渲染完成摘要的问题，交付独立结果详情卡。
+- dry-run 明确提示未写入，不再显示成误导性的成功摘要。
+- Run `#8` 复用现有 50 个筛选结果，真实同步客户 50、证据 50，失败 0。
+- 恢复 PostgreSQL 远端映射并更新同一张飞书任务卡；未访问小红书、未发送评论或私信。
+
+## V17 人工审核工作台与 Founder Copilot
+
+- [x] V17-00 固化产品设计和专用 Codex Handoff：`docs/FOUNDER_COPILOT.md`、`docs/FOUNDER_COPILOT_HANDOFF.md`。
+- [ ] V17-01 补齐客户线索主表审核字段并优化卡片视图。
+- [ ] V17-02 新增审核记录表，保留每次人工判断历史。
+- [ ] V17-03 创建有效、无效、待二审和重新分析工作流。
+- [ ] V17-04 将审核结果幂等同步回 PostgreSQL。
+- [ ] V17-05 增加 AI/人工一致率、误判原因和 Campaign 效果统计。
+
+Founder Copilot 默认约每 2–3 天基于真实任务证据反馈一次，由 Codex 判断具体时机；证据不足或正在处理线上事故时应延后，不得机械生成评价。
+
+## V18 妙搭运营控制台
+
+- [x] V18-01 交付并发布“今日工作台”MVP：妙搭操作台、NestJS BFF、FastAPI 聚合接口、线索/任务/Worker 状态和异常降级。线上应用已发布；稳定公网 FastAPI 与线上环境变量归入 V18-05。
+- [x] V18-02A 在线索审核页实现真实队列、证据卡、有效、无效、观察、补充信息、负责人和进入跟进动作，并回写 PostgreSQL 人工审核字段。
+- [ ] V18-02B 补充单条重新分析、重复客户合并和飞书深度链接；不得用全量历史筛选冒充单条重新分析。
+- [x] V18-03 在任务中心实现已注册 Skill 模板、参数预览、创建、执行、取消、重试、复制、进度、事件时间线和结果详情。
+- [ ] V18-04 在 Campaign 中心实现行业模板、客户配置、版本发布和样本测试。
+- [ ] V18-05 完成稳定后端托管、飞书入口、角色权限和运营审计。
+
+V18-05A 已完成：专用只读运营网关、固定公网子域、妙搭线上环境变量、launchd 自动恢复和最小真实闭环。V18-05 剩余范围是摆脱 Mac/localtunnel 依赖、迁移到持续在线云托管并补角色审计。
+
+V18 使用妙搭承载可视化与操作体验，现有 FastAPI/PostgreSQL/Worker 继续承载核心业务与事实数据。V18-02A/V18-03 已在同一控制台串联，V18-02B 保留单条重新分析、重复合并和飞书深链。

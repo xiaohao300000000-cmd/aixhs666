@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session, joinedload
 from intelligence.text_processing import normalize_text
 from services.lead_screening_flow import LLM_DONE, PENDING_LLM, SCREENING
 from storage.models import Comment, Content, Lead, LeadEvidence, LeadScreeningResult, PublicProfile
+
+if TYPE_CHECKING:
+    from platform_config.models import CampaignConfig
 
 
 REVIEW_CONFIDENCE_THRESHOLD = 0.65
@@ -198,6 +201,7 @@ def run_llm_lead_screening(
     source_entity_ids: set[int] | None = None,
     limit: int | None = None,
     reprocess: bool = False,
+    campaign: CampaignConfig | None = None,
 ) -> LeadScreeningRunResult:
     client = client or OpenAICompatibleLeadScreeningClient()
     source_entity_types = source_entity_types or {"content", "comment"}
@@ -238,7 +242,7 @@ def run_llm_lead_screening(
             continue
 
         screening = _save_screening_result(session, context, decision, screening=claimed)
-        _apply_default_qualification(session, screening)
+        _apply_default_qualification(session, screening, campaign=campaign)
         counts["screened"] += 1
         counts[screening.review_status] += 1
         if screening.review_status in {"accepted", "needs_review"} and context.public_profile_id is not None:
@@ -464,7 +468,12 @@ def _save_screening_result(
     return screening
 
 
-def _apply_default_qualification(session: Session, screening: LeadScreeningResult) -> None:
+def _apply_default_qualification(
+    session: Session,
+    screening: LeadScreeningResult,
+    *,
+    campaign: CampaignConfig | None = None,
+) -> None:
     from platform_config.loader import load_campaign_config
     from services.qualification import (
         apply_qualification_result,
@@ -472,8 +481,9 @@ def _apply_default_qualification(session: Session, screening: LeadScreeningResul
         qualify_screening_result,
     )
 
-    campaign_config_path = os.getenv("LEAD_QUALIFICATION_CAMPAIGN_CONFIG") or DEFAULT_QUALIFICATION_CAMPAIGN_CONFIG
-    campaign = load_campaign_config(campaign_config_path)
+    if campaign is None:
+        campaign_config_path = os.getenv("LEAD_QUALIFICATION_CAMPAIGN_CONFIG") or DEFAULT_QUALIFICATION_CAMPAIGN_CONFIG
+        campaign = load_campaign_config(campaign_config_path)
     evidence = location_evidence_from_screening(screening, session=session)
     result = qualify_screening_result(screening, campaign, location_evidence=evidence)
     apply_qualification_result(screening, result)

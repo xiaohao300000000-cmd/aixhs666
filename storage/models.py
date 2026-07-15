@@ -208,6 +208,72 @@ class PipelineRun(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(255))
 
 
+class SkillRun(TimestampMixin, Base):
+    __tablename__ = "skill_runs"
+    __table_args__ = (
+        Index("ix_skill_runs_status_updated_at", "status", "updated_at"),
+        Index("ix_skill_runs_stage_status", "current_stage", "status"),
+        UniqueConstraint("idempotency_key", name="uq_skill_runs_idempotency_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    skill_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft", server_default="draft")
+    current_stage: Mapped[str | None] = mapped_column(String(100))
+    progress_current: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    progress_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    parameters_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    preview_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    checkpoint_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    result_summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    requested_by: Mapped[str | None] = mapped_column(String(255))
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))
+    feishu_chat_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_message_id: Mapped[str | None] = mapped_column(String(255))
+    feishu_card_status: Mapped[str | None] = mapped_column(String(50))
+    feishu_sync_error: Mapped[str | None] = mapped_column(Text)
+    copied_from_run_id: Mapped[int | None] = mapped_column(ForeignKey("skill_runs.id", ondelete="SET NULL"))
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    events: Mapped[list[SkillRunEvent]] = relationship(
+        back_populates="skill_run",
+        cascade="all, delete-orphan",
+        order_by="SkillRunEvent.sequence",
+    )
+    copied_from: Mapped[SkillRun | None] = relationship(remote_side="SkillRun.id")
+
+
+class SkillRunEvent(Base):
+    __tablename__ = "skill_run_events"
+    __table_args__ = (
+        UniqueConstraint("skill_run_id", "sequence", name="uq_skill_run_events_run_sequence"),
+        UniqueConstraint("event_key", name="uq_skill_run_events_event_key"),
+        Index("ix_skill_run_events_run_created_at", "skill_run_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_run_id: Mapped[int] = mapped_column(ForeignKey("skill_runs.id", ondelete="CASCADE"), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_key: Mapped[str | None] = mapped_column(String(255))
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    stage: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[str | None] = mapped_column(String(50))
+    message: Mapped[str | None] = mapped_column(Text)
+    progress_current: Mapped[int | None] = mapped_column(Integer)
+    progress_total: Mapped[int | None] = mapped_column(Integer)
+    data_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    skill_run: Mapped[SkillRun] = relationship(back_populates="events")
+
+
 class AnalysisProcessingState(Base):
     __tablename__ = "analysis_processing_states"
     __table_args__ = (

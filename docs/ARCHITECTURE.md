@@ -336,3 +336,33 @@ class PlatformAdapter(Protocol):
 评论回复使用独立 `LeadCommentReply` 聚合，不复用私信对象。有效评论线索先生成 `pending_review` 草稿和飞书卡片；人工确认后回调原子领取 `sending`，再由 `XiaohongshuCommentReplySender` 定位唯一目标评论并最多点击一次提交。最终状态只有 `sent`、`failed` 或 `result_unknown`。
 
 平台发送与飞书/Base 同步分离：平台结果先持久化，客户跟进同步失败只能重跑同步，不得重发评论。`result_unknown` 表示点击可能已到达平台但缺少相关证据，必须人工核对且禁止盲目重试。真实上线前还必须在准备好的专用目标上先完成只读 selector probe，再获得飞书明确批准；完整操作合同见 `docs/COMMENT_REPLY_OPERATIONS.md`。
+
+## V16 Skill Runtime
+
+`Skill Registry -> SkillRun/SkillRunEvent -> CollectionTask(skill_run_execute) -> Worker -> Python services -> Feishu card/Base projection`。PostgreSQL Skill Run 是产品事实源；CollectionTask 只负责投递和领取执行；飞书卡片与多维表格都是可重建投影。回调事务只校验、幂等写入和入队，DeepSeek 与完整流程只在独立 Worker 中运行。同一任务卡通过消息 PATCH 持续更新。
+# 妙搭运营产品层（V18）
+
+`AI获客运营控制台` 使用妙搭全栈应用承载可视化和操作体验，但不替代现有业务服务：
+
+```text
+Feishu / Miaoda React
+        |
+        | same-origin /api/operator/*
+        v
+Miaoda NestJS BFF
+        |
+        | server-only bearer token
+        v
+Existing FastAPI /operator/api/*
+        |
+        v
+PostgreSQL + Worker + Skill Runtime
+```
+
+边界规则：
+
+- React 浏览器只访问妙搭同源 BFF，不接触 `OPS_TOKEN`。
+- NestJS 使用 `OPERATOR_API_BASE_URL` 和 `OPERATOR_API_TOKEN` 访问 FastAPI。
+- FastAPI/PostgreSQL 继续保存线索、Skill Run、任务和 Worker 事实；妙搭不复制核心业务逻辑。
+- 后端不可达时 BFF 返回结构化 `503`，前端显示明确降级原因与无虚假数据的结构预览。
+- `V18-01` 只提供只读聚合视图；审核、任务创建、Campaign 修改必须在后续任务中加入幂等写入和审计。
