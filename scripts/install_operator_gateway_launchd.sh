@@ -40,6 +40,8 @@ cat > "$LAUNCH_AGENTS_DIR/com.aixhs.operator-tunnel.plist" <<PLIST
     <string>--subdomain</string><string>aixhs-operator-gateway</string>
   </array>
   <key>WorkingDirectory</key><string>$ROOT_DIR</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>10</integer>
@@ -51,6 +53,7 @@ PLIST
 
 for label in com.aixhs.operator-gateway com.aixhs.operator-tunnel; do
   launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  sleep 1
   launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/$label.plist"
 done
 
