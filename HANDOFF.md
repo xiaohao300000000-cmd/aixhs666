@@ -350,3 +350,16 @@ python -m apps.cli --json run-control-panel-once
 - 默认约每 2–3 天反馈一次，具体时机由 Codex 根据有效证据判断；没有新证据、正在处理线上事故或反馈会干扰执行时可以延后。
 - 反馈一次只指出一个高杠杆改进点，并提供具体事实和可直接复用的表达示例；不得进行心理诊断或空泛评价。
 - 当前只有设计与交接，Base 审核字段、审核记录表和工作流尚未实施，已列入 V17。
+
+## 2026-07-15 V18-01 妙搭“今日工作台”发布完成
+
+- 正式设计：`docs/superpowers/specs/2026-07-15-feishu-miaoda-operations-console-design.md`。
+- 实施计划：`docs/superpowers/plans/2026-07-15-v18-01-miaoda-today-workbench.md`。
+- 后端新增受 `OPS_TOKEN` 保护的 `GET /operator/api/workbench`，聚合待审核线索、运行中 Skill Run、失败任务和 Worker 心跳，不新增表或迁移。
+- 妙搭仓库新增 NestJS BFF 和 React 今日工作台；浏览器只访问同源 API，token 仅在服务端环境变量中使用。
+- 真实本地联调：FastAPI 与 NestJS 业务载荷一致；验收时读取 4 条待审核、6 个失败任务、8 个过期 Worker；停止 FastAPI 后 BFF 返回结构化 `503` 且无 token 泄露。
+- 自动化：后端 `520 passed, 7 skipped, 1 warning`，编译和差异检查通过；妙搭 `6 passed`，类型检查、ESLint、Stylelint 和完整生产构建通过。
+- 妙搭发布 ID `7662655014494768100`，发布提交 `4bbcd63c7c860293b81e6f08af3e934c950bfc16`，线上入口 `https://tiho2o4ymck.aiforce.cloud/app/app_17a4790srtt`。
+- 当前线上指定范围可见且要求登录。由于没有稳定公网 FastAPI，未配置线上 `OPERATOR_API_BASE_URL` / `OPERATOR_API_TOKEN`，页面会明确显示降级态和完整结构预览；不得改用 localtunnel 冒充生产入口。
+- 下一推荐任务：`V18-02` 线索审核写操作；稳定公网后端、在线环境变量和权限审计统一在 `V18-05` 完成。
+- 浏览器自动验收受宿主内置浏览器信任桥拒绝；已改用 HTTP、CSRF、BFF 数据一致性、降级响应和生产构建验证，不宣称完成视觉截图验收。

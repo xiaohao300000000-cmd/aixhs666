@@ -340,3 +340,29 @@ class PlatformAdapter(Protocol):
 ## V16 Skill Runtime
 
 `Skill Registry -> SkillRun/SkillRunEvent -> CollectionTask(skill_run_execute) -> Worker -> Python services -> Feishu card/Base projection`。PostgreSQL Skill Run 是产品事实源；CollectionTask 只负责投递和领取执行；飞书卡片与多维表格都是可重建投影。回调事务只校验、幂等写入和入队，DeepSeek 与完整流程只在独立 Worker 中运行。同一任务卡通过消息 PATCH 持续更新。
+# 妙搭运营产品层（V18）
+
+`AI获客运营控制台` 使用妙搭全栈应用承载可视化和操作体验，但不替代现有业务服务：
+
+```text
+Feishu / Miaoda React
+        |
+        | same-origin /api/operator/*
+        v
+Miaoda NestJS BFF
+        |
+        | server-only bearer token
+        v
+Existing FastAPI /operator/api/*
+        |
+        v
+PostgreSQL + Worker + Skill Runtime
+```
+
+边界规则：
+
+- React 浏览器只访问妙搭同源 BFF，不接触 `OPS_TOKEN`。
+- NestJS 使用 `OPERATOR_API_BASE_URL` 和 `OPERATOR_API_TOKEN` 访问 FastAPI。
+- FastAPI/PostgreSQL 继续保存线索、Skill Run、任务和 Worker 事实；妙搭不复制核心业务逻辑。
+- 后端不可达时 BFF 返回结构化 `503`，前端显示明确降级原因与无虚假数据的结构预览。
+- `V18-01` 只提供只读聚合视图；审核、任务创建、Campaign 修改必须在后续任务中加入幂等写入和审计。
