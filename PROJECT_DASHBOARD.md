@@ -231,4 +231,6 @@ Run `#8` 后续真实闭环：修复 `select_static.label` 非法字段和表单
 | 稳定生产入口 | PARTIAL LIVE | 只读网关和稳定 Tailscale Funnel 已真实接通；待迁移持续在线云托管并补角色权限/审计 |
 
 发布态：`https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。当前可见范围为指定范围且要求飞书登录；线上已配置只读运营网关，实时读取本机 PostgreSQL。机器离线或 Funnel 异常时自动进入明确降级态。
+
+当前 specific 可见用户已包含创建者“张兆尊”；此前只有访问申请审批人、没有实际可见目标的问题已修复。
 | 成长观察自动化 | DESIGN_ONLY | 先按文档人工执行，不提前增加复杂模型或定时系统 |

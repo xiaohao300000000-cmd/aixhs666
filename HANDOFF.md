@@ -383,3 +383,10 @@ python -m apps.cli --json run-control-panel-once
 - 已移除 localtunnel launchd 配置；`scripts/install_operator_gateway_launchd.sh` 现在只维护网关 launchd 并确保 Tailscale Funnel 开启。
 - 自愈验收：主动结束网关 PID `61879` 后，launchd 自动以新 PID `61913` 拉起；稳定公网地址继续返回 HTTP 200 和真实工作台数据。
 - 真人链路模拟：使用妙搭实际 CSRF Cookie + `X-Suda-Csrf-Token` 请求同源 BFF；BFF 与公网网关的业务载荷逐字段一致，第一条真实线索为 `线索 #151`，推荐动作为 `inspect_failure`，响应未泄露 token。
+
+## 2026-07-16 妙搭运行时可见范围修复
+
+- 用户无法在飞书打开应用的根因：运行范围是 `Range`，但只有访问申请审批人，没有任何实际 `users` / `departments` / `chats` 目标。
+- 已确认审批人 open_id `ou_2e31580f74e91be75997d4f6ac1c7cea` 对应用户“张兆尊”。
+- 已将该用户加入 specific 可见名单，并保留访问申请和本人审批；复查结果 `scope=Range` 且 `users` 已包含该 open_id。
+- 这是运行时访问权限修复，不是开发协作者权限，也不需要重新发布代码。
