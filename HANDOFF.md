@@ -405,7 +405,7 @@ python -m apps.cli --json run-control-panel-once
 ## 2026-07-16 妙搭源码 GitHub 镜像
 
 - 妙搭源码已镜像到公开仓库 `https://github.com/xiaohao300000000-cmd/aixhs666-console`。
-- GitHub 默认分支为 `sprint/default`，提交 `38501e4e777689c93d75e70bddec4ee7f0888566`；同时保留发布快照 `main` 和历史分支 `feat/v18-01-workbench`。
+- GitHub 只保留正式 `main` 分支，默认分支也是 `main`；`main` 提交 `0f1b264dc4627b717efd8dfd4555a8571199af7c` 已合并妙搭源码提交 `38501e4e777689c93d75e70bddec4ee7f0888566`，两者文件树一致。
 - 本地妙搭仓库的 `origin` 继续指向妙搭官方 Git，供 `apps +release-create` 发布；新增 `github` remote 仅用于 GitHub 镜像。
-- `sprint/default` 的 upstream 已恢复为 `origin/sprint/default`，避免后续误推 GitHub 后却未同步妙搭发布源。
+- GitHub 镜像中的 `sprint/default` 和 `feat/v18-01-workbench` 已删除，避免对外把重要组成部分表现成临时功能分支；本地 `sprint/default` 的 upstream 仍是妙搭官方 `origin/sprint/default`，用于后续开发和发布。
 - 公开前扫描未发现真实 `OPS_TOKEN`、`OPERATOR_API_TOKEN`、飞书预览 token 或 GitHub token；跟踪的 `.env` 仅含日志配置。
