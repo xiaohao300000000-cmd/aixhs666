@@ -390,3 +390,14 @@ python -m apps.cli --json run-control-panel-once
 - 已确认审批人 open_id `ou_2e31580f74e91be75997d4f6ac1c7cea` 对应用户“张兆尊”。
 - 已将该用户加入 specific 可见名单，并保留访问申请和本人审批；复查结果 `scope=Range` 且 `users` 已包含该 open_id。
 - 这是运行时访问权限修复，不是开发协作者权限，也不需要重新发布代码。
+
+## 2026-07-16 V18-02A/V18-03 线索审核与任务中心真实闭环
+
+- Operator API 新增受 `OPS_TOKEN` 保护的 `/operator/api/leads*` 和 `/operator/api/tasks*`；公网网关仍不暴露原 `/api/leads`、管理员接口和飞书回调。
+- 线索审核页已替换占位页：真实队列、AI/原始证据、有效、无效、观察、补充信息、负责人和进入跟进动作写回 PostgreSQL；真人验收对线索 `#151` 写入 `watch` 后按快照完整恢复为 `needs_enrichment`。
+- 任务中心已替换占位页：模板、Campaign、数据范围、来源类型、数量、创建、预览、确认、取消、重试、复制、进度、事件和结果详情均接入现有 Skill Runtime。
+- 新增 `com.aixhs.skill-run-worker` LaunchAgent，仅消费 `skill_run_execute`；真实 Run `#11` 处理 1/1 并 `succeeded`，飞书同步失败 0，不访问小红书、不发送评论或私信。
+- 后端全量测试 `531 passed, 7 skipped, 1 warning`；妙搭 Jest `9 passed`，双端类型检查、ESLint、Stylelint、生产构建通过。
+- 妙搭提交 `38501e4e777689c93d75e70bddec4ee7f0888566`，release `7662812324507454684` 状态 `finished`，线上入口保持 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+- 可见范围复查仍为 `Range + require_login`，用户列表包含“张兆尊”的 open_id。
+- 未完成：V18-02B 单条重新分析、重复客户合并和飞书深度链接；持续在线云托管与角色审计仍属于 V18-05。

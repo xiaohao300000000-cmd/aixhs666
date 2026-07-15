@@ -69,3 +69,17 @@ def test_operator_workbench_accepts_compatibility_header(operator_client: TestCl
     )
 
     assert response.status_code == 200
+
+
+def test_operator_leads_and_tasks_require_same_token(operator_client: TestClient) -> None:
+    missing_leads = operator_client.get("/operator/api/leads")
+    missing_tasks = operator_client.get("/operator/api/tasks")
+    headers = {"Authorization": "Bearer operator-secret"}
+
+    leads = operator_client.get("/operator/api/leads", headers=headers)
+    tasks = operator_client.get("/operator/api/tasks", headers=headers)
+
+    assert missing_leads.status_code == 401
+    assert missing_tasks.status_code == 401
+    assert leads.status_code == 200
+    assert tasks.status_code == 200

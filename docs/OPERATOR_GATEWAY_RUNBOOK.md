@@ -27,6 +27,7 @@
 
 ```bash
 ./scripts/install_operator_gateway_launchd.sh
+./scripts/install_skill_run_worker_launchd.sh
 ```
 
 检查：
@@ -52,6 +53,7 @@ curl -fsS https://xiaohao30000macbook-pro.tail9daeec.ts.net/health
 3. 检查公网 `/health`。
 4. 检查网关 launchd、Tailscale 状态和 `.runtime` 日志。
 5. Funnel 异常时重新执行 `./scripts/install_operator_gateway_launchd.sh`；稳定 `ts.net` 地址不需要随进程重启修改。
+6. 任务中心确认执行后若长期停在 `queued`，检查 `launchctl list | grep com.aixhs.skill-run-worker`，必要时重新执行 `./scripts/install_skill_run_worker_launchd.sh`。该 Worker 只消费 `skill_run_execute`，不会领取采集、评论或私信任务。
 
 ## 已知边界
 

@@ -225,12 +225,12 @@ Run `#8` 后续真实闭环：修复 `select_static.label` 非法字段和表单
 | 模块 | 状态 | 当前交付 |
 |---|---|---|
 | 今日工作台 | DONE | 妙搭全栈应用已发布；FastAPI 聚合接口、线索/任务/Worker 状态、异常降级和离线结构预览已完成 |
-| 线索审核 | TODO | 左侧审核队列 + 右侧证据与动作面板 |
-| 任务中心 | TODO | Skill 模板、参数预览、进度和结果 |
+| 线索审核 | LIVE PRIMARY LOOP | 左侧真实队列 + 右侧证据卡；有效/无效/观察/补充信息/负责人/进入跟进写回 PostgreSQL；待补单条重新分析、重复合并、飞书深链 |
+| 任务中心 | LIVE FULL LOOP | 已注册 Skill 模板、参数、预览、创建、执行、取消、重试、复制、进度、事件与结果；独立 Worker 常驻消费 `skill_run_execute` |
 | Campaign 中心 | TODO | 行业模板、客户配置、版本与样本测试 |
 | 稳定生产入口 | PARTIAL LIVE | 只读网关和稳定 Tailscale Funnel 已真实接通；待迁移持续在线云托管并补角色权限/审计 |
 
-发布态：`https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。当前可见范围为指定范围且要求飞书登录；线上已配置只读运营网关，实时读取本机 PostgreSQL。机器离线或 Funnel 异常时自动进入明确降级态。
+发布态：`https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。Release `7662812324507454684` 已部署提交 `38501e4e777689c93d75e70bddec4ee7f0888566`。当前可见范围为指定范围且要求飞书登录；线上 Operator API 已支持工作台、线索审核和任务中心。机器离线或 Funnel 异常时自动进入明确降级态。
 
 当前 specific 可见用户已包含创建者“张兆尊”；此前只有访问申请审批人、没有实际可见目标的问题已修复。
 | 成长观察自动化 | DESIGN_ONLY | 先按文档人工执行，不提前增加复杂模型或定时系统 |

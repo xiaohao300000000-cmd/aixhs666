@@ -67,6 +67,18 @@ def test_gateway_workbench_requires_token(gateway_client: TestClient) -> None:
     assert authorized.json()["next_action"]["kind"] == "none"
 
 
+def test_gateway_exposes_authenticated_lead_and_task_operator_routes(gateway_client: TestClient) -> None:
+    headers = {"Authorization": "Bearer gateway-secret"}
+
+    leads = gateway_client.get("/operator/api/leads", headers=headers)
+    tasks = gateway_client.get("/operator/api/tasks", headers=headers)
+
+    assert leads.status_code == 200
+    assert leads.json()["items"] == []
+    assert tasks.status_code == 200
+    assert tasks.json()["templates"][0]["key"] == "screen_historical_leads"
+
+
 def test_gateway_rejects_unsupported_methods(gateway_client: TestClient) -> None:
     response = gateway_client.post(
         "/operator/api/workbench",

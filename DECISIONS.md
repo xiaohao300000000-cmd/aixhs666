@@ -323,6 +323,14 @@
 - 本次发布应用 `1.0.2` 后首次点击仍未到达 API；重建相同 localtunnel 会话后，新卡真实点击立即返回 HTTP 200 并创建 Skill Run `#8`。
 - localtunnel 只作为开发验收入口；长期生产必须迁移到固定域名和稳定托管服务。
 
+## 2026-07-16：妙搭写操作继续复用 PostgreSQL 与 Skill Runtime
+
+- 妙搭线索审核不复制业务数据到妙搭数据库；所有判断直接写入 `leads` 和最新匹配的 `lead_screening_results` 人工审核字段。
+- Operator Gateway 只扩展 `/operator/api/leads*` 与 `/operator/api/tasks*`，原 `/api/leads`、管理员接口和飞书回调继续对公网返回 404。
+- 任务中心只展示 `skill_registry` 已注册模板；当前唯一正式模板是 `screen_historical_leads`，不展示尚未实现的假模板。
+- `com.aixhs.skill-run-worker` 只领取 `skill_run_execute`，不领取采集、评论回复或私信任务；确认执行后才允许 DeepSeek 与既有飞书审核表同步。
+- 单条重新分析必须形成持久任务并引用明确 Campaign；在该能力完成前，不得用全量历史筛选冒充单条重分析。
+
 ## 2026-07-15：应用消息 PATCH 固定使用 bot 身份
 
 - `FEISHU_LARK_CLI_AS` 继续控制普通发送身份，但不能用于更新应用发送的交互卡片。
