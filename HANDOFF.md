@@ -401,3 +401,11 @@ python -m apps.cli --json run-control-panel-once
 - 妙搭提交 `38501e4e777689c93d75e70bddec4ee7f0888566`，release `7662812324507454684` 状态 `finished`，线上入口保持 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
 - 可见范围复查仍为 `Range + require_login`，用户列表包含“张兆尊”的 open_id。
 - 未完成：V18-02B 单条重新分析、重复客户合并和飞书深度链接；持续在线云托管与角色审计仍属于 V18-05。
+
+## 2026-07-16 妙搭源码 GitHub 镜像
+
+- 妙搭源码已镜像到公开仓库 `https://github.com/xiaohao300000000-cmd/aixhs666-console`。
+- GitHub 默认分支为 `sprint/default`，提交 `38501e4e777689c93d75e70bddec4ee7f0888566`；同时保留发布快照 `main` 和历史分支 `feat/v18-01-workbench`。
+- 本地妙搭仓库的 `origin` 继续指向妙搭官方 Git，供 `apps +release-create` 发布；新增 `github` remote 仅用于 GitHub 镜像。
+- `sprint/default` 的 upstream 已恢复为 `origin/sprint/default`，避免后续误推 GitHub 后却未同步妙搭发布源。
+- 公开前扫描未发现真实 `OPS_TOKEN`、`OPERATOR_API_TOKEN`、飞书预览 token 或 GitHub token；跟踪的 `.env` 仅含日志配置。
