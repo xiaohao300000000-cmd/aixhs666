@@ -9,7 +9,7 @@
   → 打开妙搭线上应用
   → React 请求同源 /api/operator/workbench
   → 妙搭 NestJS BFF 注入服务端 token
-  → https://aixhs-operator-gateway.loca.lt
+  → https://xiaohao30000macbook-pro.tail9daeec.ts.net
   → 本机只读 operator gateway
   → PostgreSQL 实时查询
   → 返回线索、任务、Skill Run 和 Worker 状态
@@ -36,9 +36,9 @@
 
 ## 故障与恢复验收
 
-- 网关与隧道使用两个独立 launchd 服务。
+- 网关使用 launchd 自动拉起，Tailscale Funnel 配置由本机 Tailscale 后台服务持久化。
 - 网关退出后 `KeepAlive` 自动拉起。
-- 隧道退出后 `KeepAlive` 自动重连固定子域。
+- 网关换新 PID 后，稳定 `ts.net` 地址继续代理到 `127.0.0.1:8020`。
 - PostgreSQL、网关或公网入口不可用时，妙搭保留导航和结构预览，并明确显示连接错误，不伪造指标。
 
 ## 真人视角模拟
@@ -56,6 +56,5 @@
 ## 已知限制
 
 - 当前 PostgreSQL 和只读网关仍依赖这台 Mac 在线。
-- 固定 localtunnel 子域已完成真实闭环，但长期稳定性不等于云托管。
-- Tailscale 账号尚未启用 Funnel；启用后应迁移到稳定 `ts.net` 地址。
+- Tailscale Funnel 已完成稳定地址和真实数据闭环。
 - 最终目标仍是将只读网关和 PostgreSQL 迁到持续在线的云环境。
