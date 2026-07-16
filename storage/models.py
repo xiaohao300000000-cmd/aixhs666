@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from storage.database import Base
@@ -228,6 +228,7 @@ class SkillRun(TimestampMixin, Base):
     preview_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     checkpoint_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     result_summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    business_report_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error_code: Mapped[str | None] = mapped_column(String(100))
     error_message: Mapped[str | None] = mapped_column(Text)
     requested_by: Mapped[str | None] = mapped_column(String(255))
@@ -272,6 +273,39 @@ class SkillRunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     skill_run: Mapped[SkillRun] = relationship(back_populates="events")
+
+
+class ReviewQueueItem(TimestampMixin, Base):
+    __tablename__ = "review_queue_items"
+    __table_args__ = (
+        UniqueConstraint("queue_date", "candidate_key", name="uq_review_queue_items_date_candidate"),
+        Index("ix_review_queue_items_date_status_position", "queue_date", "status", "position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    queue_date: Mapped[date] = mapped_column(Date, nullable=False)
+    candidate_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    representative_screening_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lead_screening_results.id", ondelete="SET NULL")
+    )
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"))
+    public_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("public_profiles.id", ondelete="SET NULL")
+    )
+    source_run_id: Mapped[int | None] = mapped_column(ForeignKey("skill_runs.id", ondelete="SET NULL"))
+    screening_ids_json: Mapped[list[int]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    layer: Mapped[str] = mapped_column(String(50), nullable=False)
+    slot_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    priority_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", server_default="pending")
+    is_emergency: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    queue_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    exclusion_sample_reason: Mapped[str | None] = mapped_column(Text)
+    human_decision: Mapped[str | None] = mapped_column(String(50))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AnalysisProcessingState(Base):
