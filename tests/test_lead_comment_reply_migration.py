@@ -20,6 +20,7 @@ def test_contact_reply_two_step_migration_adds_revisions_and_operations(
         "add_column",
         "create_table",
         "create_index",
+        "execute",
         "drop_index",
         "drop_table",
         "drop_column",
@@ -36,6 +37,8 @@ def test_contact_reply_two_step_migration_adds_revisions_and_operations(
     assert added["draft_revision"].server_default.arg == "1"
     assert added["approved_revision"].nullable is True
     assert added["queued_at"].nullable is True
+    backfills = [str(args[0]) for operation, args, _ in calls if operation == "execute"]
+    assert any("approved_revision" in sql and "approved_text IS NOT NULL" in sql for sql in backfills)
     create_table = next(args for operation, args, _ in calls if operation == "create_table")
     assert create_table[0] == "contact_command_operations"
     assert any(
