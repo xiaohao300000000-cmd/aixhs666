@@ -228,7 +228,12 @@ def build_comment_reply_approval_card(
                     "name": f"comment_reply_form_{reply.id}",
                     "elements": [
                         {"tag": "input", "name": "comment_reply_text", "label": {"tag": "plain_text", "content": "公开回复"}, "default_value": reply.approved_text or reply.draft_text, "input_type": "multiline_text", "required": True, "max_length": 300, "rows": 4},
-                        {"tag": "button", "name": f"{action}_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "发送公开回复" if action == "send" else "重新确认话术" if action == "retry" else "确认话术（不会发送）"}, "type": "primary", "action_type": "form_submit"},
+                        _callback_button(
+                            name=f"{action}_comment_reply_{reply.id}",
+                            label="发送公开回复" if action == "send" else "重新确认话术" if action == "retry" else "确认话术（不会发送）",
+                            button_type="primary",
+                            form_submit=True,
+                        ),
                     ],
                 },
             ],
@@ -250,7 +255,11 @@ def build_comment_reply_send_card(reply: LeadCommentReply) -> dict[str, Any]:
                 {"tag": "markdown", "content": f"**渠道**：小红书公开评论回复\n\n**目标评论**：{reply.target_platform_comment_id}\n\n**目标链接**：{reply.target_url or '未提供'}"},
                 {"tag": "markdown", "content": f"**最终全文（版本 {reply.draft_revision}）**\n> {reply.approved_text or reply.draft_text}"},
                 {"tag": "markdown", "content": "点击后将创建持久发送任务，并由 Windows 远程浏览器执行一次公开回复。"},
-                {"tag": "button", "name": f"send_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "发送公开回复"}, "type": "danger", "action_type": "form_submit"},
+                _callback_button(
+                    name=f"send_comment_reply_{reply.id}",
+                    label="发送公开回复",
+                    button_type="danger",
+                ),
             ]
         },
     }
@@ -365,6 +374,7 @@ def enqueue_comment_reply_callback(
                 confirmed=True,
                 operator=str(operator_id),
                 idempotency_key=f"{operation_key}:send",
+                update_token=str(event.get("token") or "") or None,
             )
         session.commit()
         session.refresh(reply)
@@ -801,7 +811,8 @@ def _event(payload: dict[str, Any]) -> dict[str, Any]:
 def _action_name(payload: dict[str, Any]) -> str:
     event = _event(payload)
     action = event.get("action") if isinstance(event.get("action"), dict) else {}
-    return str(action.get("name") or "")
+    value = action.get("value") if isinstance(action.get("value"), dict) else {}
+    return str(action.get("name") or value.get("action") or value.get("name") or "")
 
 
 def _form_text(payload: dict[str, Any]) -> str:
@@ -835,7 +846,7 @@ def _result_card(reply_id: int, text: str, result: CommentReplySendResult, compl
         detail = f"**核验信息**：{result.error or '平台结果未确认'}"
     elements: list[dict[str, Any]] = [{"tag": "markdown", "content": f"**状态：{label}**\n\n**最终回复**\n{text}\n\n{detail}"}]
     if result.outcome == "failed":
-        elements.append({"tag": "form", "name": f"comment_reply_retry_form_{reply_id}", "elements": [{"tag": "input", "name": "comment_reply_text", "default_value": text, "required": True}, {"tag": "button", "name": f"retry_comment_reply_{reply_id}", "text": {"tag": "plain_text", "content": "重试"}, "type": "primary", "action_type": "form_submit"}]})
+        elements.append({"tag": "form", "name": f"comment_reply_retry_form_{reply_id}", "elements": [{"tag": "input", "name": "comment_reply_text", "default_value": text, "required": True}, _callback_button(name=f"retry_comment_reply_{reply_id}", label="重试", button_type="primary", form_submit=True)]})
     return {"schema": "2.0", "config": {"update_multi": True}, "header": {"template": "green" if result.outcome == "sent" else "orange", "title": {"tag": "plain_text", "content": "小红书评论回复"}}, "body": {"elements": elements}}
 
 
@@ -844,6 +855,19 @@ def _sanitize_persisted_error(error: str | None) -> str | None:
         return None
     sanitized = " ".join(error.split())
     return sanitized[:1000] or None
+
+
+def _callback_button(*, name: str, label: str, button_type: str, form_submit: bool = False) -> dict[str, Any]:
+    button: dict[str, Any] = {
+        "tag": "button",
+        "name": name,
+        "text": {"tag": "plain_text", "content": label},
+        "type": button_type,
+        "behaviors": [{"type": "callback", "value": {"action": name}}],
+    }
+    if form_submit:
+        button["form_action_type"] = "submit"
+    return button
 
 
 def _utc_now() -> datetime:

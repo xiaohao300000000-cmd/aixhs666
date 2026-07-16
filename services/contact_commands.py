@@ -22,6 +22,7 @@ from storage.models import (
 
 CHANNEL = "xiaohongshu_public_reply"
 TERMINAL = {"sent", "cancelled"}
+EDITABLE = {"pending_review", "awaiting_approval", "approved", "failed"}
 
 
 def prepare_contact_draft(
@@ -110,7 +111,7 @@ def edit_contact_draft(
     request = {"draft_revision": draft_revision, "text": normalized, "operator": _required(operator, "operator")}
 
     def apply(reply: LeadCommentReply) -> dict[str, Any]:
-        _require_mutable(reply)
+        _require_editable(reply)
         _require_revision(reply, draft_revision)
         reply.draft_text = normalized
         reply.draft_revision += 1
@@ -158,11 +159,19 @@ def send_approved_contact(
     confirmed: bool,
     operator: str,
     idempotency_key: str,
+    update_token: str | None = None,
 ) -> dict[str, Any]:
     operator = _required(operator, "operator")
     if confirmed is not True:
         raise ValueError("confirmed=true is required to send")
-    request = {"draft_revision": draft_revision, "confirmed": True, "operator": operator, "channel": CHANNEL}
+    normalized_update_token = update_token.strip() if update_token else None
+    request = {
+        "draft_revision": draft_revision,
+        "confirmed": True,
+        "operator": operator,
+        "channel": CHANNEL,
+        "update_token_present": normalized_update_token is not None,
+    }
 
     def apply(reply: LeadCommentReply) -> dict[str, Any]:
         _require_mutable(reply)
@@ -189,8 +198,13 @@ def send_approved_contact(
                 target_id=str(reply.id),
                 priority=100,
                 max_attempts=1,
-                payload_json={"draft_revision": reply.draft_revision},
+                payload_json={
+                    "draft_revision": reply.draft_revision,
+                    **({"update_token": normalized_update_token} if normalized_update_token else {}),
+                },
             )
+        elif normalized_update_token and not task.payload_json.get("update_token"):
+            task.payload_json = {**task.payload_json, "update_token": normalized_update_token}
         reply.status = "queued"
         reply.queued_at = datetime.now(UTC)
         _timeline(session, reply, "contact_send_queued", operator, {"draft_revision": draft_revision, "task_id": task.id})
@@ -329,7 +343,9 @@ def _operate(
         if existing.request_json != request:
             raise ValueError("idempotency_key request mismatch")
         return dict(existing.result_json)
-    reply = session.get(LeadCommentReply, reply_id)
+    reply = session.scalar(
+        select(LeadCommentReply).where(LeadCommentReply.id == reply_id).with_for_update()
+    )
     if reply is None:
         raise LookupError("contact attempt not found")
     result = apply(reply)
@@ -370,6 +386,11 @@ def _require_revision(reply: LeadCommentReply, revision: int) -> None:
 def _require_mutable(reply: LeadCommentReply) -> None:
     if reply.status in TERMINAL:
         raise ValueError(f"terminal contact attempt cannot be changed: {reply.status}")
+
+
+def _require_editable(reply: LeadCommentReply) -> None:
+    if reply.status not in EDITABLE:
+        raise ValueError(f"contact attempt cannot be edited in state: {reply.status}")
 
 
 def _required(value: str, name: str) -> str:

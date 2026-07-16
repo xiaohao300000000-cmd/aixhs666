@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+import os
+from threading import Barrier, Lock
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from storage.database import Base
 from storage import models
-from storage.models import CollectionTask, Lead, LeadCommentReply, PublicProfile
+from storage.models import CollectionTask, CustomerTimelineEvent, Lead, LeadCommentReply, PublicProfile
 
 
 def _reply(session: Session, *, status: str = "pending_review") -> LeadCommentReply:
@@ -211,6 +214,71 @@ def test_sending_revision_cannot_change_and_its_original_result_remains_fenced(f
         with pytest.raises(ValueError):
             send_approved_contact(session, reply_id=reply.id, draft_revision=1, confirmed=True, operator="op", idempotency_key="send-again")
         assert session.query(CollectionTask).filter_by(task_type="comment_reply_send").count() == 0
+
+
+@pytest.mark.postgres
+def test_postgres_different_send_keys_persist_exactly_one_task_and_queue_event() -> None:
+    from services.contact_commands import send_approved_contact
+
+    database_url = os.getenv("POSTGRES_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("POSTGRES_TEST_DATABASE_URL is required for the send serialization test")
+    engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
+    postgres_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with postgres_factory() as session:
+        reply = _reply(session, status="approved")
+        reply.approved_text = reply.draft_text
+        reply.approved_revision = reply.draft_revision
+        session.commit()
+        reply_id = reply.id
+
+    boundary = Barrier(2)
+    observed_threads: set[int] = set()
+    observed_lock = Lock()
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def synchronize_reply_reads(_connection, _cursor, statement, _parameters, _context, _executemany) -> None:  # type: ignore[no-untyped-def]
+        if "FROM lead_comment_replies" not in statement:
+            return
+        from threading import get_ident
+
+        thread_id = get_ident()
+        with observed_lock:
+            if thread_id in observed_threads:
+                return
+            observed_threads.add(thread_id)
+        boundary.wait(timeout=10)
+
+    def enqueue(key: str) -> str:
+        with postgres_factory() as session:
+            try:
+                result = send_approved_contact(
+                    session,
+                    reply_id=reply_id,
+                    draft_revision=1,
+                    confirmed=True,
+                    operator="concurrent-operator",
+                    idempotency_key=key,
+                )
+                session.commit()
+                return str(result["status"])
+            except ValueError:
+                session.rollback()
+                return "state_conflict"
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(enqueue, ("miaoda-send", "feishu-send")))
+        with postgres_factory() as session:
+            task_count = session.scalar(select(func.count()).select_from(CollectionTask).where(CollectionTask.task_type == "comment_reply_send"))
+            queue_events = list(session.scalars(select(CustomerTimelineEvent).where(CustomerTimelineEvent.event_type == "contact_send_queued")))
+        assert sorted(results) == ["queued", "state_conflict"]
+        assert task_count == 1
+        assert len(queue_events) == 1
+    finally:
+        event.remove(engine, "before_cursor_execute", synchronize_reply_reads)
+        engine.dispose()
 
 
 def test_result_unknown_requires_manual_not_sent_confirmation(factory: sessionmaker[Session]) -> None:
