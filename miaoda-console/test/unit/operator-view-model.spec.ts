@@ -55,8 +55,9 @@ describe('operator view model', () => {
 
   it('advances lead review and enforces reasoned judgments', () => {
     expect(getNextLeadId([{ id: 1 }, { id: 2 }, { id: 3 }], 2)).toBe(3);
-    expect(leadActionRequiresReason('invalid')).toBe(true);
-    expect(leadActionRequiresReason('valid')).toBe(false);
+    expect(leadActionRequiresReason('reject')).toBe(true);
+    expect(leadActionRequiresReason('defer')).toBe(true);
+    expect(leadActionRequiresReason('promote')).toBe(false);
   });
 
   it('maps run states to operator actions', () => {

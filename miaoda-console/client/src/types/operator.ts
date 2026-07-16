@@ -130,7 +130,22 @@ export type OperatorLeadQueue = {
   filters: string[];
 };
 
-export type LeadReviewAction = 'valid' | 'invalid' | 'watch' | 'needs_information' | 'follow_up';
+export type LeadReviewAction = 'promote' | 'defer' | 'reject';
+
+export type CustomerProgression = {
+  customer_id: number;
+  customer_stage: 'awaiting_first_contact' | 'deferred' | 'invalid' | string;
+  next_action: 'prepare_public_reply' | 'wait_for_reactivation' | 'none' | string;
+  timeline_event_id: number;
+  timeline_event_type: string;
+  screening_id: number | null;
+  idempotent_replay: boolean;
+};
+
+export type LeadReviewResult = {
+  lead: OperatorLead;
+  progression: CustomerProgression;
+};
 
 export type SkillTemplate = {
   key: string;

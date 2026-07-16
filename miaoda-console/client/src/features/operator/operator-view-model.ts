@@ -85,7 +85,7 @@ export function formatRelativeTime(value: string | null): string {
 
 
 export function leadActionRequiresReason(action: LeadReviewAction): boolean {
-  return action === 'invalid' || action === 'watch' || action === 'needs_information';
+  return action === 'reject' || action === 'defer';
 }
 
 

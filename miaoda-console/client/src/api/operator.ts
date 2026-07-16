@@ -3,6 +3,7 @@ import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBac
 
 import type {
   LeadReviewAction,
+  LeadReviewResult,
   OperatorErrorReason,
   OperatorLead,
   OperatorLeadQueue,
@@ -37,14 +38,21 @@ export async function getOperatorLeads(statusFilter = 'pending'): Promise<Operat
 
 export async function reviewOperatorLead(
   leadId: number,
-  payload: { action: LeadReviewAction; reason?: string; owner_name?: string; reviewer_id?: string },
-): Promise<OperatorLead> {
+  payload: {
+    action: LeadReviewAction;
+    reason?: string;
+    owner_name?: string;
+    reviewer_id?: string;
+    idempotency_key: string;
+    defer_until?: string;
+  },
+): Promise<LeadReviewResult> {
   const response = await axiosForBackend({
     url: `/api/operator/leads/${leadId}/review`,
     method: 'POST',
     data: payload,
   });
-  return response.data as OperatorLead;
+  return response.data as LeadReviewResult;
 }
 
 export async function getOperatorTasks(): Promise<OperatorTaskCenter> {
