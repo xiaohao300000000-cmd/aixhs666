@@ -392,3 +392,10 @@
 - 是否属于正式客户统一由 `Lead.status == qualified` 判断；`crm_stage` 只表示正式客户所处业务阶段，不承担客户身份判定。
 - 正式客户进入 `invalid/无效` 阶段后仍保留在 CRM、Operator API 和同步范围内；非正式 candidate、watch 或 ignored Lead 不得进入客户投影。
 - Base 白名单 pull 必须在创建或收养 `FeishuBitableRecord` mapping 前验证正式客户身份，禁止通过手工填写后端 ID 和同步版本改写候选或生成客户审计事实。
+
+## 2026-07-16：V19 写接口使用持久请求幂等事实
+
+- 非空 `idempotency_key` 和实体唯一约束不能替代请求幂等；同一 key 重试必须返回首次稳定结果，不能继续产生新的队列副作用。
+- V19-03 的 report rebuild、prepare review queue、continue review queue 共用 `ReviewQueueOperation` 持久事实；只保存 key 的 SHA-256、规范化请求、首次结果、操作域、业务日和审计时间，不保存 key 原文。
+- 同 key 但参数、业务日、Run 或操作域不同必须明确拒绝并返回安全错误；不得悄悄复用或泄漏 key、密钥、堆栈。
+- 已经执行的 `0019_review_queue` 不允许改写历史，因此使用独立 `0020_review_queue_idempotency` 迁移，避免 Alembic revision 漂移。

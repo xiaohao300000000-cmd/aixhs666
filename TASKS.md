@@ -516,7 +516,7 @@ V18 使用妙搭承载可视化与操作体验，现有 FastAPI/PostgreSQL/Worke
 - [x] V19-00 完成并确认统一运营闭环设计：妙搭主操作台、PostgreSQL 唯一事实源、Base 个人 CRM、飞书提醒、公开回复两步确认、高召回每日 50 条、14:00 自动发现、15:00/21:00 回复检查和真实验收标准。
 - [x] V19-01 统一审核业务命令、客户阶段、时间线、幂等与多入口一致性；自动化、真实 PostgreSQL 可逆写回和妙搭交互验证通过，详见 `docs/reports/V19_01_CUSTOMER_PROGRESSION_VERIFICATION.md`。
 - [x] V19-02 建立 Base 客户 CRM、跟进记录、允许字段双向同步和妙搭深链。主控已验收并合并 `ae32d5e`；指定测试 62 passed、全量 558 passed / 7 skipped，真实 PostgreSQL、Base 幂等投影和可逆回写证据见 `docs/reports/V19_02_BASE_CRM_VERIFICATION.md`。
-- [ ] V19-03 将 Skill Run 原始结果升级为人类业务报告、高召回分层队列和每日 50 条审核计划。（IN_PROGRESS：独立执行对话 `019f6b02-9e7a-7d52-b020-bd0a9d8eed8d`，分支 `codex/v19-03-run-report-queue`）
+- [x] V19-03 将 Skill Run 原始结果升级为人类业务报告、高召回分层队列和每日 50 条审核计划。主控经三轮代码返工后验收并合并 `708ad29`；指定测试 65 passed、全量 594 passed / 7 skipped，真实 PostgreSQL 为 `0020_review_queue_idempotency (head)`，当天队列 50 条（5 QC + 45 业务），详见 `docs/reports/V19_03_RUN_REPORT_QUEUE_VERIFICATION.md`。
 - [ ] V19-04 重做妙搭今日行动、任务结果、连续审核、客户中心和系统健康交互。
 - [ ] V19-05 打通公开回复草稿、两步确认、真实发送、三端状态与结果不确定恢复。
 - [ ] V19-06 实现 14:00 自动发现、15:00/21:00 回复检查、浏览器互斥调度和客户新回复提醒。

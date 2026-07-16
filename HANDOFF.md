@@ -466,3 +466,14 @@ python -m apps.cli --json run-control-panel-once
 - 真实只读基线：Skill Run `#8` 为 succeeded 且 checkpoint 含 50 个 Screening；当前库共 100 个 Screening、86 个未人工审核事实。执行对话必须现场重查，不得把该快照当作固定真相。
 - 下一步创建全新独立执行对话和 worktree，目标分支 `codex/v19-03-run-report-queue`；主控继续只监督、复验、返工或合并。
 - 独立执行对话已创建：`019f6b02-9e7a-7d52-b020-bd0a9d8eed8d`；worktree 为 `/Users/xiaohao30000/.codex/worktrees/8b8b/aixhs666`。执行对话必须在任何任务文件修改前切换到 `codex/v19-03-run-report-queue`。
+
+## 2026-07-16 V19-03 人类报告与审核队列已验收合并
+
+- 独立执行分支 `codex/v19-03-run-report-queue` 经主控三轮代码审查返工后合并到 `main`，合并提交为 `708ad29`；Codex 托管 worktree 保留，不由主控删除。
+- 主控 fresh verification：指定测试 `65 passed`；合并前和合并后全量均为 `594 passed, 7 skipped`；`git diff --check` 通过。
+- 真实 PostgreSQL 已迁移到 `0020_review_queue_idempotency (head)`；Run `#8` 保持 succeeded、50 个 checkpoint Screening、57 条事件和独立业务报告。
+- 业务日 `2026-07-16` 的持久队列保持 50 条、5 QC、45 业务位、50 个唯一候选键和位置 1–50；Screening 仍为 100/86 未审核/14 已审核，没有改写原始审核事实。
+- 主控返工关闭三项重要缺口：候选级已审核排除、分层/意向/置信度/更新时间/稳定 ID 完整排序、report/prepare/continue 三入口持久请求幂等。
+- `review_queue_operations` 真实表、唯一约束和审计索引存在，验收后仍为 0 条；真实库未执行会扩展队列的 continue，也未触发 DeepSeek、飞书/Base 写入、小红书或调度。
+- 已知非阻断风险：当前已有 50 条验收队列中有 1 个键在其他 Screening 上存在历史人工审核事实；按非破坏要求未追溯删除，只由新规则阻止未来再次入队。并发同键请求只由数据库唯一约束兜底，未做并发重放专项压测。
+- 下一步按顺序进入 V19-04：只重做妙搭今日行动、任务结果、连续审核、客户中心和系统健康体验；必须新开独立执行对话，不复用 V19-03 上下文。
