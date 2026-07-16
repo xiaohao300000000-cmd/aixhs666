@@ -427,3 +427,14 @@ python -m apps.cli --json run-control-panel-once
 - 用户确认高召回优先，每日默认审核 50 条，至少保留 5 个不确定候选或排除抽检位置；宁可多看，不允许因信息不足或低置信度提前误杀。
 - 书面规格位于 `docs/superpowers/specs/2026-07-16-unified-operations-crm-loop-design.md`，已经明确当前能力、缺口、状态机、Base 表结构、交互要求、调度互斥和真实验收标准。
 - 下一步必须先让用户复核书面规格，再编写实施计划；尚未开始 V19 核心代码改造。
+
+## 2026-07-16 V19-01 统一客户推进完成
+
+- 新增客户时间线事件模型和 Alembic `0017_customer_timeline_events`。
+- 新增统一客户推进服务；`promote`、`defer`、`reject` 统一更新 Lead、最新 Screening 和审计事件。
+- Operator API 返回 `{lead, progression}`，包含客户阶段、下一步、事件 ID 和幂等重放状态。
+- 飞书有效审核在同一事务中调用统一推进服务；缺少现有 Lead 时可按 Screening 的平台用户创建客户事实。
+- 妙搭审核动作已收敛为“推进为客户、暂缓判断、淘汰线索”，并显示客户编号、当前阶段和下一步。
+- 自动化结果：后端 `537 passed, 7 skipped`；妙搭 9 个 Jest、类型检查、lint 和生产构建通过。
+- 真实 PostgreSQL 已应用迁移；Lead `#147` / Screening `#1` 可逆推进验收后完整恢复，测试事件已删除。
+- 尚未发布新的妙搭 Release；线上界面要变化仍需导出主仓库 `miaoda-console/` 并执行妙搭发布。

@@ -239,7 +239,7 @@ Run `#8` 后续真实闭环：修复 `select_static.label` 非法字段和表单
 | 模块 | 状态 | 设计结论 |
 |---|---|---|
 | 总体规格 | USER APPROVED / WRITTEN REVIEW PENDING | 妙搭主操作台、PostgreSQL 唯一事实源、Base 个人 CRM、飞书提醒 |
-| 统一审核命令 | TODO | “有效”和“进入跟进”合并为“推进为客户”，多入口后果一致 |
+| 统一审核命令 | DONE / REAL PG VERIFIED | “有效”和“进入跟进”已合并为“推进为客户”；妙搭与飞书共用统一命令，真实 PostgreSQL 可逆验收通过 |
 | 高召回审核 | TODO | 每日默认 50 条，5 个质量控制位置，排序代替误杀 |
 | Base CRM | TODO | 客户一行、跟进记录一事一行、允许字段 5 分钟增量回写 |
 | 公开回复 | TODO | 自动草稿、人工确认、点击真实发送、`result_unknown` 人工核对 |
