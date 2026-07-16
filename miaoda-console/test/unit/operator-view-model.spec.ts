@@ -293,6 +293,29 @@ describe('operator view model', () => {
     expect(reviewQueueWritesEnabled(ready)).toBe(true);
   });
 
+  it('allows a successfully loaded empty or complete daily queue to continue', () => {
+    const completedItems = [{ candidate_key: 'daily:complete', status: 'completed' }] as OperatorReviewQueue['items'];
+    const common = { runId: null, runItems: undefined, runLoading: false, runErrorReason: null, dailyLoading: false, dailyErrorReason: null };
+
+    const empty = resolveReviewBatch({ ...common, dailyItems: [] });
+    const complete = resolveReviewBatch({ ...common, dailyItems: completedItems });
+
+    expect(reviewQueueWritesEnabled(empty)).toBe(true);
+    expect(reviewQueueWritesEnabled(complete)).toBe(true);
+  });
+
+  it('keeps loading, missing, and unavailable daily queues unable to continue', () => {
+    const common = { runId: null, runItems: undefined, dailyItems: undefined, runLoading: false, runErrorReason: null };
+
+    const loading = resolveReviewBatch({ ...common, dailyLoading: true, dailyErrorReason: null });
+    const missing = resolveReviewBatch({ ...common, dailyLoading: false, dailyErrorReason: 'resource_not_found' });
+    const unavailable = resolveReviewBatch({ ...common, dailyLoading: false, dailyErrorReason: 'backend_unavailable' });
+
+    expect(reviewQueueWritesEnabled(loading)).toBe(false);
+    expect(reviewQueueWritesEnabled(missing)).toBe(false);
+    expect(reviewQueueWritesEnabled(unavailable)).toBe(false);
+  });
+
   it('preserves the review batch and current candidate in the URL', () => {
     expect(buildReviewLocation({
       queueDate: '2026-07-16',
