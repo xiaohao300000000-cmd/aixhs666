@@ -2,12 +2,16 @@ import {
   buildAttentionItems,
   buildRunReportView,
   buildTodayActionModel,
+  buildReviewLocation,
+  buildReviewOutcome,
   getNextLeadId,
+  getNextPendingQueueCandidateKey,
   getRunActions,
   getRunStatusLabel,
   getWorkerHealthTone,
   isWorkbenchEmpty,
   leadActionRequiresReason,
+  reuseIdempotencyKey,
 } from '../../client/src/features/operator/operator-view-model';
 import type {
   OperatorCustomerList,
@@ -175,5 +179,56 @@ describe('operator view model', () => {
     ]);
     expect(model.destinations.find((item) => item.key === 'base')).toMatchObject({ status: 'synced' });
     expect(model.technicalDetails.references).toEqual(['checkpoint_json']);
+  });
+
+  it('preserves the review batch and current candidate in the URL', () => {
+    expect(buildReviewLocation({
+      queueDate: '2026-07-16',
+      runId: 8,
+      layer: 'uncertain_review',
+      candidateKey: 'profile:147',
+      position: 12,
+    })).toBe('/leads?queue_date=2026-07-16&run_id=8&layer=uncertain_review&candidate_key=profile%3A147&position=12');
+  });
+
+  it('advances only to the next pending queue item', () => {
+    const items = [
+      { candidate_key: 'profile:1', status: 'completed' },
+      { candidate_key: 'profile:2', status: 'pending' },
+      { candidate_key: 'profile:3', status: 'completed' },
+      { candidate_key: 'profile:4', status: 'pending' },
+    ];
+
+    expect(getNextPendingQueueCandidateKey(items, 'profile:2')).toBe('profile:4');
+    expect(getNextPendingQueueCandidateKey(items, 'profile:4')).toBeNull();
+  });
+
+  it('reuses an idempotency key for the same failed submission signature', () => {
+    const first = reuseIdempotencyKey(null, 'promote:profile:147', () => 'key-1');
+    const retry = reuseIdempotencyKey(first, 'promote:profile:147', () => 'key-2');
+    const changed = reuseIdempotencyKey(first, 'reject:profile:147:irrelevant', () => 'key-3');
+
+    expect(retry).toBe(first);
+    expect(changed).toEqual({ signature: 'reject:profile:147:irrelevant', key: 'key-3' });
+  });
+
+  it('describes concrete review consequences without claiming public reply delivery', () => {
+    const outcome = buildReviewOutcome({
+      progression: {
+        customer_id: 147,
+        customer_stage: 'awaiting_first_contact',
+        next_action: 'prepare_public_reply',
+        timeline_event_id: 3,
+        timeline_event_type: 'candidate_promoted',
+        screening_id: 8,
+        idempotent_replay: false,
+      },
+      baseStatus: 'synced',
+    });
+
+    expect(outcome.summary).toContain('客户 #147');
+    expect(outcome.summary).toContain('Base CRM 已同步');
+    expect(outcome.boundary).toBe('公开回复草稿功能将在 V19-05 开放');
+    expect(outcome.customerHref).toBe('/customers/147');
   });
 });

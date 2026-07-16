@@ -2,6 +2,7 @@ import type {
   AttentionCounts,
   LeadReviewAction,
   OperatorCustomerList,
+  CustomerProgression,
   OperatorReviewQueue,
   OperatorRunReport,
   OperatorSkillRun,
@@ -215,5 +216,63 @@ export function buildRunReportView(report: OperatorRunReport) {
     destinations: Object.entries(report.destinations).map(([key, value]) => ({ key, ...value })),
     exclusionReasons: Object.entries(report.exclusion_reasons),
     technicalDetails: report.technical_details,
+  };
+}
+
+export function buildReviewLocation({
+  queueDate,
+  runId,
+  layer,
+  candidateKey,
+  position,
+}: {
+  queueDate?: string | null;
+  runId?: number | null;
+  layer?: string | null;
+  candidateKey?: string | null;
+  position?: number | null;
+}): string {
+  const params = new URLSearchParams();
+  if (queueDate) params.set('queue_date', queueDate);
+  if (runId) params.set('run_id', String(runId));
+  if (layer) params.set('layer', layer);
+  if (candidateKey) params.set('candidate_key', candidateKey);
+  if (position) params.set('position', String(position));
+  const query = params.toString();
+  return query ? `/leads?${query}` : '/leads';
+}
+
+export function getNextPendingQueueCandidateKey(
+  items: Array<{ candidate_key: string; status: string }>,
+  currentKey: string,
+): string | null {
+  const currentIndex = items.findIndex((item) => item.candidate_key === currentKey);
+  return items.slice(Math.max(0, currentIndex + 1)).find((item) => item.status === 'pending')?.candidate_key ?? null;
+}
+
+export type StableRequestIdentity = { signature: string; key: string };
+
+export function reuseIdempotencyKey(
+  current: StableRequestIdentity | null,
+  signature: string,
+  createKey: () => string,
+): StableRequestIdentity {
+  if (current?.signature === signature) return current;
+  return { signature, key: createKey() };
+}
+
+export function buildReviewOutcome({
+  progression,
+  baseStatus,
+}: {
+  progression: CustomerProgression;
+  baseStatus?: string | null;
+}) {
+  const stage = ({ awaiting_first_contact: '待首次联系', deferred: '已暂缓', invalid: '无效' } as Record<string, string>)[progression.customer_stage] ?? progression.customer_stage;
+  const base = baseStatus === 'synced' ? 'Base CRM 已同步' : baseStatus === 'failed' ? 'Base CRM 同步失败' : 'Base CRM 状态待确认';
+  return {
+    summary: `已处理客户 #${progression.customer_id}｜当前阶段：${stage}｜${base}`,
+    boundary: '公开回复草稿功能将在 V19-05 开放',
+    customerHref: `/customers/${progression.customer_id}`,
   };
 }

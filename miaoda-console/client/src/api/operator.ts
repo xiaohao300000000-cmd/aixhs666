@@ -42,6 +42,14 @@ export async function getOperatorLeads(statusFilter = 'pending'): Promise<Operat
   return response.data as OperatorLeadQueue;
 }
 
+export async function getOperatorLead(leadId: number): Promise<OperatorLead> {
+  const response = await axiosForBackend({
+    url: `/api/operator/leads/${leadId}`,
+    method: 'GET',
+  });
+  return response.data as OperatorLead;
+}
+
 export async function reviewOperatorLead(
   leadId: number,
   payload: {
