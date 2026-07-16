@@ -4,6 +4,7 @@ import type {
   OperatorCustomerList,
   OperatorCustomerSummary,
   OperatorCustomerTimeline,
+  OperatorContactAttempt,
   OperatorErrorReason,
   CustomerProgression,
   OperatorReviewQueueItem,
@@ -453,6 +454,22 @@ export function buildCustomerTimelineView(timeline: OperatorCustomerTimeline) {
     const description = item.next_step || item.result || item.content || '跟进事实已保留';
     return { id: `${item.kind}-${item.id}`, title, description, occurredAt: item.occurred_at, raw: item };
   });
+}
+
+export function buildContactAttemptView(attempt: OperatorContactAttempt) {
+  const exactApprovedRevision = attempt.approved_revision === attempt.draft_revision;
+  const active = ['queued', 'sending'].includes(attempt.status);
+  return {
+    statusLabel: ({
+      awaiting_approval: '话术待确认', approved: '话术已确认，等待最终发送', queued: '发送任务已排队', sending: '正在发送',
+      sent: '已发送', failed: '发送失败', result_unknown: '发送结果待人工核验', cancelled: '已取消',
+    } as Record<string, string>)[attempt.status] ?? attempt.status,
+    canEdit: !active && !['sent', 'result_unknown', 'cancelled'].includes(attempt.status),
+    canApprove: !active && !['sent', 'result_unknown', 'cancelled'].includes(attempt.status) && (!exactApprovedRevision || !attempt.safe_to_send),
+    canSend: attempt.status === 'approved' && exactApprovedRevision && attempt.safe_to_send,
+    canRecover: attempt.status === 'result_unknown',
+    directMessageAvailable: false,
+  };
 }
 
 export function buildSystemHealthModel(workbench: OperatorWorkbench) {

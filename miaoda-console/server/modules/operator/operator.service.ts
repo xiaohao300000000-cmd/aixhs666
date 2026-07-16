@@ -1,6 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   Injectable,
   NotFoundException,
@@ -84,6 +85,30 @@ export class OperatorService {
     return this.request('GET', `/operator/api/customers/${customerId}/timeline`);
   }
 
+  async getContactAttempt(customerId: number): Promise<unknown> {
+    return this.request('GET', `/operator/api/customers/${customerId}/contact-attempt`);
+  }
+
+  async prepareContactAttempt(customerId: number, payload: unknown): Promise<unknown> {
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/prepare`, payload);
+  }
+
+  async editContactAttempt(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
+    return this.request('PUT', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/draft`, payload);
+  }
+
+  async approveContactAttempt(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/approve`, payload);
+  }
+
+  async sendContactAttempt(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/send`, payload);
+  }
+
+  async confirmContactNotSent(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/confirm-not-sent`, payload);
+  }
+
   async createRun(payload: unknown): Promise<unknown> {
     return this.request('POST', '/operator/api/tasks/runs', payload);
   }
@@ -131,6 +156,9 @@ export class OperatorService {
       }
       if (status === 404) {
         throw new NotFoundException(this.safeError(404, 'resource_not_found', '请求的业务对象不存在或已被移除'));
+      }
+      if (status === 409) {
+        throw new ConflictException(this.safeError(409, 'state_conflict', '联系状态已变化，请刷新后重新确认'));
       }
       if (status === 422) {
         throw new UnprocessableEntityException(this.safeError(422, 'validation_failed', '提交内容未通过校验，请补全必填信息后重试'));
