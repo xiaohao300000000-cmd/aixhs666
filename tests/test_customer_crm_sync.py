@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from integrations.feishu.bitable import FeishuBitableSettings, FeishuBitableWriteResult
+from integrations.feishu.bitable import FeishuBitableClient, FeishuBitableSettings, FeishuBitableWriteResult
 from services.customer_crm_sync import pull_customer_crm_edits, sync_customer_crm
 from storage.database import Base
 from storage.models import (
@@ -53,6 +53,32 @@ class FakeBitableClient:
 
     def list_records(self) -> list[dict[str, object]]:
         return self.remote_records
+
+
+def test_lark_cli_can_read_one_record_updated_time_from_history() -> None:
+    calls: list[list[str]] = []
+
+    def runner(args: list[str], stdin: str | None = None) -> str:
+        calls.append(args)
+        return '{"ok":true,"data":{"items":[{"create_time":1784204000}]}}'
+
+    client = FeishuBitableClient(
+        settings=FeishuBitableSettings(
+            enabled=True,
+            app_id=None,
+            app_secret=None,
+            app_token="base-token",
+            table_id="customer-table",
+            transport="lark_cli",
+        ),
+        command_runner=runner,
+    )
+
+    updated_time = client.get_record_updated_time("rec-147")
+
+    assert updated_time == 1784204000000
+    assert "+record-history-list" in calls[0]
+    assert calls[0][calls[0].index("--record-id") + 1] == "rec-147"
 
 
 def _factory() -> sessionmaker[Session]:
@@ -201,6 +227,29 @@ def test_sync_isolates_one_customer_failure() -> None:
     assert result.failed == 1
     assert result.customers_synced == 1
     assert any(fields["后端客户 ID"] == str(second_id) for _, fields in customer_client.upserts)
+
+
+def test_default_sync_includes_migrated_customer_at_sync_version_zero() -> None:
+    factory = _factory()
+    lead_id, _ = _seed_customer(factory)
+    with factory() as session:
+        lead = session.get(Lead, lead_id)
+        assert lead is not None
+        lead.crm_stage = "qualified"
+        lead.crm_sync_version = 0
+        session.commit()
+    customer_client = FakeBitableClient(table_id="customer-table")
+    followup_client = FakeBitableClient(table_id="followup-table")
+
+    result = sync_customer_crm(
+        factory,
+        customer_client=customer_client,
+        followup_client=followup_client,
+    )
+
+    assert result.status == "synced"
+    assert result.customers_synced == 1
+    assert customer_client.upserts[0][1]["后端客户 ID"] == str(lead_id)
 
 
 def test_unknown_create_enters_reconciliation_and_never_blindly_recreates() -> None:

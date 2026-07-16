@@ -89,7 +89,7 @@ def sync_customer_crm(
             customer_ids = list(
                 session.scalars(
                     select(Lead.id)
-                    .where(Lead.crm_sync_version > 0, Lead.crm_stage.notin_({"candidate", "invalid"}))
+                    .where(Lead.crm_stage.notin_({"candidate", "invalid"}))
                     .order_by(Lead.id)
                 ).all()
             )
@@ -222,6 +222,8 @@ def pull_customer_crm_edits(
                         continue
                     remote_version = _int_value(fields.get("同步版本"))
                     remote_updated_at = _remote_updated_at(record)
+                    if remote_updated_at is None and client.settings.transport == "lark_cli" and record_id:
+                        remote_updated_at = _parse_datetime(client.get_record_updated_time(record_id))
                     if remote_version != lead.crm_sync_version or remote_updated_at is None:
                         conflicted += 1
                         continue

@@ -167,6 +167,29 @@ class FeishuBitableClient:
             if page_token is None:
                 raise FeishuBitableError("Feishu Bitable list reported has_more without page_token")
 
+    def get_record_updated_time(self, record_id: str) -> int | None:
+        """Return one record's authoritative update time in milliseconds."""
+        if not self._ready() or self.settings.transport != "lark_cli" or not record_id.strip():
+            return None
+        args = self._base_cli_args("+record-history-list") + [
+            "--record-id",
+            record_id,
+            "--page-size",
+            "1",
+            "--format",
+            "json",
+            "--as",
+            self.settings.lark_cli_as,
+        ]
+        history = self._run_lark_cli_json(args, "record history")
+        items = history.get("data", {}).get("items") or []
+        if not items or not isinstance(items[0], dict):
+            return None
+        try:
+            return int(items[0].get("create_time")) * 1000
+        except (TypeError, ValueError):
+            return None
+
     def find_records_by_exact_field(self, field_name: str, value: str) -> list[dict[str, Any]]:
         if not self._ready():
             return []

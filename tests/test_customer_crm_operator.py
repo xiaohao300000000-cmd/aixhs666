@@ -115,3 +115,27 @@ def test_operator_customer_detail_rejects_candidate_only_lead() -> None:
             assert str(exc) == "customer not found"
         else:
             raise AssertionError("candidate-only Lead must not be exposed as a customer")
+
+
+def test_operator_customer_views_include_migrated_qualified_customer_at_sync_version_zero() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="legacy-qualified")
+        session.add(profile)
+        session.flush()
+        lead = Lead(
+            platform="xhs",
+            public_profile_id=profile.id,
+            status="qualified",
+            crm_stage="qualified",
+            crm_sync_version=0,
+        )
+        session.add(lead)
+        session.commit()
+
+        listing = list_operator_customers(session)
+        detail = get_operator_customer(session, lead.id)
+
+        assert [item["customer_id"] for item in listing["items"]] == [lead.id]
+        assert detail["customer_id"] == lead.id
+        assert detail["sync_version"] == 0
