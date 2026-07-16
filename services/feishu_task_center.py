@@ -52,9 +52,15 @@ def build_skill_run_card(run: SkillRun) -> dict[str, Any]:
     if run.status == "failed":
         return _card("任务失败", [{"tag": "markdown", "content": f"**任务 #{run.id}**\n阶段：{run.current_stage or '-'}\n错误：{run.error_message or '未知错误'}\n\n请明确点击重试。"}, _button("重试", f"skill_retry_{run.id}", primary=True), _button("复制任务", f"skill_copy_{run.id}")], "red")
     if run.status == "succeeded":
-        result = view["result"]
-        sync = result.get("feishu_sync", {})
-        return _card("任务完成", [{"tag": "markdown", "content": f"**任务 #{run.id}**\n处理数量：**{result.get('processed_count', 0)}**\n有效需求：**{result.get('valid_demands', 0)}**\n高意向客户：**{result.get('high_intent_customers', 0)}**\n待确认数量：**{result.get('needs_confirmation', 0)}**\n飞书同步：新增 {sync.get('created', 0)} / 更新 {sync.get('updated', 0)} / 失败 {sync.get('failed', 0)}"}, _button("查看结果", f"skill_result_{run.id}", primary=True), _button("复制任务", f"skill_copy_{run.id}")], "green")
+        return _card(
+            "任务完成",
+            [
+                {"tag": "markdown", "content": _business_report_text(run)},
+                _button("查看结果", f"skill_result_{run.id}", primary=True),
+                _button("复制任务", f"skill_copy_{run.id}"),
+            ],
+            "green",
+        )
     cancellable = run.status in {"queued", "running", "cancel_requested"} and run.current_stage not in {"sync_feishu", "summarize"}
     elements = [{"tag": "markdown", "content": f"**任务 #{run.id}**\n状态：{run.status}\n当前阶段：{run.current_stage or '等待 Worker'}\n进度：{run.progress_current}/{run.progress_total}（{run.progress_percent}%）"}]
     if cancellable: elements.append(_button("取消任务", f"skill_cancel_{run.id}"))
@@ -76,14 +82,12 @@ def build_skill_result_card(run: SkillRun) -> dict[str, Any]:
     else:
         sync_text = f"✅ **已写入多维表格**：新增 {created} / 更新 {updated} / 失败 0。"
     parameters = view["parameters"]
+    business_text = _business_report_text(run, include_destination=True)
     content = (
         f"**任务 #{run.id} · 历史线索智能筛选**\n"
         f"Campaign：{parameters.get('campaign_id', '-')}\n"
         f"处理上限：{parameters.get('limit', '-')}\n\n"
-        f"处理数量：**{result.get('processed_count', 0)}**\n"
-        f"有效需求：**{result.get('valid_demands', 0)}**\n"
-        f"高意向客户：**{result.get('high_intent_customers', 0)}**\n"
-        f"待确认数量：**{result.get('needs_confirmation', 0)}**\n\n"
+        f"{business_text}\n\n"
         f"{sync_text}{_result_links()}"
     )
     return _card("任务结果详情", [{"tag": "markdown", "content": content}, _button("复制任务", f"skill_copy_{run.id}", primary=True)], "green")
@@ -97,6 +101,39 @@ def _result_links() -> str:
     evidence_table = (os.getenv("FEISHU_AI_REVIEW_EVIDENCE_TABLE_ID") or DEFAULT_EVIDENCE_TABLE_ID).strip()
     base_url = f"https://my.feishu.cn/base/{app_token}"
     return f"\n\n[打开 AI 筛选客户线索]({base_url}?table={customer_table}) · [打开证据明细]({base_url}?table={evidence_table})"
+
+
+def _business_report_text(run: SkillRun, *, include_destination: bool = False) -> str:
+    report = run.business_report_json or {}
+    if not report:
+        result = run.result_summary_json or {}
+        return (
+            f"**任务 #{run.id}**\n"
+            f"处理数量：**{result.get('processed_count', 0)}**\n"
+            f"有效需求：**{result.get('valid_demands', 0)}**\n"
+            f"高意向客户：**{result.get('high_intent_customers', 0)}**\n"
+            f"待确认数量：**{result.get('needs_confirmation', 0)}**"
+        )
+    counts = report.get("counts", {})
+    queue = report.get("queue", {})
+    next_action = report.get("next_action", {})
+    lines = [
+        f"**任务 #{run.id}**",
+        str(report.get("conclusion") or "本次运行已完成。"),
+        "",
+        f"高优先级：{counts.get('priority_review', 0)}",
+        f"普通候选：{counts.get('standard_review', 0)}",
+        f"不确定候选：{counts.get('uncertain_review', 0)}",
+        f"明确自动排除：{counts.get('automatic_exclusion', 0)}",
+        f"今日审核队列：{queue.get('prepared', 0)}（质量控制 {queue.get('quality_control', 0)}）",
+    ]
+    if int(queue.get("emergency", 0) or 0):
+        lines.append(f"紧急新增：{queue.get('emergency', 0)}")
+    if include_destination:
+        base = (report.get("destinations", {}) or {}).get("base", {}) or {}
+        lines.append(f"数据去向：{base.get('detail') or base.get('status') or '保存在 PostgreSQL'}")
+    lines.append(f"下一步：{next_action.get('label') or '审核本次候选'}")
+    return "\n".join(lines)
 
 
 def send_task_center_card(*, chat_id: str, client: FeishuIMClient | None = None) -> dict[str, str]:

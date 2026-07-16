@@ -74,6 +74,8 @@ def test_gateway_exposes_authenticated_lead_and_task_operator_routes(gateway_cli
     tasks = gateway_client.get("/operator/api/tasks", headers=headers)
     customers = gateway_client.get("/operator/api/customers", headers=headers)
     customer_sync_without_key = gateway_client.post("/operator/api/customers/sync", headers=headers, json={})
+    queue_missing_token = gateway_client.get("/operator/api/review-queue")
+    queue = gateway_client.get("/operator/api/review-queue", headers=headers)
 
     assert leads.status_code == 200
     assert leads.json()["items"] == []
@@ -82,6 +84,9 @@ def test_gateway_exposes_authenticated_lead_and_task_operator_routes(gateway_cli
     assert customers.status_code == 200
     assert customers.json()["items"] == []
     assert customer_sync_without_key.status_code == 422
+    assert queue_missing_token.status_code == 401
+    assert queue.status_code == 200
+    assert queue.json()["progress"]["target"] == 0
 
 
 def test_gateway_rejects_unsupported_methods(gateway_client: TestClient) -> None:

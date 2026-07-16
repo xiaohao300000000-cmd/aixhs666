@@ -17,9 +17,31 @@ def test_catalog_and_terminal_cards_render_required_actions() -> None:
     assert submit["behaviors"] == [{"type": "callback", "value": {"action": "skill_preview_3"}}]
     failed = SkillRun(id=1, skill_key="screen_historical_leads", skill_version=1, status="failed", error_message="boom")
     assert "重试" in str(build_skill_run_card(failed))
-    done = SkillRun(id=2, skill_key="screen_historical_leads", skill_version=1, status="succeeded", result_summary_json={"processed_count": 3, "valid_demands": 2, "high_intent_customers": 1, "needs_confirmation": 1, "feishu_sync": {"created": 2, "updated": 0, "failed": 0}})
+    done = SkillRun(
+        id=2,
+        skill_key="screen_historical_leads",
+        skill_version=1,
+        status="succeeded",
+        result_summary_json={"processed_count": 3, "raw": "technical-only"},
+        business_report_json={
+            "conclusion": "本次分析 3 条公开内容，得到 2 个待审核候选。",
+            "counts": {
+                "priority_review": 1,
+                "standard_review": 1,
+                "uncertain_review": 0,
+                "automatic_exclusion": 0,
+            },
+            "queue": {"prepared": 2, "quality_control": 0, "emergency": 0},
+            "destinations": {"base": {"status": "synced", "detail": "已同步"}},
+            "next_action": {"label": "审核本次候选"},
+        },
+    )
     rendered = str(build_skill_run_card(done))
-    assert "高意向客户" in rendered and "复制任务" in rendered
+    assert "本次分析 3 条公开内容" in rendered
+    assert "今日审核队列：2" in rendered
+    assert "审核本次候选" in rendered
+    assert "technical-only" not in rendered
+    assert "复制任务" in rendered
 
 
 def test_task_center_recognizes_real_card_v2_action_value_shape() -> None:
@@ -53,11 +75,27 @@ def test_result_card_is_distinct_and_links_to_synced_base(monkeypatch) -> None:
             "needs_confirmation": 7,
             "feishu_sync": {"created": 9, "updated": 3, "failed": 0, "dry_run": 0},
         },
+        business_report_json={
+            "conclusion": "本次分析 50 条公开内容，得到 12 个待审核候选。",
+            "counts": {
+                "priority_review": 4,
+                "standard_review": 6,
+                "uncertain_review": 2,
+                "automatic_exclusion": 3,
+            },
+            "queue": {"prepared": 50, "quality_control": 5, "emergency": 0},
+            "destinations": {"base": {"status": "synced", "detail": "已完成 Base 投影"}},
+            "next_action": {"label": "审核本次候选"},
+        },
     )
 
     rendered = str(build_skill_result_card(run))
 
     assert "任务结果详情" in rendered
+    assert "本次分析 50 条公开内容" in rendered
+    assert "高优先级：4" in rendered
+    assert "今日审核队列：50" in rendered
+    assert "下一步：审核本次候选" in rendered
     assert "已写入多维表格" in rendered
     assert "tblAHiwa7ip0IkxQ" in rendered
     assert "tblWuVvYREtAPHGs" in rendered
