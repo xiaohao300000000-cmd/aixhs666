@@ -437,4 +437,5 @@ python -m apps.cli --json run-control-panel-once
 - 妙搭审核动作已收敛为“推进为客户、暂缓判断、淘汰线索”，并显示客户编号、当前阶段和下一步。
 - 自动化结果：后端 `537 passed, 7 skipped`；妙搭 9 个 Jest、类型检查、lint 和生产构建通过。
 - 真实 PostgreSQL 已应用迁移；Lead `#147` / Screening `#1` 可逆推进验收后完整恢复，测试事件已删除。
-- 尚未发布新的妙搭 Release；线上界面要变化仍需导出主仓库 `miaoda-console/` 并执行妙搭发布。
+- GitHub `main` 已推送；妙搭工作区提交 `752d481` 已发布为 Release `7663073809487023329`，状态 `finished`，线上入口保持 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+- 运营网关和主 FastAPI 已重启加载新代码；真实 Operator HTTP 对 Lead `#147` 的可逆推进返回 HTTP 200，测试事件和业务字段已完整恢复。

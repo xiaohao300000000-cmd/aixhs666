@@ -41,11 +41,20 @@
 - 每次点击携带幂等键。
 - 完成反馈示例：`已处理客户 #151｜当前阶段：待首次联系｜下一步：准备公开回复`。
 
+## 运行与发布验证
+
+- 重启 `com.aixhs.operator-gateway` 后公网网关恢复 HTTP 200。
+- 重启本机 FastAPI `127.0.0.1:8017` 后 `/health` 返回 HTTP 200。
+- 通过真实 Operator Gateway 调用 Lead `#147` 的推进接口，返回 HTTP 200 和 `progression.customer_stage=awaiting_first_contact`；随后恢复全部字段并删除测试事件 `#2`，输出 `restored=true`。
+- GitHub 主仓库 `main` 已推送提交 `c8a60ae`。
+- 妙搭发布工作区提交 `752d481` 已推送官方 `sprint/default`。
+- 妙搭 Release `7663073809487023329` 状态 `finished`，线上提交为 `752d4818400f4ff4ecf58740ebe17300a443ccbb`。
+- 线上入口保持 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
+
 ## 明确未包含
 
 - Base CRM 表结构和双向同步属于 V19-02。
 - Run 人类结果报告与每日 50 条属于 V19-03。
 - 公开回复草稿确认和真实发送属于 V19-05。
 - 14:00、15:00、21:00 调度与回复检查属于 V19-06。
-- 本次尚未发布新的妙搭 Release；源码合入 `main` 后需要走妙搭导出和发布流程才能在线可见。
-
+- 本次已发布妙搭审核交互；Base CRM、Run 结果产品化、公开回复真实发送和回复检查仍属于后续 V19 切片。
