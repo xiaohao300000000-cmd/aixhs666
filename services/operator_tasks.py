@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, date, datetime
-from typing import Any
+from hashlib import sha256
+import json
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from services.daily_review_queue import (
+    business_date,
     extend_daily_review_queue,
     list_daily_review_queue,
     prepare_daily_review_queue,
@@ -23,7 +27,12 @@ from services.skill_runtime import (
     skill_run_result_view,
     update_skill_run_parameters,
 )
-from storage.models import SkillRun
+from storage.models import ReviewQueueOperation, SkillRun
+
+
+REPORT_REBUILD_OPERATION = "report_rebuild"
+PREPARE_REVIEW_QUEUE_OPERATION = "prepare_review_queue"
+CONTINUE_REVIEW_QUEUE_OPERATION = "continue_review_queue"
 
 
 def task_center_view(session: Session, *, limit: int = 30) -> dict[str, Any]:
@@ -136,8 +145,14 @@ def get_operator_run_report(
 ) -> dict[str, Any]:
     run = _get_run(session, run_id)
     if rebuild:
-        _require_idempotency_key(idempotency_key)
-        return rebuild_skill_run_report(session, run.id)
+        return _run_idempotent_review_queue_operation(
+            session,
+            operation_kind=REPORT_REBUILD_OPERATION,
+            queue_date=business_date(),
+            idempotency_key=idempotency_key,
+            request={"run_id": run.id},
+            action=lambda: rebuild_skill_run_report(session, run.id),
+        )
     if run.business_report_json is None:
         raise LookupError("business report has not been built")
     return dict(run.business_report_json)
@@ -175,25 +190,35 @@ def prepare_operator_review_queue(
 ) -> dict[str, Any]:
     normalized_key = _require_idempotency_key(idempotency_key)
     run = _get_run(session, run_id)
-    report = rebuild_skill_run_report(session, run.id)
-    queue = prepare_daily_review_queue(
+    day = queue_date or business_date()
+
+    def prepare() -> dict[str, Any]:
+        report = rebuild_skill_run_report(session, run.id)
+        queue = prepare_daily_review_queue(session, queue_date=day)
+        report = {
+            **report,
+            "queue": {
+                "scope": "global_unreviewed_backlog",
+                "prepared": queue["total"],
+                "quality_control": queue["quality_control"],
+                "emergency": queue["emergency"],
+                "backlog": queue["backlog"],
+                "errors": queue["errors"],
+            },
+        }
+        run.business_report_json = report
+        session.flush()
+        return {"run_id": run.id, **queue}
+
+    result = _run_idempotent_review_queue_operation(
         session,
-        queue_date=queue_date,
+        operation_kind=PREPARE_REVIEW_QUEUE_OPERATION,
+        queue_date=day,
+        idempotency_key=normalized_key,
+        request={"run_id": run.id},
+        action=prepare,
     )
-    report = {
-        **report,
-        "queue": {
-            "scope": "global_unreviewed_backlog",
-            "prepared": queue["total"],
-            "quality_control": queue["quality_control"],
-            "emergency": queue["emergency"],
-            "backlog": queue["backlog"],
-            "errors": queue["errors"],
-        },
-    }
-    run.business_report_json = report
-    session.flush()
-    return {"run_id": run.id, "idempotency_key": normalized_key, **queue}
+    return {"idempotency_key": normalized_key, **result}
 
 
 def get_operator_review_queue(
@@ -222,17 +247,69 @@ def continue_operator_review_queue(
     idempotency_key: str,
 ) -> dict[str, Any]:
     normalized_key = _require_idempotency_key(idempotency_key)
-    queue = extend_daily_review_queue(
+    day = queue_date or business_date()
+    result = _run_idempotent_review_queue_operation(
         session,
-        queue_date=queue_date,
-        additional=additional,
-        priority_only=priority_only,
+        operation_kind=CONTINUE_REVIEW_QUEUE_OPERATION,
+        queue_date=day,
+        idempotency_key=normalized_key,
+        request={"additional": additional, "priority_only": priority_only},
+        action=lambda: {
+            "priority_only": priority_only,
+            **extend_daily_review_queue(
+                session,
+                queue_date=day,
+                additional=additional,
+                priority_only=priority_only,
+            ),
+        },
     )
-    return {
-        "idempotency_key": normalized_key,
-        "priority_only": priority_only,
-        **queue,
-    }
+    return {"idempotency_key": normalized_key, **result}
+
+
+def _run_idempotent_review_queue_operation(
+    session: Session,
+    *,
+    operation_kind: str,
+    queue_date: date,
+    idempotency_key: str | None,
+    request: dict[str, Any],
+    action: Callable[[], dict[str, Any]],
+) -> dict[str, Any]:
+    normalized_key = _require_idempotency_key(idempotency_key)
+    key_hash = sha256(normalized_key.encode("utf-8")).hexdigest()
+    normalized_request = _normalize_json_dict(request)
+    existing = session.scalar(
+        select(ReviewQueueOperation).where(
+            ReviewQueueOperation.idempotency_key_hash == key_hash
+        )
+    )
+    if existing is not None:
+        if (
+            existing.operation_kind != operation_kind
+            or existing.queue_date != queue_date
+            or existing.request_json != normalized_request
+        ):
+            raise ValueError("idempotency key conflicts with an existing operation")
+        return deepcopy(existing.result_json)
+
+    result = _normalize_json_dict(action())
+    operation = ReviewQueueOperation(
+        operation_kind=operation_kind,
+        queue_date=queue_date,
+        idempotency_key_hash=key_hash,
+        request_json=normalized_request,
+        result_json=deepcopy(result),
+    )
+    session.add(operation)
+    session.flush()
+    return deepcopy(result)
+
+
+def _normalize_json_dict(value: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    )
 
 
 def _get_run(session: Session, run_id: int) -> SkillRun:

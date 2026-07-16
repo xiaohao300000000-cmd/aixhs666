@@ -278,3 +278,37 @@ def test_operator_run_report_candidate_and_review_queue_routes_require_stable_co
         "priority_only": True,
         "created": 20,
     }
+
+
+def test_review_queue_idempotency_conflict_returns_safe_http_400(
+    operator_client: TestClient,
+) -> None:
+    headers = {"Authorization": "Bearer operator-secret"}
+    idempotency_key = "never-echo-this-conflict-key"
+    first = operator_client.post(
+        "/operator/api/review-queue/continue",
+        headers=headers,
+        json={
+            "queue_date": "2026-07-16",
+            "additional": 20,
+            "priority_only": False,
+            "idempotency_key": idempotency_key,
+        },
+    )
+    conflict = operator_client.post(
+        "/operator/api/review-queue/continue",
+        headers=headers,
+        json={
+            "queue_date": "2026-07-16",
+            "additional": 21,
+            "priority_only": False,
+            "idempotency_key": idempotency_key,
+        },
+    )
+
+    assert first.status_code == 200
+    assert conflict.status_code == 400
+    assert conflict.json() == {
+        "detail": "idempotency key conflicts with an existing operation"
+    }
+    assert idempotency_key not in conflict.text

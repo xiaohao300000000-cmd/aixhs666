@@ -308,6 +308,34 @@ class ReviewQueueItem(TimestampMixin, Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ReviewQueueOperation(Base):
+    __tablename__ = "review_queue_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key_hash",
+            name="uq_review_queue_operations_key_hash",
+        ),
+        Index(
+            "ix_review_queue_operations_kind_date_created",
+            "operation_kind",
+            "queue_date",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    operation_kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    queue_date: Mapped[date] = mapped_column(Date, nullable=False)
+    idempotency_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
 class AnalysisProcessingState(Base):
     __tablename__ = "analysis_processing_states"
     __table_args__ = (

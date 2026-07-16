@@ -16,7 +16,13 @@ from services.daily_review_queue import (
     review_queue_progress,
 )
 from storage.database import Base
-from storage.models import LeadScreeningResult, PublicProfile, ReviewQueueItem, SkillRun
+from storage.models import (
+    LeadScreeningResult,
+    PublicProfile,
+    ReviewQueueItem,
+    ReviewQueueOperation,
+    SkillRun,
+)
 
 
 def _factory() -> sessionmaker[Session]:
@@ -81,6 +87,48 @@ def test_review_queue_has_date_status_position_read_index() -> None:
     }
 
     assert "ix_review_queue_items_date_status_position" in index_names
+
+
+def test_review_queue_operation_hash_is_unique_and_has_audit_index() -> None:
+    factory = _factory()
+    operation = {
+        "operation_kind": "continue_review_queue",
+        "queue_date": date(2026, 7, 16),
+        "idempotency_key_hash": "a" * 64,
+        "request_json": {"additional": 20, "priority_only": False},
+        "result_json": {"created": 20, "item_ids": list(range(1, 21))},
+    }
+    with factory() as session:
+        session.add(ReviewQueueOperation(**operation))
+        session.commit()
+
+        stored = session.scalar(select(ReviewQueueOperation))
+        assert stored is not None
+        assert stored.created_at is not None
+
+    with factory() as session:
+        session.add(
+            ReviewQueueOperation(
+                **{
+                    **operation,
+                    "operation_kind": "prepare_review_queue",
+                    "queue_date": date(2026, 7, 17),
+                }
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    inspector = inspect(factory.kw["bind"])
+    constraint_names = {
+        item["name"]
+        for item in inspector.get_unique_constraints("review_queue_operations")
+    }
+    index_names = {
+        item["name"] for item in inspector.get_indexes("review_queue_operations")
+    }
+    assert "uq_review_queue_operations_key_hash" in constraint_names
+    assert "ix_review_queue_operations_kind_date_created" in index_names
 
 
 def test_business_date_uses_asia_shanghai_boundary() -> None:
