@@ -4,7 +4,7 @@
 
 | 任务 | Worker | 锁定路径 | 模式 | 开始时间 | 释放条件 |
 |---|---|---|---|---|---|
-| - | - | - | - | - | 当前无文件锁；V19-02 已验收合并并释放 |
+| V19-03 | W1 | `storage/models.py`; `alembic/versions/0019_review_queue.py`; `services/skill_run_report.py`; `services/daily_review_queue.py`; `services/skill_runtime.py`; `services/operator_tasks.py`; `services/operator_leads.py`; `services/customer_progression.py`; `services/feishu_task_center.py`; `services/feishu_skill_run_sync.py`; `apps/api/routes/operator_api.py`; 对应测试与 V19-03 报告 | MIGRATION / INTERFACE / WRITE | 2026-07-16 | 主控验收并合并 V19-03 后释放 |
 
 模式：
 

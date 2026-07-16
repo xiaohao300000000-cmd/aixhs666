@@ -458,3 +458,10 @@ python -m apps.cli --json run-control-panel-once
 - Base 白名单回写已完成 `跟进备注` 可逆验收并恢复；候选劫持回归已补齐，非 `qualified` Lead 在创建 mapping 前直接跳过，不能由 Base pull 改写或生成审计事实。
 - 已知非阻断风险：同步 API 要求非空幂等键但请求级幂等键尚未单独落账；实体层继续由精确业务键和持久映射保证幂等。妙搭客户中心与完整页面仍属于 V19-04。
 - 下一步按顺序创建 V19-03 自包含任务包，并新开全新独立执行对话；不得复用 V19-02 对话上下文。
+
+## 2026-07-16 V19-03 自包含任务包已建立
+
+- 主控已建立 `orchestration/briefs/V19-03.md`，范围只包含 Skill Run 人类报告、高召回分层、每日 5+45 审核队列、审核进度闭环、Operator API 和飞书结果文案。
+- V19-03 明确禁止修改妙搭页面、Base CRM、公开回复、私信和 14:00/15:00/21:00 调度；真实验收只允许 PostgreSQL 新迁移/报告/队列事实，不调用外部 LLM 或外部平台写入。
+- 真实只读基线：Skill Run `#8` 为 succeeded 且 checkpoint 含 50 个 Screening；当前库共 100 个 Screening、86 个未人工审核事实。执行对话必须现场重查，不得把该快照当作固定真相。
+- 下一步创建全新独立执行对话和 worktree，目标分支 `codex/v19-03-run-report-queue`；主控继续只监督、复验、返工或合并。
