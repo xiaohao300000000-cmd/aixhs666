@@ -295,6 +295,24 @@ describe('operator view model', () => {
     expect(model[0].raw).toMatchObject({ event_type: 'candidate_promoted' });
   });
 
+  it('translates the live Chinese new-customer follow-up fact', () => {
+    const model = buildCustomerTimelineView({
+      customer_id: 147,
+      count: 1,
+      items: [{
+        kind: 'followup_record',
+        id: 4,
+        event_key: 'crm-migration-customer:147',
+        action_type: '新客户',
+        result: 'completed',
+        next_step: '查看证据原文，准备人工跟进',
+        occurred_at: '2026-07-16T12:05:44Z',
+      }],
+    });
+
+    expect(model[0].title).toBe('新客户跟进已建立');
+  });
+
   it('separates blocking and non-blocking failures and sanitizes technical errors', () => {
     const model = buildSystemHealthModel({
       ...emptyWorkbench,

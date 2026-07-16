@@ -333,6 +333,7 @@ export function buildCustomerTimelineView(timeline: OperatorCustomerTimeline) {
     const title = ({
       first_contact_due: '首次联系待处理',
       new_customer: '新客户跟进已建立',
+      新客户: '新客户跟进已建立',
       contact_attempt: '已记录一次联系',
       customer_reply: '客户有新回复',
     } as Record<string, string>)[item.action_type || ''] ?? '跟进记录已更新';
