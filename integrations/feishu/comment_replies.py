@@ -16,7 +16,7 @@ from storage.models import CollectionTask, Comment, Content, Lead, LeadCommentRe
 
 
 CommentReplyOutcome = Literal["sent", "failed", "result_unknown"]
-_ACTION_RE = re.compile(r"^(confirm|retry)_comment_reply_([1-9][0-9]*)$")
+_ACTION_RE = re.compile(r"^(confirm|send|retry)_comment_reply_([1-9][0-9]*)$")
 
 
 class FeishuMessageClient(Protocol):
@@ -60,6 +60,7 @@ class CommentReplyCallbackResult:
     reconciliation_required: bool = False
     card_status: str | None = None
     card_error: str | None = None
+    card: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +200,7 @@ def build_comment_reply_approval_card(
     reply: LeadCommentReply,
     screening: LeadScreeningResult,
     *,
-    action: Literal["confirm", "retry"] = "confirm",
+    action: Literal["confirm", "send", "retry"] = "confirm",
 ) -> dict[str, Any]:
     context = screening.context_json or {}
     customer_name = str(context.get("customer_name") or context.get("profile_name") or "未提供")
@@ -226,7 +227,7 @@ def build_comment_reply_approval_card(
                     "name": f"comment_reply_form_{reply.id}",
                     "elements": [
                         {"tag": "input", "name": "comment_reply_text", "label": {"tag": "plain_text", "content": "公开回复"}, "default_value": reply.approved_text or reply.draft_text, "input_type": "multiline_text", "required": True, "max_length": 300, "rows": 4},
-                        {"tag": "button", "name": f"{action}_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "重试回复" if action == "retry" else "确认回复"}, "type": "primary", "action_type": "form_submit"},
+                        {"tag": "button", "name": f"{action}_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "发送公开回复" if action == "send" else "重新确认话术" if action == "retry" else "确认话术（不会发送）"}, "type": "primary", "action_type": "form_submit"},
                     ],
                 },
             ],
@@ -236,6 +237,22 @@ def build_comment_reply_approval_card(
 
 def is_comment_reply_callback(payload: dict[str, Any]) -> bool:
     return _ACTION_RE.fullmatch(_action_name(payload)) is not None
+
+
+def build_comment_reply_send_card(reply: LeadCommentReply) -> dict[str, Any]:
+    return {
+        "schema": "2.0",
+        "config": {"update_multi": True, "width_mode": "default"},
+        "header": {"template": "orange", "title": {"tag": "plain_text", "content": "发送公开回复前最终确认"}},
+        "body": {
+            "elements": [
+                {"tag": "markdown", "content": f"**渠道**：小红书公开评论回复\n\n**目标评论**：{reply.target_platform_comment_id}\n\n**目标链接**：{reply.target_url or '未提供'}"},
+                {"tag": "markdown", "content": f"**最终全文（版本 {reply.draft_revision}）**\n> {reply.approved_text or reply.draft_text}"},
+                {"tag": "markdown", "content": "点击后将创建持久发送任务，并由 Windows 远程浏览器执行一次公开回复。"},
+                {"tag": "button", "name": f"send_comment_reply_{reply.id}", "text": {"tag": "plain_text", "content": "发送公开回复"}, "type": "danger", "action_type": "form_submit"},
+            ]
+        },
+    }
 
 
 def apply_comment_reply_callback(
@@ -291,7 +308,7 @@ def enqueue_comment_reply_callback(
     *,
     verification_token: str | None,
 ) -> CommentReplyCallbackResult:
-    from scheduler import create_task
+    from services.contact_commands import approve_contact_draft, edit_contact_draft, send_approved_contact
 
     if not verify_callback_token(payload, verification_token):
         raise ValueError("invalid Feishu callback token")
@@ -308,8 +325,8 @@ def enqueue_comment_reply_callback(
     context = event.get("context") if isinstance(event.get("context"), dict) else {}
     message_id = str(context.get("open_message_id") or "")
     chat_id = str(context.get("open_chat_id") or "")
-    final_text = validate_comment_reply_text(_form_text(payload))
-    allowed = ("pending_review",) if action == "confirm" else ("failed",)
+    final_text = validate_comment_reply_text(_form_text(payload)) if action != "send" else ""
+    operation_key = _callback_operation_key(payload, action=action, reply_id=reply_id)
 
     with session_factory() as session:
         reply = session.get(LeadCommentReply, reply_id)
@@ -319,31 +336,41 @@ def enqueue_comment_reply_callback(
             raise ValueError("comment reply callback message does not match stored message")
         if not chat_id or chat_id != reply.feishu_chat_id:
             raise ValueError("comment reply callback chat does not match stored chat")
-        claimed = session.execute(
-            update(LeadCommentReply)
-            .where(LeadCommentReply.id == reply_id, LeadCommentReply.status.in_(allowed))
-            .values(
-                status="approved_to_send",
-                approved_text=final_text,
-                approved_by=str(operator_id),
-                approved_at=_utc_now(),
-                last_error=None,
+        before = reply.status
+        if action in {"confirm", "retry"}:
+            revision = reply.draft_revision
+            if final_text != reply.draft_text:
+                edited = edit_contact_draft(
+                    session,
+                    reply_id=reply_id,
+                    draft_revision=revision,
+                    text=final_text,
+                    operator=str(operator_id),
+                    idempotency_key=f"{operation_key}:edit",
+                )
+                revision = int(edited["draft_revision"])
+            result = approve_contact_draft(
+                session,
+                reply_id=reply_id,
+                draft_revision=revision,
+                operator=str(operator_id),
+                idempotency_key=f"{operation_key}:approve",
             )
-        ).rowcount == 1
-        if not claimed:
-            session.refresh(reply)
-            return CommentReplyCallbackResult(False, True, reply_id, reply.status)
-        create_task(
-            session,
-            task_type="comment_reply_send",
-            platform="xhs",
-            target_id=str(reply_id),
-            priority=100,
-            max_attempts=1,
-            payload_json={"update_token": str(event.get("token") or "") or None},
-        )
+        else:
+            result = send_approved_contact(
+                session,
+                reply_id=reply_id,
+                draft_revision=reply.draft_revision,
+                confirmed=True,
+                operator=str(operator_id),
+                idempotency_key=f"{operation_key}:send",
+            )
         session.commit()
-    return CommentReplyCallbackResult(True, False, reply_id, "approved_to_send")
+        session.refresh(reply)
+        card = build_comment_reply_send_card(reply) if status_for_card(result) == "approved" else None
+    status = str(result["status"])
+    duplicate = before == status or (before == "approved_to_send" and status == "queued")
+    return CommentReplyCallbackResult(not duplicate, duplicate, reply_id, status, card=card)
 
 
 def execute_approved_comment_reply(
@@ -357,7 +384,11 @@ def execute_approved_comment_reply(
     with session_factory() as session:
         claimed = session.execute(
             update(LeadCommentReply)
-            .where(LeadCommentReply.id == reply_id, LeadCommentReply.status == "approved_to_send")
+            .where(
+                LeadCommentReply.id == reply_id,
+                LeadCommentReply.status.in_(("queued", "approved_to_send")),
+                LeadCommentReply.approved_revision == LeadCommentReply.draft_revision,
+            )
             .values(
                 status="sending",
                 last_attempt_at=_utc_now(),
@@ -769,6 +800,18 @@ def _form_text(payload: dict[str, Any]) -> str:
     action = event.get("action") if isinstance(event.get("action"), dict) else {}
     form = action.get("form_value") if isinstance(action.get("form_value"), dict) else {}
     return str(form.get("comment_reply_text") or "")
+
+
+def _callback_operation_key(payload: dict[str, Any], *, action: str, reply_id: int) -> str:
+    header = payload.get("header") if isinstance(payload.get("header"), dict) else {}
+    event = _event(payload)
+    context = event.get("context") if isinstance(event.get("context"), dict) else {}
+    identity = header.get("event_id") or payload.get("event_id") or context.get("open_message_id") or "message"
+    return f"feishu-comment:{identity}:{action}:{reply_id}"
+
+
+def status_for_card(result: dict[str, Any]) -> str:
+    return str(result.get("status") or "")
 
 
 def _result_card(reply_id: int, text: str, result: CommentReplySendResult, completed_at: datetime) -> dict[str, Any]:

@@ -100,7 +100,7 @@ async def llm_review_callback(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         background_tasks.add_task(_sync_comment_reply_followup, result.reply_id, result.status)
         _log_callback_accepted(started_at, event_id=event_id, action_name=action_name, callback_type="comment_reply")
-        return _card_callback_response(content="操作已受理")
+        return _card_callback_response(content="操作已受理", card=getattr(result, "card", None))
 
     if is_outreach_callback(payload):
         background_tasks.add_task(_apply_outreach_callback, payload)
