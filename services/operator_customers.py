@@ -26,7 +26,7 @@ def list_operator_customers(
 ) -> dict[str, Any]:
     leads = session.scalars(
         select(Lead)
-        .where(Lead.status == "qualified", Lead.crm_stage.notin_({"candidate", "invalid"}))
+        .where(Lead.status == "qualified")
         .order_by(Lead.next_followup_at.asc().nullslast(), Lead.updated_at.desc(), Lead.id.desc())
         .limit(limit)
     ).all()
@@ -187,7 +187,6 @@ def _customer_or_raise(session: Session, customer_id: int) -> Lead:
     if (
         lead is None
         or lead.status != "qualified"
-        or lead.crm_stage in {"candidate", "invalid"}
     ):
         raise LookupError("customer not found")
     return lead

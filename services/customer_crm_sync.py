@@ -92,7 +92,7 @@ def sync_customer_crm(
             customer_ids = list(
                 session.scalars(
                     select(Lead.id)
-                    .where(Lead.status == "qualified", Lead.crm_stage.notin_({"candidate", "invalid"}))
+                    .where(Lead.status == "qualified")
                     .order_by(Lead.id)
                 ).all()
             )
@@ -106,7 +106,7 @@ def sync_customer_crm(
     for customer_id in customer_ids:
         with session_factory() as session:
             lead = session.get(Lead, customer_id)
-            if lead is None or lead.status != "qualified" or lead.crm_stage in {"candidate", "invalid"}:
+            if lead is None or lead.status != "qualified":
                 skipped += 1
                 continue
             profile = session.get(PublicProfile, lead.public_profile_id)

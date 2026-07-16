@@ -166,3 +166,26 @@ def test_operator_customer_views_hide_deferred_candidate() -> None:
             assert str(exc) == "customer not found"
         else:
             raise AssertionError("deferred candidate must not be exposed as a customer")
+
+
+def test_operator_customer_views_keep_formal_invalid_customer_visible() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="formal-invalid-customer")
+        session.add(profile)
+        session.flush()
+        lead = Lead(
+            platform="xhs",
+            public_profile_id=profile.id,
+            status="qualified",
+            crm_stage="invalid",
+            crm_sync_version=2,
+        )
+        session.add(lead)
+        session.commit()
+
+        listing = list_operator_customers(session)
+        detail = get_operator_customer(session, lead.id)
+
+        assert [item["customer_id"] for item in listing["items"]] == [lead.id]
+        assert detail["crm_stage"] == "invalid"

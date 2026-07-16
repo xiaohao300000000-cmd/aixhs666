@@ -296,6 +296,28 @@ def test_sync_never_projects_deferred_candidate_as_customer_even_when_explicitly
     assert followup_client.upserts == []
 
 
+def test_sync_keeps_formal_customer_visible_after_invalid_crm_stage() -> None:
+    factory = _factory()
+    lead_id, _ = _seed_customer(factory)
+    with factory() as session:
+        lead = session.get(Lead, lead_id)
+        assert lead is not None
+        lead.crm_stage = "invalid"
+        session.commit()
+    customer_client = FakeBitableClient(table_id="customer-table")
+    followup_client = FakeBitableClient(table_id="followup-table")
+
+    result = sync_customer_crm(
+        factory,
+        customer_ids=[lead_id],
+        customer_client=customer_client,
+        followup_client=followup_client,
+    )
+
+    assert result.customers_synced == 1
+    assert customer_client.upserts[0][1]["CRM阶段"] == "无效"
+
+
 def test_unknown_create_enters_reconciliation_and_never_blindly_recreates() -> None:
     factory = _factory()
     lead_id, _ = _seed_customer(factory)
