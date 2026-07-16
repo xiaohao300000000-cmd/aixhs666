@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from services.daily_review_queue import complete_candidate_review
+from services.contact_commands import prepare_contact_draft
 from storage.models import CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadScreeningResult
 
 
@@ -191,6 +192,15 @@ def progress_operator_lead(
         public_profile_id=lead.public_profile_id,
         screening_id=screening.id if screening is not None else None,
     )
+    if normalized_action == "promote":
+        preparation = prepare_contact_draft(
+            session,
+            customer_id=lead.id,
+            idempotency_key=f"progression:{normalized_key}",
+        )
+        data = dict(event.data_json or {})
+        data["contact_preparation"] = preparation
+        event.data_json = data
     return _result_from_event(event, idempotent_replay=False)
 
 

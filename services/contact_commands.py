@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import hashlib
+import os
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -15,11 +16,83 @@ from storage.models import (
     CustomerTimelineEvent,
     Lead,
     LeadCommentReply,
+    LeadScreeningResult,
 )
 
 
 CHANNEL = "xiaohongshu_public_reply"
 TERMINAL = {"sent", "cancelled"}
+
+
+def prepare_contact_draft(
+    session: Session,
+    *,
+    customer_id: int,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    key_hash = hashlib.sha256(_required(idempotency_key, "idempotency_key").encode()).hexdigest()
+    existing = session.scalar(
+        select(ContactCommandOperation).where(
+            ContactCommandOperation.operation_scope == "prepare_contact_draft",
+            ContactCommandOperation.entity_id == customer_id,
+            ContactCommandOperation.idempotency_key_hash == key_hash,
+        )
+    )
+    if existing is not None:
+        return dict(existing.result_json)
+    lead = session.get(Lead, customer_id)
+    if lead is None or lead.status != "qualified":
+        raise LookupError("qualified customer not found")
+    screening = session.scalar(
+        select(LeadScreeningResult)
+        .where(
+            LeadScreeningResult.public_profile_id == lead.public_profile_id,
+            LeadScreeningResult.platform == "xhs",
+            LeadScreeningResult.source_entity_type == "comment",
+            LeadScreeningResult.review_status == "accepted",
+            LeadScreeningResult.human_review_status == "valid",
+            LeadScreeningResult.comment_id.is_not(None),
+            LeadScreeningResult.content_id.is_not(None),
+        )
+        .order_by(LeadScreeningResult.updated_at.desc(), LeadScreeningResult.id.desc())
+        .limit(1)
+    )
+    if screening is None:
+        result = {"status": "target_unavailable", "customer_id": customer_id, "task_id": None}
+    else:
+        task = session.scalar(
+            select(CollectionTask).where(
+                CollectionTask.task_type == "comment_reply_prepare",
+                CollectionTask.target_id == str(customer_id),
+                CollectionTask.status.in_(("pending", "running", "retry", "partial")),
+            )
+        )
+        if task is None:
+            task = create_task(
+                session,
+                task_type="comment_reply_prepare",
+                platform="xhs",
+                target_id=str(customer_id),
+                priority=95,
+                max_attempts=3,
+                payload_json={
+                    "screening_id": screening.id,
+                    "chat_id": screening.feishu_chat_id or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID"),
+                },
+            )
+        result = {"status": "queued", "customer_id": customer_id, "screening_id": screening.id, "task_id": task.id}
+    session.flush()
+    session.add(
+        ContactCommandOperation(
+            operation_scope="prepare_contact_draft",
+            entity_id=customer_id,
+            idempotency_key_hash=key_hash,
+            request_json={"customer_id": customer_id},
+            result_json=result,
+        )
+    )
+    session.flush()
+    return result
 
 
 def edit_contact_draft(
