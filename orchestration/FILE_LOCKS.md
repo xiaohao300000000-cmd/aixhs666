@@ -4,7 +4,7 @@
 
 | 任务 | Worker | 锁定路径 | 模式 | 开始时间 | 释放条件 |
 |---|---|---|---|---|---|
-| - | - | - | - | - | 当前无文件锁 |
+| V19-02 | W1 | `storage/models.py`; `alembic/versions/0018_customer_crm.py`; `services/customer_crm_sync.py`; `services/feishu_customer_followup.py`; `services/customer_progression.py`; `services/operator_customers.py`; `integrations/feishu/bitable.py`; `apps/api/routes/operator_api.py`; `apps/operator_gateway.py`; 对应测试与 V19-02 报告 | MIGRATION / INTERFACE / WRITE | 2026-07-16 | 主控验收并合并 V19-02 后释放 |
 
 模式：
 

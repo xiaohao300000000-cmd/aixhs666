@@ -439,3 +439,12 @@ python -m apps.cli --json run-control-panel-once
 - 真实 PostgreSQL 已应用迁移；Lead `#147` / Screening `#1` 可逆推进验收后完整恢复，测试事件已删除。
 - GitHub `main` 已推送；妙搭工作区提交 `752d481` 已发布为 Release `7663073809487023329`，状态 `finished`，线上入口保持 `https://tiho2o4ymck.feishuapp.com/app/app_17a4790srtt`。
 - 运营网关和主 FastAPI 已重启加载新代码；真实 Operator HTTP 对 Lead `#147` 的可逆推进返回 HTTP 200，测试事件和业务字段已完整恢复。
+
+## 2026-07-16 V19-02 独立执行对话已派发
+
+- 用户明确要求当前对话只做主控，不直接实现业务代码；每个 V19 子任务必须新开独立执行对话并使用独立分支/worktree。
+- 主控已创建自包含任务包 `orchestration/briefs/V19-02.md`。
+- 独立执行对话：`019f6ab4-bf72-7af1-95eb-9edc8c44f9fa`。
+- Worktree：`/Users/xiaohao30000/.codex/worktrees/e671/aixhs666`；目标分支：`codex/v19-02-base-crm`。
+- V19-02 只允许实现 Base 客户 CRM、跟进记录、五类人工字段双向同步、Operator 客户 API 和稳定深链；不得提前实现 V19-03 以后内容或触发小红书外部动作。
+- 主控下一步只做过程监督、范围审计、自动化/真实 Base 证据验收、返工或合并，不在主控工作区补写子任务代码。
