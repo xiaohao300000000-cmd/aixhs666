@@ -330,6 +330,22 @@ class Lead(TimestampMixin, Base):
     enrichment_tasks: Mapped[list[EnrichmentTask]] = relationship(back_populates="lead", cascade="all, delete-orphan")
 
 
+class CustomerTimelineEvent(Base):
+    __tablename__ = "customer_timeline_events"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_customer_timeline_events_event_key"),
+        Index("ix_customer_timeline_events_lead_occurred", "lead_id", "occurred_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    actor_id: Mapped[str | None] = mapped_column(String(255))
+    data_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class LeadEvidence(Base):
     __tablename__ = "lead_evidence"
     __table_args__ = (
