@@ -89,7 +89,7 @@ def sync_customer_crm(
             customer_ids = list(
                 session.scalars(
                     select(Lead.id)
-                    .where(Lead.crm_stage.notin_({"candidate", "invalid"}))
+                    .where(Lead.status == "qualified", Lead.crm_stage.notin_({"candidate", "invalid"}))
                     .order_by(Lead.id)
                 ).all()
             )
@@ -103,7 +103,7 @@ def sync_customer_crm(
     for customer_id in customer_ids:
         with session_factory() as session:
             lead = session.get(Lead, customer_id)
-            if lead is None:
+            if lead is None or lead.status != "qualified" or lead.crm_stage in {"candidate", "invalid"}:
                 skipped += 1
                 continue
             profile = session.get(PublicProfile, lead.public_profile_id)
@@ -394,6 +394,11 @@ def _sync_projection(
         mapping.last_error = str(exc)
         session.commit()
         return mapping.last_sync_status, str(exc)
+    if mapping.record_id is None and result.record_id is None and not result.dry_run:
+        mapping.last_sync_status = "reconciliation_unknown"
+        mapping.last_error = "remote create returned no record_id; operator reconciliation required"
+        session.commit()
+        return "reconciliation_unknown", mapping.last_error
     mapping.record_id = result.record_id or mapping.record_id
     mapping.sync_direction = "bidirectional" if entity_type == CUSTOMER_ENTITY_TYPE else "push"
     mapping.remote_fields_json = fields

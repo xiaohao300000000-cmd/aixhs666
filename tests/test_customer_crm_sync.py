@@ -35,6 +35,7 @@ class FakeBitableClient:
         self.matches: dict[str, list[dict[str, object]]] = {}
         self.fail_customer_ids: set[str] = set()
         self.ambiguous_once = False
+        self.empty_create_result = False
 
     def upsert_record(self, record_id: str | None, fields: dict[str, object]) -> FeishuBitableWriteResult:
         customer_id = str(fields.get("后端客户 ID") or "")
@@ -45,6 +46,8 @@ class FakeBitableClient:
             request = httpx.Request("POST", "https://open.feishu.cn/records")
             raise httpx.ReadTimeout("result unknown", request=request)
         self.upserts.append((record_id, fields))
+        if self.empty_create_result and record_id is None:
+            return FeishuBitableWriteResult(record_id=None, dry_run=False, payload={"fields": fields})
         generated = record_id or f"rec-{self.settings.table_id}-{len(self.upserts)}"
         return FeishuBitableWriteResult(record_id=generated, dry_run=False, payload={"fields": fields})
 
@@ -252,6 +255,30 @@ def test_default_sync_includes_migrated_customer_at_sync_version_zero() -> None:
     assert customer_client.upserts[0][1]["后端客户 ID"] == str(lead_id)
 
 
+def test_sync_never_projects_deferred_candidate_as_customer_even_when_explicitly_requested() -> None:
+    factory = _factory()
+    lead_id, _ = _seed_customer(factory)
+    with factory() as session:
+        lead = session.get(Lead, lead_id)
+        assert lead is not None
+        lead.status = "watch"
+        lead.crm_stage = "deferred"
+        session.commit()
+    customer_client = FakeBitableClient(table_id="customer-table")
+    followup_client = FakeBitableClient(table_id="followup-table")
+
+    result = sync_customer_crm(
+        factory,
+        customer_ids=[lead_id],
+        customer_client=customer_client,
+        followup_client=followup_client,
+    )
+
+    assert result.skipped == 1
+    assert customer_client.upserts == []
+    assert followup_client.upserts == []
+
+
 def test_unknown_create_enters_reconciliation_and_never_blindly_recreates() -> None:
     factory = _factory()
     lead_id, _ = _seed_customer(factory)
@@ -275,6 +302,38 @@ def test_unknown_create_enters_reconciliation_and_never_blindly_recreates() -> N
     assert first.reconciliation_unknown == 1
     assert second.reconciliation_unknown == 1
     assert customer_client.upserts == []
+    with factory() as session:
+        mapping = session.scalar(
+            select(FeishuBitableRecord).where(FeishuBitableRecord.local_entity_type == "customer_crm")
+        )
+        assert mapping is not None
+        assert mapping.record_id is None
+        assert mapping.last_sync_status == "reconciliation_unknown"
+
+
+def test_create_response_without_record_id_enters_reconciliation_and_never_recreates() -> None:
+    factory = _factory()
+    lead_id, _ = _seed_customer(factory)
+    customer_client = FakeBitableClient(table_id="customer-table")
+    customer_client.empty_create_result = True
+    followup_client = FakeBitableClient(table_id="followup-table")
+
+    first = sync_customer_crm(
+        factory,
+        customer_ids=[lead_id],
+        customer_client=customer_client,
+        followup_client=followup_client,
+    )
+    second = sync_customer_crm(
+        factory,
+        customer_ids=[lead_id],
+        customer_client=customer_client,
+        followup_client=followup_client,
+    )
+
+    assert first.reconciliation_unknown == 1
+    assert second.reconciliation_unknown == 1
+    assert len(customer_client.upserts) == 1
     with factory() as session:
         mapping = session.scalar(
             select(FeishuBitableRecord).where(FeishuBitableRecord.local_entity_type == "customer_crm")

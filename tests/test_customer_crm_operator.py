@@ -139,3 +139,30 @@ def test_operator_customer_views_include_migrated_qualified_customer_at_sync_ver
         assert [item["customer_id"] for item in listing["items"]] == [lead.id]
         assert detail["customer_id"] == lead.id
         assert detail["sync_version"] == 0
+
+
+def test_operator_customer_views_hide_deferred_candidate() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="deferred-candidate")
+        session.add(profile)
+        session.flush()
+        lead = Lead(
+            platform="xhs",
+            public_profile_id=profile.id,
+            status="watch",
+            crm_stage="deferred",
+            crm_sync_version=1,
+        )
+        session.add(lead)
+        session.commit()
+
+        listing = list_operator_customers(session)
+
+        assert listing["items"] == []
+        try:
+            get_operator_customer(session, lead.id)
+        except LookupError as exc:
+            assert str(exc) == "customer not found"
+        else:
+            raise AssertionError("deferred candidate must not be exposed as a customer")
