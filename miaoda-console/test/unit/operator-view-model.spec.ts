@@ -6,6 +6,7 @@ import {
   buildReviewOutcome,
   buildCustomerSummaryView,
   buildCustomerTimelineView,
+  buildContactAttemptView,
   buildRunReportAvailability,
   resolveReviewBatch,
   buildSystemHealthModel,
@@ -27,6 +28,7 @@ import type {
   OperatorRunReport,
   OperatorSkillRun,
   OperatorWorkbench,
+  OperatorContactAttempt,
 } from '../../client/src/types/operator';
 
 
@@ -52,6 +54,35 @@ const emptyWorkbench: OperatorWorkbench = {
 
 
 describe('operator view model', () => {
+  it.each([
+    ['awaiting_approval', null, false, true, false, false],
+    ['approved', 3, true, false, true, false],
+    ['approved', 2, false, true, false, false],
+    ['queued', 3, false, false, false, false],
+    ['sending', 3, false, false, false, false],
+    ['result_unknown', 3, false, false, false, true],
+  ])('maps contact status %s to safe two-step actions', (status, approvedRevision, safeToSend, canApprove, canSend, canRecover) => {
+    const attempt = {
+      attempt_id: 41,
+      customer_id: 147,
+      channel: 'xiaohongshu_public_reply',
+      target: { comment_id: 'comment-1', url: 'https://www.xiaohongshu.com/explore/note-1?xsec_token=public' },
+      draft_text: '公开回复草稿',
+      draft_revision: 3,
+      approved_revision: approvedRevision,
+      status,
+      safe_to_send: safeToSend,
+      safe_to_retry: false,
+      next_action: 'review',
+    } as OperatorContactAttempt;
+
+    expect(buildContactAttemptView(attempt)).toMatchObject({
+      canApprove,
+      canSend,
+      canRecover,
+      directMessageAvailable: false,
+    });
+  });
   it('prioritizes failed tasks as urgent attention', () => {
     const items = buildAttentionItems({
       ...emptyWorkbench.attention,
