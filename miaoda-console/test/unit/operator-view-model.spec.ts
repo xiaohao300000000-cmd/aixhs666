@@ -7,6 +7,7 @@ import {
   buildCustomerSummaryView,
   buildCustomerTimelineView,
   buildContactAttemptView,
+  buildContactPreparationView,
   buildRunReportAvailability,
   resolveReviewBatch,
   buildSystemHealthModel,
@@ -54,6 +55,10 @@ const emptyWorkbench: OperatorWorkbench = {
 
 
 describe('operator view model', () => {
+  it('distinguishes queued preparation from an unavailable public target', () => {
+    expect(buildContactPreparationView({ status: 'queued', customer_id: 147, screening_id: 9, task_id: 22 })).toMatchObject({ polling: true, message: '草稿生成任务已排队' });
+    expect(buildContactPreparationView({ status: 'target_unavailable', customer_id: 147, screening_id: null, task_id: null })).toMatchObject({ polling: false, message: '没有可用的合格公开评论目标' });
+  });
   it.each([
     ['awaiting_approval', null, false, true, false, false],
     ['approved', 3, true, false, true, false],

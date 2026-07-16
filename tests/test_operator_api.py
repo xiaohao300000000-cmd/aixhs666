@@ -12,6 +12,7 @@ from apps.api.main import create_app
 from services.customer_progression import CustomerProgressionResult
 from services.customer_crm_sync import CustomerCrmSyncResult
 from storage.database import Base, get_session
+from storage.models import Lead, LeadCommentReply, PublicProfile
 
 
 @pytest.fixture()
@@ -30,6 +31,7 @@ def operator_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
             yield session
 
     app = create_app()
+    app.state.operator_test_session_factory = session_factory
     app.dependency_overrides[get_session] = override_get_session
     with TestClient(app) as client:
         yield client
@@ -219,6 +221,66 @@ def test_operator_contact_routes_preserve_two_step_contract(
     assert approved.status_code == 200 and approved.json()["status"] == "approved"
     assert sent.status_code == 200 and sent.json()["status"] == "queued"
     assert [name for name, _ in calls] == ["edit", "approve", "send"]
+
+
+def test_miaoda_bff_contact_json_is_accepted_by_real_fastapi_commands(operator_client: TestClient) -> None:
+    factory = operator_client.app.state.operator_test_session_factory
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="miaoda-contract")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        session.add(lead)
+        session.flush()
+        reply = LeadCommentReply(
+            lead_id=lead.id,
+            target_platform_comment_id="comment-miaoda-contract",
+            target_platform_content_id="note-miaoda-contract",
+            target_url="https://www.xiaohongshu.com/explore/note-miaoda-contract",
+            draft_text="原始草稿",
+            status="awaiting_approval",
+        )
+        unknown = LeadCommentReply(
+            lead_id=lead.id,
+            target_platform_comment_id="comment-miaoda-unknown",
+            target_platform_content_id="note-miaoda-unknown",
+            draft_text="待核验草稿",
+            approved_text="待核验草稿",
+            approved_revision=1,
+            attempt_count=1,
+            status="result_unknown",
+        )
+        session.add_all([reply, unknown])
+        session.commit()
+        customer_id, reply_id, unknown_id = lead.id, reply.id, unknown.id
+
+    headers = {"Authorization": "Bearer operator-secret"}
+    edited = operator_client.put(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{reply_id}/draft",
+        headers=headers,
+        json={"draft_revision": 1, "text": "修改后的公开回复", "operator": "miaoda-operator", "idempotency_key": "edit-contract"},
+    )
+    approved = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{reply_id}/approve",
+        headers=headers,
+        json={"draft_revision": 2, "operator": "miaoda-operator", "idempotency_key": "approve-contract"},
+    )
+    sent = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{reply_id}/send",
+        headers=headers,
+        json={"draft_revision": 2, "confirmed": True, "operator": "miaoda-operator", "idempotency_key": "send-contract"},
+    )
+    recovered = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{unknown_id}/confirm-not-sent",
+        headers=headers,
+        json={"operator": "miaoda-operator", "reason": "人工核验目标页面未发送", "idempotency_key": "recover-contract"},
+    )
+
+    assert [edited.status_code, approved.status_code, sent.status_code, recovered.status_code] == [200, 200, 200, 200]
+    assert edited.json()["draft_revision"] == 2
+    assert approved.json()["status"] == "approved"
+    assert sent.json()["status"] == "queued"
+    assert recovered.json()["status"] == "failed"
 
 
 def test_operator_run_report_candidate_and_review_queue_routes_require_stable_contracts(
