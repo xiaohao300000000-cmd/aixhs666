@@ -6,6 +6,8 @@ import {
   buildReviewOutcome,
   buildCustomerSummaryView,
   buildCustomerTimelineView,
+  buildContactAttemptView,
+  buildContactPreparationView,
   buildRunReportAvailability,
   resolveReviewBatch,
   buildSystemHealthModel,
@@ -18,6 +20,7 @@ import {
   leadActionRequiresReason,
   reuseIdempotencyKey,
   reviewQueueWritesEnabled,
+  reuseContactPreparationIntentKey,
   sanitizeOperatorErrorSummary,
   selectReviewCandidate,
 } from '../../client/src/features/operator/operator-view-model';
@@ -27,6 +30,7 @@ import type {
   OperatorRunReport,
   OperatorSkillRun,
   OperatorWorkbench,
+  OperatorContactAttempt,
 } from '../../client/src/types/operator';
 
 
@@ -52,6 +56,53 @@ const emptyWorkbench: OperatorWorkbench = {
 
 
 describe('operator view model', () => {
+  it('distinguishes queued preparation from an unavailable public target', () => {
+    expect(buildContactPreparationView({ status: 'queued', customer_id: 147, screening_id: 9, task_id: 22, task_status: 'pending', failure_reason: null }, false)).toMatchObject({ pollingTask: true, pollingAttempt: true, canRetry: false, message: '草稿生成任务已排队' });
+    expect(buildContactPreparationView({ status: 'target_unavailable', customer_id: 147, screening_id: null, task_id: null, task_status: null, failure_reason: null }, false)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: false, message: '没有可用的合格公开评论目标' });
+  });
+  it('moves preparation from queued to actionable failure or a persisted attempt', () => {
+    const failed = { status: 'queued', customer_id: 147, screening_id: 9, task_id: 22, task_status: 'failed', failure_reason: '草稿生成失败，请检查任务中心后重新生成。' } as const;
+    expect(buildContactPreparationView(failed, false)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: true, buttonLabel: '重新生成公开回复草稿' });
+    const completed = { ...failed, task_status: 'completed', failure_reason: null } as const;
+    expect(buildContactPreparationView(completed, false)).toMatchObject({ pollingTask: false, pollingAttempt: true, canRetry: false });
+    expect(buildContactPreparationView(completed, true)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: false, complete: true });
+  });
+  it('reuses an in-flight preparation intent and creates a new key after failure clears it', () => {
+    const createKey = jest.fn().mockReturnValueOnce('intent-1').mockReturnValueOnce('intent-2');
+    const first = reuseContactPreparationIntentKey(null, createKey);
+    expect(reuseContactPreparationIntentKey(first, createKey)).toBe('intent-1');
+    expect(reuseContactPreparationIntentKey(null, createKey)).toBe('intent-2');
+    expect(createKey).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ['awaiting_approval', null, false, true, false, false],
+    ['approved', 3, true, false, true, false],
+    ['approved', 2, false, true, false, false],
+    ['queued', 3, false, false, false, false],
+    ['sending', 3, false, false, false, false],
+    ['result_unknown', 3, false, false, false, true],
+  ])('maps contact status %s to safe two-step actions', (status, approvedRevision, safeToSend, canApprove, canSend, canRecover) => {
+    const attempt = {
+      attempt_id: 41,
+      customer_id: 147,
+      channel: 'xiaohongshu_public_reply',
+      target: { comment_id: 'comment-1', url: 'https://www.xiaohongshu.com/explore/note-1?xsec_token=public' },
+      draft_text: '公开回复草稿',
+      draft_revision: 3,
+      approved_revision: approvedRevision,
+      status,
+      safe_to_send: safeToSend,
+      safe_to_retry: false,
+      next_action: 'review',
+    } as OperatorContactAttempt;
+
+    expect(buildContactAttemptView(attempt)).toMatchObject({
+      canApprove,
+      canSend,
+      canRecover,
+      directMessageAvailable: false,
+    });
+  });
   it('prioritizes failed tasks as urgent attention', () => {
     const items = buildAttentionItems({
       ...emptyWorkbench.attention,

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -7,8 +8,22 @@ import {
 } from '@nestjs/common';
 import type { HttpService } from '@nestjs/axios';
 import { of, throwError } from 'rxjs';
+import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
 
 import { OperatorService } from '../../server/modules/operator/operator.service';
+import {
+  approveOperatorContactAttempt,
+  confirmOperatorContactNotSent,
+  editOperatorContactAttempt,
+  getOperatorContactErrorReason,
+  prepareOperatorContactAttempt,
+  sendOperatorContactAttempt,
+} from '../../client/src/api/operator';
+import type { OperatorContactAttempt } from '../../client/src/types/operator';
+
+
+jest.mock('@lark-apaas/client-toolkit/utils/getAxiosForBackend', () => ({ axiosForBackend: jest.fn() }));
+jest.mock('@lark-apaas/client-toolkit/logger', () => ({ logger: { error: jest.fn() } }));
 
 
 describe('OperatorService', () => {
@@ -144,10 +159,61 @@ describe('OperatorService', () => {
     }));
   });
 
+  it('proxies the versioned contact workflow without replacing caller idempotency keys', async () => {
+    const request = jest.fn().mockReturnValue(of({ data: { attempt_id: 41 } }));
+    const service = new OperatorService({ request } as unknown as HttpService);
+    const key = 'stable-contact-command';
+
+    await service.getContactAttempt(147);
+    await service.prepareContactAttempt(147, { idempotency_key: key });
+    await service.editContactAttempt(147, 41, { draft_revision: 1, text: '新的公开回复', idempotency_key: key, operator: 'browser-forged-admin' });
+    await service.approveContactAttempt(147, 41, { draft_revision: 2, idempotency_key: key });
+    await service.sendContactAttempt(147, 41, { draft_revision: 2, confirmed: true, idempotency_key: key });
+    await service.confirmContactNotSent(147, 41, { reason: '人工核验平台未发送', idempotency_key: key });
+
+    expect(request.mock.calls.map(([input]) => [input.method, input.url, input.data])).toEqual([
+      ['GET', 'https://backend.example.com/operator/api/customers/147/contact-attempt', undefined],
+      ['POST', 'https://backend.example.com/operator/api/customers/147/contact-attempt/prepare', { idempotency_key: key }],
+      ['PUT', 'https://backend.example.com/operator/api/customers/147/contact-attempt/41/draft', { draft_revision: 1, text: '新的公开回复', idempotency_key: key, operator: 'miaoda-operator' }],
+      ['POST', 'https://backend.example.com/operator/api/customers/147/contact-attempt/41/approve', { draft_revision: 2, idempotency_key: key, operator: 'miaoda-operator' }],
+      ['POST', 'https://backend.example.com/operator/api/customers/147/contact-attempt/41/send', { draft_revision: 2, confirmed: true, idempotency_key: key, operator: 'miaoda-operator' }],
+      ['POST', 'https://backend.example.com/operator/api/customers/147/contact-attempt/41/confirm-not-sent', { reason: '人工核验平台未发送', idempotency_key: key, operator: 'miaoda-operator' }],
+    ]);
+  });
+
+  it('emits FastAPI-compatible contact JSON from the browser client', async () => {
+    const attempt = {
+      attempt_id: 41,
+      customer_id: 147,
+      draft_revision: 2,
+      draft_text: '新的公开回复',
+    } as OperatorContactAttempt;
+    const preparation = { status: 'queued', customer_id: 147, screening_id: 9, task_id: 22, task_status: 'failed', failure_reason: '草稿生成失败，请检查任务中心后重新生成。' } as const;
+    jest.mocked(axiosForBackend)
+      .mockResolvedValueOnce({ data: preparation } as never)
+      .mockResolvedValue({ data: attempt } as never);
+
+    expect(await prepareOperatorContactAttempt(147, 'prepare-key')).toEqual(preparation);
+    await editOperatorContactAttempt(147, attempt, '修改文本', 'edit-key');
+    await approveOperatorContactAttempt(147, attempt, 'approve-key');
+    await sendOperatorContactAttempt(147, attempt, 'send-key');
+    await confirmOperatorContactNotSent(147, attempt.attempt_id, '人工核验未发送', 'recover-key');
+
+    expect(jest.mocked(axiosForBackend).mock.calls.map(([input]) => input.data)).toEqual([
+      { idempotency_key: 'prepare-key' },
+      { draft_revision: 2, text: '修改文本', idempotency_key: 'edit-key' },
+      { draft_revision: 2, idempotency_key: 'approve-key' },
+      { draft_revision: 2, confirmed: true, idempotency_key: 'send-key' },
+      { reason: '人工核验未发送', idempotency_key: 'recover-key' },
+    ]);
+    expect(getOperatorContactErrorReason({ response: { data: { reason: 'state_conflict' } } })).toBe('state_conflict');
+  });
+
   it.each([
     [400, BadRequestException],
     [401, UnauthorizedException],
     [404, NotFoundException],
+    [409, ConflictException],
     [422, UnprocessableEntityException],
     [503, ServiceUnavailableException],
   ])('translates backend %s into a safe actionable error', async (status, expectedType) => {

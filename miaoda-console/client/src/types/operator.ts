@@ -79,6 +79,7 @@ export type OperatorErrorReason =
   | 'backend_unauthorized'
   | 'invalid_request'
   | 'resource_not_found'
+  | 'state_conflict'
   | 'validation_failed'
   | 'unknown';
 
@@ -397,4 +398,27 @@ export type OperatorCustomerTimeline = {
   customer_id: number;
   items: OperatorCustomerTimelineItem[];
   count: number;
+};
+
+export type OperatorContactAttempt = {
+  attempt_id: number;
+  customer_id: number;
+  channel: 'xiaohongshu_public_reply';
+  target: { comment_id: string; url: string | null };
+  draft_text: string;
+  draft_revision: number;
+  approved_revision: number | null;
+  status: 'awaiting_approval' | 'approved' | 'queued' | 'sending' | 'sent' | 'failed' | 'result_unknown' | 'cancelled';
+  safe_to_send: boolean;
+  safe_to_retry: boolean;
+  next_action: string;
+};
+
+export type ContactPreparationResult = {
+  status: 'queued' | 'target_unavailable';
+  customer_id: number;
+  screening_id: number | null;
+  task_id: number | null;
+  task_status: 'pending' | 'running' | 'retry' | 'failed' | 'completed' | null;
+  failure_reason: string | null;
 };

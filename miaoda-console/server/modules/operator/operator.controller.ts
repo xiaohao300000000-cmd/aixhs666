@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 
 import { OperatorService } from './operator.service';
 
@@ -83,6 +83,36 @@ export class OperatorController {
   @Get('customers/:customerId/timeline')
   getCustomerTimeline(@Param('customerId', ParseIntPipe) customerId: number): Promise<unknown> {
     return this.operatorService.getCustomerTimeline(customerId);
+  }
+
+  @Get('customers/:customerId/contact-attempt')
+  getContactAttempt(@Param('customerId', ParseIntPipe) customerId: number): Promise<unknown> {
+    return this.operatorService.getContactAttempt(customerId);
+  }
+
+  @Post('customers/:customerId/contact-attempt/prepare')
+  prepareContactAttempt(@Param('customerId', ParseIntPipe) customerId: number, @Body() payload: unknown): Promise<unknown> {
+    return this.operatorService.prepareContactAttempt(customerId, payload);
+  }
+
+  @Put('customers/:customerId/contact-attempt/:attemptId/draft')
+  editContactAttempt(@Param('customerId', ParseIntPipe) customerId: number, @Param('attemptId', ParseIntPipe) attemptId: number, @Body() payload: unknown): Promise<unknown> {
+    return this.operatorService.editContactAttempt(customerId, attemptId, payload);
+  }
+
+  @Post('customers/:customerId/contact-attempt/:attemptId/approve')
+  approveContactAttempt(@Param('customerId', ParseIntPipe) customerId: number, @Param('attemptId', ParseIntPipe) attemptId: number, @Body() payload: unknown): Promise<unknown> {
+    return this.operatorService.approveContactAttempt(customerId, attemptId, payload);
+  }
+
+  @Post('customers/:customerId/contact-attempt/:attemptId/send')
+  sendContactAttempt(@Param('customerId', ParseIntPipe) customerId: number, @Param('attemptId', ParseIntPipe) attemptId: number, @Body() payload: unknown): Promise<unknown> {
+    return this.operatorService.sendContactAttempt(customerId, attemptId, payload);
+  }
+
+  @Post('customers/:customerId/contact-attempt/:attemptId/confirm-not-sent')
+  confirmContactNotSent(@Param('customerId', ParseIntPipe) customerId: number, @Param('attemptId', ParseIntPipe) attemptId: number, @Body() payload: unknown): Promise<unknown> {
+    return this.operatorService.confirmContactNotSent(customerId, attemptId, payload);
   }
 
   @Post('tasks/runs')

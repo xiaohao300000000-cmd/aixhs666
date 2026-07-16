@@ -333,9 +333,9 @@ class PlatformAdapter(Protocol):
 
 ## 12. 飞书审批后的小红书评论回复
 
-评论回复使用独立 `LeadCommentReply` 聚合，不复用私信对象。有效评论线索先生成 `pending_review` 草稿和飞书卡片；人工确认后回调原子领取 `sending`，再由 `XiaohongshuCommentReplySender` 定位唯一目标评论并最多点击一次提交。最终状态只有 `sent`、`failed` 或 `result_unknown`。
+评论回复使用独立 `LeadCommentReply` 聚合，不复用私信对象。客户推进事务只幂等创建 `comment_reply_prepare`，由 Worker 调用生成器并持久草稿。写命令经 `contact_command_operations` 幂等：编辑递增 `draft_revision`；第一步只冻结 `approved_revision`；第二步重复展示渠道、目标和全文后，才创建唯一 `comment_reply_send`。回调不构造 sender，只有 Worker 可调用 `XiaohongshuCommentReplySender`。
 
-平台发送与飞书/Base 同步分离：平台结果先持久化，客户跟进同步失败只能重跑同步，不得重发评论。`result_unknown` 表示点击可能已到达平台但缺少相关证据，必须人工核对且禁止盲目重试。真实上线前还必须在准备好的专用目标上先完成只读 selector probe，再获得飞书明确批准；完整操作合同见 `docs/COMMENT_REPLY_OPERATIONS.md`。
+平台结果通过 `record_contact_result` 唯一落库，完成时同时校验 `attempt_count + draft_revision` 并写客户阶段、跟进记录和时间线；提交成功后才运行飞书/Base 投影。投影失败只能重跑同步，不得重发评论。`result_unknown` 必须人工核对并显式确认平台未发送后才进入可重新编辑/确认路径。Operator API、NestJS BFF 和妙搭只消费同一 Python 状态机合同，不复制状态转换。完整操作合同见 `docs/COMMENT_REPLY_OPERATIONS.md`。
 
 ## V16 Skill Runtime
 

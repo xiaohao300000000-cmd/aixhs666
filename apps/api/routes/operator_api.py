@@ -12,10 +12,19 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from services.customer_crm_sync import sync_customer_crm
 from services.customer_progression import progress_operator_lead
+from services.contact_commands import (
+    approve_contact_draft,
+    confirm_contact_not_sent,
+    edit_contact_draft,
+    prepare_contact_draft,
+    send_approved_contact,
+)
 from services.operator_customers import (
     get_operator_customer,
     get_operator_customer_timeline,
+    get_operator_contact_attempt,
     list_operator_customers,
+    require_operator_contact_attempt,
 )
 from services.operator_leads import get_operator_lead, list_operator_leads
 from services.operator_tasks import (
@@ -102,6 +111,30 @@ class ContinueReviewQueuePayload(IdempotencyPayload):
     queue_date: date | None = None
     additional: Annotated[int, Field(ge=1, le=200)] = 20
     priority_only: bool = False
+
+
+class ContactPreparePayload(IdempotencyPayload):
+    pass
+
+
+class ContactDraftPayload(IdempotencyPayload):
+    draft_revision: Annotated[int, Field(ge=1)]
+    text: Annotated[str, Field(min_length=1, max_length=300, pattern=r".*\S.*")]
+    operator: Annotated[str, Field(min_length=1, pattern=r".*\S.*")]
+
+
+class ContactApprovalPayload(IdempotencyPayload):
+    draft_revision: Annotated[int, Field(ge=1)]
+    operator: Annotated[str, Field(min_length=1, pattern=r".*\S.*")]
+
+
+class ContactSendPayload(ContactApprovalPayload):
+    confirmed: bool
+
+
+class ContactRecoveryPayload(IdempotencyPayload):
+    operator: Annotated[str, Field(min_length=1, pattern=r".*\S.*")]
+    reason: Annotated[str, Field(min_length=1, max_length=1000, pattern=r".*\S.*")]
 
 
 @router.get("/workbench")
@@ -203,6 +236,93 @@ def get_operator_customer_timeline_view(
         return get_operator_customer_timeline(session, customer_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/customers/{customer_id}/contact-attempt")
+def get_operator_customer_contact_attempt(
+    customer_id: int,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    try:
+        return get_operator_contact_attempt(session, customer_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/customers/{customer_id}/contact-attempt/prepare")
+def post_operator_customer_contact_prepare(
+    customer_id: int,
+    payload: ContactPreparePayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    return _contact_write(
+        session,
+        lambda: prepare_contact_draft(
+            session,
+            customer_id=customer_id,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@router.put("/customers/{customer_id}/contact-attempt/{attempt_id}/draft")
+def put_operator_customer_contact_draft(
+    customer_id: int,
+    attempt_id: int,
+    payload: ContactDraftPayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    require_operator_contact_attempt(session, customer_id=customer_id, attempt_id=attempt_id)
+    return _contact_write(
+        session,
+        lambda: edit_contact_draft(
+            session,
+            reply_id=attempt_id,
+            draft_revision=payload.draft_revision,
+            text=payload.text,
+            operator=payload.operator,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@router.post("/customers/{customer_id}/contact-attempt/{attempt_id}/approve")
+def post_operator_customer_contact_approve(
+    customer_id: int,
+    attempt_id: int,
+    payload: ContactApprovalPayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    require_operator_contact_attempt(session, customer_id=customer_id, attempt_id=attempt_id)
+    return _contact_write(session, lambda: approve_contact_draft(session, reply_id=attempt_id, **payload.model_dump()))
+
+
+@router.post("/customers/{customer_id}/contact-attempt/{attempt_id}/send")
+def post_operator_customer_contact_send(
+    customer_id: int,
+    attempt_id: int,
+    payload: ContactSendPayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    require_operator_contact_attempt(session, customer_id=customer_id, attempt_id=attempt_id)
+    return _contact_write(session, lambda: send_approved_contact(session, reply_id=attempt_id, **payload.model_dump()))
+
+
+@router.post("/customers/{customer_id}/contact-attempt/{attempt_id}/confirm-not-sent")
+def post_operator_customer_contact_confirm_not_sent(
+    customer_id: int,
+    attempt_id: int,
+    payload: ContactRecoveryPayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    require_operator_contact_attempt(session, customer_id=customer_id, attempt_id=attempt_id)
+    return _contact_write(session, lambda: confirm_contact_not_sent(session, reply_id=attempt_id, **payload.model_dump()))
 
 
 @router.get("/tasks")
@@ -409,3 +529,16 @@ def _task_write(session: Session, action: Any) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _contact_write(session: Session, action: Any) -> dict[str, Any]:
+    try:
+        result = action()
+        session.commit()
+        return result
+    except LookupError as exc:
+        session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

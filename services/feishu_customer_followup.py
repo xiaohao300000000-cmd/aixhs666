@@ -33,6 +33,9 @@ OPERATOR_STATUSES = frozenset({"待跟进", "待联系", "暂缓跟进"})
 ALLOWED_HUMAN_STATUSES = TERMINAL_HUMAN_STATUSES | OPERATOR_STATUSES
 AUTOMATIC_STATUSES = {
     "pending_review": "评论待审核",
+    "awaiting_approval": "评论待审核",
+    "approved": "话术已确认，等待发送确认",
+    "queued": "评论已批准，等待发送",
     "approved_to_send": "评论已批准，等待发送",
     "sending": "评论发送中",
     "sent": "已评论引导，等待客户私信",
@@ -351,6 +354,9 @@ def _is_ambiguous_remote_result(exc: Exception) -> bool:
 def _approval_status(status: str) -> str:
     return {
         "pending_review": "待审批",
+        "awaiting_approval": "待审批",
+        "approved": "已确认话术",
+        "queued": "已审批",
         "approved_to_send": "已审批",
         "rejected": "已拒绝",
         "sent": "已审批",

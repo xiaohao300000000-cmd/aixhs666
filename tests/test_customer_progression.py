@@ -10,6 +10,9 @@ from services.customer_progression import progress_operator_lead
 from services.daily_review_queue import review_queue_progress
 from storage.database import Base
 from storage.models import (
+    CollectionTask,
+    Comment,
+    Content,
     CustomerFollowupRecord,
     CustomerTimelineEvent,
     Lead,
@@ -109,6 +112,43 @@ def test_duplicate_progression_reuses_timeline_event() -> None:
         assert len(session.scalars(select(CustomerTimelineEvent)).all()) == 1
         assert len(session.scalars(select(CustomerFollowupRecord)).all()) == 1
         assert lead.crm_sync_version == 1
+
+
+def test_promote_eligible_comment_queues_one_draft_prepare_task() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="eligible-comment")
+        session.add(profile)
+        session.flush()
+        content = Content(platform="xhs", platform_content_id="note-1", content_type="note", author_profile_id=profile.id)
+        session.add(content)
+        session.flush()
+        comment = Comment(platform="xhs", platform_comment_id="comment-1", content_id=content.id, author_profile_id=profile.id)
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="needs_enrichment")
+        session.add_all([comment, lead])
+        session.flush()
+        screening = LeadScreeningResult(
+            platform="xhs",
+            source_entity_type="comment",
+            source_entity_id=comment.id,
+            content_id=content.id,
+            comment_id=comment.id,
+            public_profile_id=profile.id,
+            review_status="accepted",
+            human_review_status="valid",
+        )
+        session.add(screening)
+        session.commit()
+
+        progress_operator_lead(session, lead.id, action="promote", idempotency_key="eligible-promote")
+        session.commit()
+        progress_operator_lead(session, lead.id, action="promote", idempotency_key="eligible-promote")
+        session.commit()
+
+        tasks = session.scalars(select(CollectionTask).where(CollectionTask.task_type == "comment_reply_prepare")).all()
+        assert len(tasks) == 1
+        assert tasks[0].target_id == str(lead.id)
+        assert tasks[0].payload_json["screening_id"] == screening.id
 
 
 def test_progression_completes_matching_queue_position_exactly_once() -> None:

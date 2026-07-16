@@ -569,7 +569,9 @@ class LeadCommentReply(TimestampMixin, Base):
     target_platform_content_id: Mapped[str] = mapped_column(String(255), nullable=False)
     target_url: Mapped[str | None] = mapped_column(Text)
     draft_text: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     approved_text: Mapped[str | None] = mapped_column(Text)
+    approved_revision: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="pending_review", server_default="pending_review"
     )
@@ -579,6 +581,7 @@ class LeadCommentReply(TimestampMixin, Base):
     feishu_card_status: Mapped[str | None] = mapped_column(String(50))
     approved_by: Mapped[str | None] = mapped_column(String(255))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -586,6 +589,34 @@ class LeadCommentReply(TimestampMixin, Base):
     platform_response_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     last_error: Mapped[str | None] = mapped_column(Text)
     feishu_sync_error: Mapped[str | None] = mapped_column(Text)
+
+
+class ContactCommandOperation(Base):
+    __tablename__ = "contact_command_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "operation_scope",
+            "entity_id",
+            "idempotency_key_hash",
+            name="uq_contact_command_operations_scope_entity_key",
+        ),
+        Index(
+            "ix_contact_command_operations_scope_entity_created",
+            "operation_scope",
+            "entity_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    operation_scope: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class EnrichmentTask(TimestampMixin, Base):

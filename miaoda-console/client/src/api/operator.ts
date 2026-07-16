@@ -10,6 +10,8 @@ import type {
   OperatorCustomerList,
   OperatorCustomerDetail,
   OperatorCustomerTimeline,
+  OperatorContactAttempt,
+  ContactPreparationResult,
   OperatorReviewQueue,
   OperatorRunCandidates,
   OperatorRunReport,
@@ -143,6 +145,36 @@ export async function getOperatorCustomerTimeline(customerId: number): Promise<O
   return response.data as OperatorCustomerTimeline;
 }
 
+export async function getOperatorContactAttempt(customerId: number): Promise<OperatorContactAttempt> {
+  const response = await axiosForBackend({ url: `/api/operator/customers/${customerId}/contact-attempt`, method: 'GET' });
+  return response.data as OperatorContactAttempt;
+}
+
+export async function prepareOperatorContactAttempt(customerId: number, idempotencyKey: string): Promise<ContactPreparationResult> {
+  const response = await axiosForBackend({ url: `/api/operator/customers/${customerId}/contact-attempt/prepare`, method: 'POST', data: { idempotency_key: idempotencyKey } });
+  return response.data as ContactPreparationResult;
+}
+
+export async function editOperatorContactAttempt(customerId: number, attempt: OperatorContactAttempt, draftText: string, idempotencyKey: string): Promise<OperatorContactAttempt> {
+  const response = await axiosForBackend({ url: `/api/operator/customers/${customerId}/contact-attempt/${attempt.attempt_id}/draft`, method: 'PUT', data: { draft_revision: attempt.draft_revision, text: draftText, idempotency_key: idempotencyKey } });
+  return response.data as OperatorContactAttempt;
+}
+
+export async function approveOperatorContactAttempt(customerId: number, attempt: OperatorContactAttempt, idempotencyKey: string): Promise<OperatorContactAttempt> {
+  const response = await axiosForBackend({ url: `/api/operator/customers/${customerId}/contact-attempt/${attempt.attempt_id}/approve`, method: 'POST', data: { draft_revision: attempt.draft_revision, idempotency_key: idempotencyKey } });
+  return response.data as OperatorContactAttempt;
+}
+
+export async function sendOperatorContactAttempt(customerId: number, attempt: OperatorContactAttempt, idempotencyKey: string): Promise<OperatorContactAttempt> {
+  const response = await axiosForBackend({ url: `/api/operator/customers/${customerId}/contact-attempt/${attempt.attempt_id}/send`, method: 'POST', data: { draft_revision: attempt.draft_revision, confirmed: true, idempotency_key: idempotencyKey } });
+  return response.data as OperatorContactAttempt;
+}
+
+export async function confirmOperatorContactNotSent(customerId: number, attemptId: number, reason: string, idempotencyKey: string): Promise<OperatorContactAttempt> {
+  const response = await axiosForBackend({ url: `/api/operator/customers/${customerId}/contact-attempt/${attemptId}/confirm-not-sent`, method: 'POST', data: { reason, idempotency_key: idempotencyKey } });
+  return response.data as OperatorContactAttempt;
+}
+
 export async function createOperatorRun(skillKey: string): Promise<OperatorSkillRun> {
   const response = await axiosForBackend({
     url: '/api/operator/tasks/runs',
@@ -182,7 +214,18 @@ async function runAction(runId: number, action: string, data: unknown): Promise<
 }
 
 
-export function getOperatorErrorReason(error: unknown): OperatorErrorReason {
+type OperatorReadErrorReason = Exclude<OperatorErrorReason, 'state_conflict'>;
+
+export function getOperatorErrorReason(error: unknown): OperatorReadErrorReason {
+  const reason = parseOperatorErrorReason(error);
+  return reason === 'state_conflict' ? 'invalid_request' : reason;
+}
+
+export function getOperatorContactErrorReason(error: unknown): OperatorErrorReason {
+  return parseOperatorErrorReason(error);
+}
+
+function parseOperatorErrorReason(error: unknown): OperatorErrorReason {
   if (!error || typeof error !== 'object') {
     return 'unknown';
   }
@@ -219,6 +262,7 @@ function isOperatorErrorReason(value: unknown): value is Exclude<OperatorErrorRe
     'backend_unauthorized',
     'invalid_request',
     'resource_not_found',
+    'state_conflict',
     'validation_failed',
   ].includes(String(value));
 }

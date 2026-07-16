@@ -2,8 +2,8 @@
 
 ## 当前验收状态
 
-- **自动化实现：完成。** 数据模型、迁移、草稿生成、飞书卡片审批、`approved_to_send` 持久任务、Worker 独立发送、远程 Windows CDP、客户跟进同步、恢复/认领命令和自动测试均已实现；2026-07-14 全量测试为 `494 passed, 7 skipped, 1 warning`。
-- **真实发送验收：阻塞。** 截至 2026-07-13，Windows CDP/SSH 当前不可用，且未提供专用测试 URL、评论 ID、内容 ID、最终批准文本和客户跟进 Base live 配置，因此不得声称真实发送成功。
+- **自动化实现：完成。** `0021_contact_reply_two_step` 增加草稿/确认版本和命令幂等事实；合格客户推进后只排队 `comment_reply_prepare`，Worker 生成持久草稿；飞书、Operator API 与妙搭均使用“确认话术（不发送）→最终发送确认”的两步协议；平台结果由 `record_contact_result` 唯一落库后才执行 Base/飞书投影。
+- **真实发送验收：阻塞。** 执行对话没有主控转交的专用目标、最终文本、账号/CDP 就绪证据、selector probe 和用户逐条最终批准，因此没有执行 selector probe 或真实发送，也没有写真实 Base、创建真实飞书卡。
 - **解除阻塞条件：** 恢复 Windows Chrome CDP；准备一个允许测试的目标帖子/评论和最终回复文本；先运行不提交的 selector probe；人工在飞书明确批准本次单条测试；最后才允许执行一次真实发送。
 
 ## 安全边界
@@ -22,7 +22,7 @@
 python -m alembic upgrade head
 ```
 
-迁移 `0015_lead_comment_replies` 新增 `lead_comment_replies`，并为 `leads` 增加 `followup_status`、`next_followup_at`。主要状态为 `pending_review`、`approved_to_send`、`sending`、`sent`、`failed`、`result_unknown`；同一筛选结果和同一平台评论均保持唯一，防止重复建卡或重复回复。
+迁移 `0015_lead_comment_replies` 新增 `lead_comment_replies`；`0021_contact_reply_two_step` 增加 `draft_revision`、`approved_revision`、`queued_at` 与 `contact_command_operations`。主要公开状态为 `awaiting_approval`、`approved`、`queued`、`sending`、`sent`、`failed`、`result_unknown`、`cancelled`；旧库中的 `pending_review` 和 `approved_to_send` 只作为兼容输入映射。编辑必增版本并使旧确认失效；命令幂等键只保存 SHA-256，不保存原文。
 
 ## 精确环境配置
 
@@ -67,7 +67,7 @@ FEISHU_BITABLE_TRANSPORT=openapi
 | 系统维护 | `客户唯一键`、`评论审批状态`、`评论发送结果`、`最近评论时间`、`最近评论错误`、`评论回复记录 ID`、`审批卡片消息 ID` |
 | 人工维护 | `当前客户状态`、`负责人`、`运营备注`、`下次跟进时间` |
 
-自动状态映射：`pending_review=评论待审核`、`approved_to_send=评论已批准，等待发送`、`sending=评论发送中`、`sent=已评论引导，等待客户私信`、`failed=评论发送失败`、`result_unknown=评论结果待确认`。人工终态 `已收到私信`、`沟通中`、`已成交`、`已忽略` 不得被自动同步回退。
+自动状态映射：`pending_review/awaiting_approval=评论待确认`、`approved=话术已确认`、`queued=评论等待发送`、`sending=评论发送中`、`sent=已评论引导，等待客户回复`、`failed=评论发送失败`、`result_unknown=评论结果待确认`。人工终态不得被自动同步回退。
 
 建议建立 `评论待审核`、`评论发送失败`、`评论结果待确认`、`已评论待私信` 和按 `当前客户状态` 分组的 `人工跟进看板`。仪表盘至少显示待审核数、发送失败数、结果待确认数、已评论待私信数，以及按负责人/客户状态分组的跟进量。视图和仪表盘链接只记录在内部安全位置，不写入测试或公开日志。
 
@@ -82,14 +82,17 @@ python -m apps.cli comment-reply-generate-once --screening-id SCREENING_ID --cha
 人工在飞书卡片检查原帖、目标评论和回复文本，编辑后点击确认。处理流程为：
 
 ```text
-人工在飞书确认最终文本
+人工在飞书或妙搭编辑并确认当前版本（不会发送）
 → 回调校验 token、操作人、消息和 chat 绑定
-→ 状态写为 approved_to_send
+→ 状态写为 approved，并再次显示渠道、目标、版本和最终全文
+→ 人工逐项最终确认“发送公开回复”
+→ 状态写为 queued
 → 创建一个 comment_reply_send 持久任务
 → 回调立即返回 accepted
 → Worker 条件领取并写为 sending
 → 通过 Windows Chrome CDP 执行一次发送
-→ 持久化 sent / failed / result_unknown
+→ 以 task payload 的 draft_revision 和 attempt_count fencing 调用 record_contact_result
+→ 同一事务持久化 sent / failed / result_unknown、客户阶段、跟进记录和时间线
 → 更新飞书结果卡片
 → 独立同步客户跟进表
 ```
@@ -100,7 +103,7 @@ python -m apps.cli comment-reply-generate-once --screening-id SCREENING_ID --cha
 python -m apps.cli comment-reply-sync-followup --reply-id REPLY_ID
 ```
 
-评论回复发送位于独立持久任务路径。回调 acceptance gate 必须验证：请求快速返回 `accepted`；回调进程不构造 Playwright sender；重复回调只读取已持久化状态；数据库中只有一个 `comment_reply_send` 任务。Worker acceptance gate 单独验证状态领取、`attempt_count` fencing、远程 CDP 复用和最终状态持久化。飞书/Base 同步重试不得调用平台发送器。
+评论回复发送位于独立持久任务路径。第一步确认不能创建发送任务；第二步必须提交当前 `draft_revision`、当前全文和 `confirmed=true`，且数据库中只有一个 `comment_reply_send` 任务。回调进程不构造 Playwright sender。Worker 同时校验 `attempt_count + draft_revision`，平台结果先提交 PostgreSQL；飞书/Base 投影失败只允许重跑投影，不得调用平台发送器。
 
 ## 卡片恢复、发送恢复与认领
 

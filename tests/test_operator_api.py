@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import hashlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from apps.api.main import create_app
 from services.customer_progression import CustomerProgressionResult
 from services.customer_crm_sync import CustomerCrmSyncResult
 from storage.database import Base, get_session
+from storage.models import CollectionTask, ContactCommandOperation, Lead, LeadCommentReply, PublicProfile
 
 
 @pytest.fixture()
@@ -30,6 +32,7 @@ def operator_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
             yield session
 
     app = create_app()
+    app.state.operator_test_session_factory = session_factory
     app.dependency_overrides[get_session] = override_get_session
     with TestClient(app) as client:
         yield client
@@ -170,6 +173,162 @@ def test_operator_customer_routes_and_sync_require_idempotency_key(
     assert synced.json()["idempotency_key"] == "customer-sync-1"
     assert synced.json()["sync"]["customers_synced"] == 1
     assert sync_calls == [[151]]
+
+
+def test_operator_contact_routes_preserve_two_step_contract(
+    operator_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": "Bearer operator-secret"}
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.get_operator_contact_attempt",
+        lambda _session, customer_id: {"attempt_id": 41, "customer_id": customer_id, "status": "awaiting_approval"},
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.require_operator_contact_attempt",
+        lambda _session, **_kwargs: object(),
+    )
+
+    def command(name: str):
+        def invoke(_session, **kwargs):
+            calls.append((name, kwargs))
+            return {"attempt_id": kwargs.get("reply_id"), "status": "approved" if name == "approve" else "queued"}
+        return invoke
+
+    monkeypatch.setattr("apps.api.routes.operator_api.edit_contact_draft", command("edit"))
+    monkeypatch.setattr("apps.api.routes.operator_api.approve_contact_draft", command("approve"))
+    monkeypatch.setattr("apps.api.routes.operator_api.send_approved_contact", command("send"))
+
+    read = operator_client.get("/operator/api/customers/151/contact-attempt", headers=headers)
+    edited = operator_client.put(
+        "/operator/api/customers/151/contact-attempt/41/draft",
+        headers=headers,
+        json={"draft_revision": 1, "text": "修改草稿", "operator": "op", "idempotency_key": "edit-1"},
+    )
+    approved = operator_client.post(
+        "/operator/api/customers/151/contact-attempt/41/approve",
+        headers=headers,
+        json={"draft_revision": 2, "operator": "op", "idempotency_key": "approve-1"},
+    )
+    sent = operator_client.post(
+        "/operator/api/customers/151/contact-attempt/41/send",
+        headers=headers,
+        json={"draft_revision": 2, "confirmed": True, "operator": "op", "idempotency_key": "send-1"},
+    )
+
+    assert read.status_code == 200 and read.json()["status"] == "awaiting_approval"
+    assert edited.status_code == 200
+    assert approved.status_code == 200 and approved.json()["status"] == "approved"
+    assert sent.status_code == 200 and sent.json()["status"] == "queued"
+    assert [name for name, _ in calls] == ["edit", "approve", "send"]
+
+
+def test_miaoda_bff_contact_json_is_accepted_by_real_fastapi_commands(operator_client: TestClient) -> None:
+    factory = operator_client.app.state.operator_test_session_factory
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="miaoda-contract")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        session.add(lead)
+        session.flush()
+        reply = LeadCommentReply(
+            lead_id=lead.id,
+            target_platform_comment_id="comment-miaoda-contract",
+            target_platform_content_id="note-miaoda-contract",
+            target_url="https://www.xiaohongshu.com/explore/note-miaoda-contract",
+            draft_text="原始草稿",
+            status="awaiting_approval",
+        )
+        unknown = LeadCommentReply(
+            lead_id=lead.id,
+            target_platform_comment_id="comment-miaoda-unknown",
+            target_platform_content_id="note-miaoda-unknown",
+            draft_text="待核验草稿",
+            approved_text="待核验草稿",
+            approved_revision=1,
+            attempt_count=1,
+            status="result_unknown",
+        )
+        session.add_all([reply, unknown])
+        session.commit()
+        customer_id, reply_id, unknown_id = lead.id, reply.id, unknown.id
+
+    headers = {"Authorization": "Bearer operator-secret"}
+    edited = operator_client.put(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{reply_id}/draft",
+        headers=headers,
+        json={"draft_revision": 1, "text": "修改后的公开回复", "operator": "miaoda-operator", "idempotency_key": "edit-contract"},
+    )
+    approved = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{reply_id}/approve",
+        headers=headers,
+        json={"draft_revision": 2, "operator": "miaoda-operator", "idempotency_key": "approve-contract"},
+    )
+    sent = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{reply_id}/send",
+        headers=headers,
+        json={"draft_revision": 2, "confirmed": True, "operator": "miaoda-operator", "idempotency_key": "send-contract"},
+    )
+    recovered = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/{unknown_id}/confirm-not-sent",
+        headers=headers,
+        json={"operator": "miaoda-operator", "reason": "人工核验目标页面未发送", "idempotency_key": "recover-contract"},
+    )
+
+    assert [edited.status_code, approved.status_code, sent.status_code, recovered.status_code] == [200, 200, 200, 200]
+    assert edited.json()["draft_revision"] == 2
+    assert approved.json()["status"] == "approved"
+    assert sent.json()["status"] == "queued"
+    assert recovered.json()["status"] == "failed"
+
+
+def test_prepare_api_replay_reports_sanitized_worker_failure(operator_client: TestClient) -> None:
+    factory = operator_client.app.state.operator_test_session_factory
+    key = "prepare-api-failed"
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="prepare-api-failed")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        task = CollectionTask(
+            task_type="comment_reply_prepare",
+            platform="xhs",
+            target_id="pending",
+            status="failed",
+            last_error="Traceback bearer=secret CDP cookie=session at /private/path",
+        )
+        session.add_all([lead, task])
+        session.flush()
+        task.target_id = str(lead.id)
+        session.add(
+            ContactCommandOperation(
+                operation_scope="prepare_contact_draft",
+                entity_id=lead.id,
+                idempotency_key_hash=hashlib.sha256(key.encode()).hexdigest(),
+                request_json={"customer_id": lead.id},
+                result_json={"status": "queued", "customer_id": lead.id, "screening_id": 9, "task_id": task.id},
+            )
+        )
+        session.commit()
+        customer_id = lead.id
+
+    response = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/prepare",
+        headers={"Authorization": "Bearer operator-secret"},
+        json={"idempotency_key": key},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "queued",
+        "customer_id": customer_id,
+        "screening_id": 9,
+        "task_id": task.id,
+        "task_status": "failed",
+        "failure_reason": "草稿生成失败，请检查任务中心后重新生成。",
+    }
 
 
 def test_operator_run_report_candidate_and_review_queue_routes_require_stable_contracts(
