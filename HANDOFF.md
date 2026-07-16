@@ -477,3 +477,11 @@ python -m apps.cli --json run-control-panel-once
 - `review_queue_operations` 真实表、唯一约束和审计索引存在，验收后仍为 0 条；真实库未执行会扩展队列的 continue，也未触发 DeepSeek、飞书/Base 写入、小红书或调度。
 - 已知非阻断风险：当前已有 50 条验收队列中有 1 个键在其他 Screening 上存在历史人工审核事实；按非破坏要求未追溯删除，只由新规则阻止未来再次入队。并发同键请求只由数据库唯一约束兜底，未做并发重放专项压测。
 - 下一步按顺序进入 V19-04：只重做妙搭今日行动、任务结果、连续审核、客户中心和系统健康体验；必须新开独立执行对话，不复用 V19-03 上下文。
+
+## 2026-07-16 V19-04 妙搭产品闭环已派发
+
+- 主控已建立自包含任务包 `orchestration/briefs/V19-04.md`，范围只包含妙搭 React 产品层、同源 NestJS BFF、纯视图模型、自动化与本地只读真人体验。
+- 独立执行对话：`019f6b6a-aaf9-7d20-ba68-6178a3fdf47b`；Codex worktree：`/Users/xiaohao30000/.codex/worktrees/f8b5/aixhs666`；目标分支：`codex/v19-04-miaoda-operations`。
+- 执行对话不得修改 Python/FastAPI、数据库、全局进度文件或外部发布工作区 `/Users/xiaohao30000/aixhs666-console`，不得发布妙搭或触发任何真实业务写动作。
+- 本阶段必须交付今日行动、Run 人类结果、持久队列连续审核、客户列表/详情/时间线、系统健康、深链和错误/空状态；公开回复与 14:00/15:00/21:00 调度仍属于 V19-05/V19-06。
+- 主控验收合并后才负责导出到妙搭官方发布工作区、推送 `sprint/default`、创建 release、轮询完成并在已登录线上入口做真实页面验收。

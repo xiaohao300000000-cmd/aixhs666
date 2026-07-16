@@ -4,6 +4,7 @@
 
 | 任务 | Worker | 锁定路径 | 模式 | 开始时间 | 释放条件 |
 |---|---|---|---|---|---|
+| V19-04 | W1 | `miaoda-console/client/src/app.tsx`; `miaoda-console/client/src/api/operator.ts`; `miaoda-console/client/src/types/operator.ts`; `miaoda-console/client/src/features/operator/operator-view-model.ts`; `miaoda-console/client/src/pages/**`; `miaoda-console/client/src/components/operator/**`; `miaoda-console/server/modules/operator/operator.controller.ts`; `miaoda-console/server/modules/operator/operator.service.ts`; `miaoda-console/test/unit/**`; `miaoda-console/README.md`; V19-04 双报告 | INTERFACE / WRITE | 2026-07-16 | 主控验收、合并并完成妙搭发布后释放 |
 
 模式：
 
