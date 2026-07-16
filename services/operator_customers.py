@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from services.customer_crm_sync import customer_base_record_url, miaoda_customer_url
+from services.contact_commands import contact_attempt_dict
 from storage.models import (
     CustomerFollowupRecord,
     CustomerTimelineEvent,
@@ -14,6 +15,7 @@ from storage.models import (
     Lead,
     LeadEvidence,
     LeadScreeningResult,
+    LeadCommentReply,
     PublicProfile,
 )
 
@@ -145,6 +147,32 @@ def get_operator_customer_timeline(session: Session, customer_id: int) -> dict[s
     for item in items:
         item.pop("_sort_at", None)
     return {"customer_id": lead.id, "items": items, "count": len(items)}
+
+
+def get_operator_contact_attempt(session: Session, customer_id: int) -> dict[str, Any]:
+    lead = _customer_or_raise(session, customer_id)
+    reply = session.scalar(
+        select(LeadCommentReply)
+        .where(LeadCommentReply.lead_id == lead.id)
+        .order_by(LeadCommentReply.updated_at.desc(), LeadCommentReply.id.desc())
+        .limit(1)
+    )
+    if reply is None:
+        raise LookupError("contact attempt not found")
+    return contact_attempt_dict(reply)
+
+
+def require_operator_contact_attempt(
+    session: Session,
+    *,
+    customer_id: int,
+    attempt_id: int,
+) -> LeadCommentReply:
+    _customer_or_raise(session, customer_id)
+    reply = session.get(LeadCommentReply, attempt_id)
+    if reply is None or reply.lead_id != customer_id:
+        raise LookupError("contact attempt not found")
+    return reply
 
 
 def _customer_summary(
