@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { buildContactAttemptView, buildContactPreparationView, buildCustomerSummaryView, buildCustomerTimelineView, sanitizeOperatorErrorSummary } from '@/features/operator/operator-view-model';
+import { buildContactAttemptView, buildContactPreparationView, buildCustomerSummaryView, buildCustomerTimelineView, reuseContactPreparationIntentKey, sanitizeOperatorErrorSummary } from '@/features/operator/operator-view-model';
 import type { ContactPreparationResult, OperatorContactAttempt } from '@/types/operator';
 
 
@@ -54,22 +54,42 @@ function ContactAttemptCard({ customerId }: { customerId: number }) {
   const [recoveryReason, setRecoveryReason] = useState('');
   const [feedback, setFeedback] = useState('');
   const [preparation, setPreparation] = useState<ContactPreparationResult | null>(null);
-  const query = useQuery({ queryKey: ['operator-contact-attempt', customerId], queryFn: () => getOperatorContactAttempt(customerId), retry: false, refetchInterval: preparation?.status === 'queued' ? 2000 : false });
+  const [preparationKey, setPreparationKey] = useState<string | null>(null);
+  const preparationView = preparation ? buildContactPreparationView(preparation, false) : null;
+  const query = useQuery({ queryKey: ['operator-contact-attempt', customerId], queryFn: () => getOperatorContactAttempt(customerId), retry: false, refetchInterval: preparationView?.pollingAttempt ? 2000 : false });
   const attempt = query.data;
   const view = attempt ? buildContactAttemptView(attempt) : null;
   const missing = query.isError && getOperatorErrorReason(query.error) === 'resource_not_found';
-  useEffect(() => { if (attempt) { setDraft(attempt.draft_text); setPreparation(null); } }, [attempt]);
+  useEffect(() => { if (attempt) { setDraft(attempt.draft_text); setPreparation(null); setPreparationKey(null); prepareKey.current = null; } }, [attempt]);
+  const preparationQuery = useQuery({
+    queryKey: ['operator-contact-preparation', customerId, preparationKey],
+    queryFn: () => prepareOperatorContactAttempt(customerId, preparationKey as string),
+    enabled: Boolean(preparationKey && preparationView?.pollingTask),
+    retry: false,
+    refetchInterval: preparationView?.pollingTask ? 2000 : false,
+  });
+  useEffect(() => {
+    if (!preparationQuery.data) return;
+    const result = preparationQuery.data;
+    const nextView = buildContactPreparationView(result, false);
+    setPreparation(result);
+    setFeedback(`${nextView.message}。${nextView.detail}`);
+    if (!nextView.pollingTask) setPreparationKey(null);
+    if (nextView.canRetry) prepareKey.current = null;
+    if (nextView.pollingAttempt) void query.refetch();
+  }, [preparationQuery.data]);
   const preparationMutation = useMutation({
     mutationFn: () => {
-      prepareKey.current ||= crypto.randomUUID();
+      prepareKey.current = reuseContactPreparationIntentKey(prepareKey.current, () => crypto.randomUUID());
       return prepareOperatorContactAttempt(customerId, prepareKey.current);
     },
     onSuccess: async (result) => {
-      prepareKey.current = null;
       setPreparation(result);
-      const view = buildContactPreparationView(result);
+      const view = buildContactPreparationView(result, false);
       setFeedback(`${view.message}。${view.detail}`);
-      if (view.polling) await query.refetch();
+      if (view.pollingTask) setPreparationKey(prepareKey.current);
+      else prepareKey.current = null;
+      if (view.pollingAttempt) await query.refetch();
     },
     onError: () => setFeedback('草稿生成任务排队失败；重试会沿用同一幂等键。'),
   });
@@ -95,7 +115,7 @@ function ContactAttemptCard({ customerId }: { customerId: number }) {
   const run = (command: ContactCommand) => mutation.mutate(command);
   return <Card className="shadow-none"><CardHeader><CardTitle>公开回复联系</CardTitle></CardHeader><CardContent className="space-y-4">
     {query.isLoading && <p className="text-sm text-slate-500">正在加载持久联系事实…</p>}
-    {missing && <div className="space-y-3"><p className="text-sm text-slate-600">尚无持久草稿。仅会为已有的合格公开评论目标排队生成，不会在本地虚构文本。</p>{preparation && <p className={preparation.status === 'queued' ? 'text-sm text-sky-700' : 'text-sm text-amber-700'}>{buildContactPreparationView(preparation).message}。{buildContactPreparationView(preparation).detail}</p>}<Button onClick={() => preparationMutation.mutate()} disabled={preparationMutation.isPending || preparation?.status === 'queued'}>{preparation?.status === 'queued' ? '等待草稿生成' : '生成公开回复草稿'}</Button></div>}
+    {missing && <div className="space-y-3"><p className="text-sm text-slate-600">尚无持久草稿。仅会为已有的合格公开评论目标排队生成，不会在本地虚构文本。</p>{preparationView && <p className={preparationView.canRetry ? 'text-sm text-rose-700' : preparation?.status === 'queued' ? 'text-sm text-sky-700' : 'text-sm text-amber-700'}>{preparationView.message}。{preparationView.detail}</p>}<Button onClick={() => preparationMutation.mutate()} disabled={preparationMutation.isPending || Boolean(preparationView?.pollingTask || preparationView?.pollingAttempt)}>{preparationView?.buttonLabel || '生成公开回复草稿'}</Button></div>}
     {query.isError && !missing && <p className="text-sm text-rose-700">联系事实暂时不可达，请检查运营后端后重试。</p>}
     {attempt && view && <>
       <div className="flex flex-wrap items-center gap-2"><Badge>{view.statusLabel}</Badge><Badge variant="outline">版本 {attempt.draft_revision}</Badge><Badge variant="outline">小红书公开回复</Badge></div>

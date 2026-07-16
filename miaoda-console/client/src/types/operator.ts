@@ -419,4 +419,6 @@ export type ContactPreparationResult = {
   customer_id: number;
   screening_id: number | null;
   task_id: number | null;
+  task_status: 'pending' | 'running' | 'retry' | 'failed' | 'completed' | null;
+  failure_reason: string | null;
 };

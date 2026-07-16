@@ -20,6 +20,7 @@ import {
   leadActionRequiresReason,
   reuseIdempotencyKey,
   reviewQueueWritesEnabled,
+  reuseContactPreparationIntentKey,
   sanitizeOperatorErrorSummary,
   selectReviewCandidate,
 } from '../../client/src/features/operator/operator-view-model';
@@ -65,6 +66,13 @@ describe('operator view model', () => {
     const completed = { ...failed, task_status: 'completed', failure_reason: null } as const;
     expect(buildContactPreparationView(completed, false)).toMatchObject({ pollingTask: false, pollingAttempt: true, canRetry: false });
     expect(buildContactPreparationView(completed, true)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: false, complete: true });
+  });
+  it('reuses an in-flight preparation intent and creates a new key after failure clears it', () => {
+    const createKey = jest.fn().mockReturnValueOnce('intent-1').mockReturnValueOnce('intent-2');
+    const first = reuseContactPreparationIntentKey(null, createKey);
+    expect(reuseContactPreparationIntentKey(first, createKey)).toBe('intent-1');
+    expect(reuseContactPreparationIntentKey(null, createKey)).toBe('intent-2');
+    expect(createKey).toHaveBeenCalledTimes(2);
   });
   it.each([
     ['awaiting_approval', null, false, true, false, false],

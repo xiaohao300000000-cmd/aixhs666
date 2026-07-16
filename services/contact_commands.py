@@ -40,7 +40,7 @@ def prepare_contact_draft(
         )
     )
     if existing is not None:
-        return dict(existing.result_json)
+        return _contact_preparation_result(session, dict(existing.result_json))
     lead = session.get(Lead, customer_id)
     if lead is None or lead.status != "qualified":
         raise LookupError("qualified customer not found")
@@ -59,7 +59,14 @@ def prepare_contact_draft(
         .limit(1)
     )
     if screening is None:
-        result = {"status": "target_unavailable", "customer_id": customer_id, "screening_id": None, "task_id": None}
+        result = {
+            "status": "target_unavailable",
+            "customer_id": customer_id,
+            "screening_id": None,
+            "task_id": None,
+            "task_status": None,
+            "failure_reason": None,
+        }
     else:
         task = session.scalar(
             select(CollectionTask).where(
@@ -81,7 +88,14 @@ def prepare_contact_draft(
                     "chat_id": screening.feishu_chat_id or os.getenv("FEISHU_LLM_REVIEW_CHAT_ID"),
                 },
             )
-        result = {"status": "queued", "customer_id": customer_id, "screening_id": screening.id, "task_id": task.id}
+        result = {
+            "status": "queued",
+            "customer_id": customer_id,
+            "screening_id": screening.id,
+            "task_id": task.id,
+            "task_status": _preparation_task_status(task.status),
+            "failure_reason": None,
+        }
     session.flush()
     session.add(
         ContactCommandOperation(
@@ -94,6 +108,33 @@ def prepare_contact_draft(
     )
     session.flush()
     return result
+
+
+def _contact_preparation_result(session: Session, stored: dict[str, Any]) -> dict[str, Any]:
+    result = dict(stored)
+    result.setdefault("task_status", None)
+    result.setdefault("failure_reason", None)
+    task_id = result.get("task_id")
+    if result.get("status") != "queued" or not isinstance(task_id, int):
+        return result
+    task = session.get(CollectionTask, task_id)
+    expected_customer_id = result.get("customer_id")
+    if task is None or task.task_type != "comment_reply_prepare" or task.target_id != str(expected_customer_id):
+        result["task_status"] = "failed"
+        result["failure_reason"] = "草稿生成任务状态不可用，请检查任务中心后重新生成。"
+        return result
+    task_status = _preparation_task_status(task.status)
+    result["task_status"] = task_status
+    result["failure_reason"] = "草稿生成失败，请检查任务中心后重新生成。" if task_status == "failed" else None
+    return result
+
+
+def _preparation_task_status(status: str) -> str:
+    if status in {"pending", "running", "retry", "failed", "completed"}:
+        return status
+    if status == "partial":
+        return "retry"
+    return "failed"
 
 
 def edit_contact_draft(

@@ -473,11 +473,24 @@ export function buildContactAttemptView(attempt: OperatorContactAttempt) {
   };
 }
 
-export function buildContactPreparationView(result: ContactPreparationResult) {
-  if (result.status === 'queued') {
-    return { polling: true, message: '草稿生成任务已排队', detail: '正在等待 Worker 生成并持久草稿。' };
+export function buildContactPreparationView(result: ContactPreparationResult, hasAttempt: boolean) {
+  if (hasAttempt) {
+    return { pollingTask: false, pollingAttempt: false, canRetry: false, complete: true, buttonLabel: '草稿已生成', message: '持久草稿已生成', detail: '请按当前版本继续编辑和两步确认。' };
   }
-  return { polling: false, message: '没有可用的合格公开评论目标', detail: '请先确认该客户来自已接受且人工判定有效的公开评论。' };
+  if (result.status === 'queued' && result.task_status === 'failed') {
+    return { pollingTask: false, pollingAttempt: false, canRetry: true, complete: false, buttonLabel: '重新生成公开回复草稿', message: '草稿生成失败', detail: result.failure_reason || '请检查任务中心后重新生成。' };
+  }
+  if (result.status === 'queued' && result.task_status === 'completed') {
+    return { pollingTask: false, pollingAttempt: true, canRetry: false, complete: false, buttonLabel: '等待读取持久草稿', message: '草稿生成任务已完成', detail: '正在读取 Worker 已持久化的草稿，不会在页面虚构文本。' };
+  }
+  if (result.status === 'queued') {
+    return { pollingTask: true, pollingAttempt: true, canRetry: false, complete: false, buttonLabel: '等待草稿生成', message: '草稿生成任务已排队', detail: '正在等待 Worker 生成并持久草稿。' };
+  }
+  return { pollingTask: false, pollingAttempt: false, canRetry: false, complete: false, buttonLabel: '生成公开回复草稿', message: '没有可用的合格公开评论目标', detail: '请先确认该客户来自已接受且人工判定有效的公开评论。' };
+}
+
+export function reuseContactPreparationIntentKey(currentKey: string | null, createKey: () => string): string {
+  return currentKey || createKey();
 }
 
 export function buildSystemHealthModel(workbench: OperatorWorkbench) {
