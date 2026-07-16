@@ -8,6 +8,8 @@ import type {
   OperatorLead,
   OperatorLeadQueue,
   OperatorCustomerList,
+  OperatorCustomerDetail,
+  OperatorCustomerTimeline,
   OperatorReviewQueue,
   OperatorRunCandidates,
   OperatorRunReport,
@@ -123,6 +125,22 @@ export async function getOperatorCustomers(limit = 100): Promise<OperatorCustome
     params: { limit },
   });
   return response.data as OperatorCustomerList;
+}
+
+export async function getOperatorCustomer(customerId: number): Promise<OperatorCustomerDetail> {
+  const response = await axiosForBackend({
+    url: `/api/operator/customers/${customerId}`,
+    method: 'GET',
+  });
+  return response.data as OperatorCustomerDetail;
+}
+
+export async function getOperatorCustomerTimeline(customerId: number): Promise<OperatorCustomerTimeline> {
+  const response = await axiosForBackend({
+    url: `/api/operator/customers/${customerId}/timeline`,
+    method: 'GET',
+  });
+  return response.data as OperatorCustomerTimeline;
 }
 
 export async function createOperatorRun(skillKey: string): Promise<OperatorSkillRun> {

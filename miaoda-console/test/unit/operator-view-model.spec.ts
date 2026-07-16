@@ -4,6 +4,8 @@ import {
   buildTodayActionModel,
   buildReviewLocation,
   buildReviewOutcome,
+  buildCustomerSummaryView,
+  buildCustomerTimelineView,
   getNextLeadId,
   getNextPendingQueueCandidateKey,
   getRunActions,
@@ -230,5 +232,65 @@ describe('operator view model', () => {
     expect(outcome.summary).toContain('Base CRM 已同步');
     expect(outcome.boundary).toBe('公开回复草稿功能将在 V19-05 开放');
     expect(outcome.customerHref).toBe('/customers/147');
+  });
+
+  it('maps customer stages and missing Base mappings without fake success', () => {
+    const model = buildCustomerSummaryView({
+      customer_id: 147,
+      customer_name: '客户 A',
+      crm_stage: 'new_customer',
+      next_step: '准备首次联系',
+      sync_version: 2,
+      sync_status: 'pending',
+      sync_error: null,
+      base_record_url: null,
+      miaoda_detail_url: '/customers/147',
+      updated_at: '2026-07-16T08:00:00Z',
+    });
+
+    expect(model.stageLabel).toBe('新客户');
+    expect(model.syncLabel).toBe('尚未同步到 Base');
+    expect(model.baseAvailable).toBe(false);
+    expect(model.nextStep).toBe('准备首次联系');
+  });
+
+  it('translates customer timeline facts while retaining raw details separately', () => {
+    const model = buildCustomerTimelineView({
+      customer_id: 147,
+      count: 2,
+      items: [
+        {
+          kind: 'timeline_event',
+          id: 1,
+          event_key: 'promote:1',
+          event_type: 'candidate_promoted',
+          actor_id: 'operator-1',
+          data: { reason: '需求明确' },
+          occurred_at: '2026-07-16T08:00:00Z',
+        },
+        {
+          kind: 'followup_record',
+          id: 2,
+          event_key: 'followup:2',
+          action_type: 'first_contact_due',
+          channel: null,
+          target: null,
+          content: null,
+          customer_reply: null,
+          result: 'pending',
+          next_step: '准备公开回复',
+          next_followup_at: null,
+          source_entry: 'customer_progression',
+          platform_evidence: null,
+          is_completed: false,
+          occurred_at: '2026-07-16T08:05:00Z',
+        },
+      ],
+    });
+
+    expect(model.map((item) => item.title)).toEqual(['已推进为客户', '首次联系待处理']);
+    expect(model[0].description).toContain('需求明确');
+    expect(model[1].description).toContain('准备公开回复');
+    expect(model[0].raw).toMatchObject({ event_type: 'candidate_promoted' });
   });
 });

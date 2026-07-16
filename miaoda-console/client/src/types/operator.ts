@@ -339,3 +339,62 @@ export type OperatorCustomerList = {
   items: OperatorCustomerSummary[];
   count: number;
 };
+
+export type OperatorCustomerDetail = OperatorCustomerSummary & {
+  platform: string;
+  region: string | null;
+  demand_type: string | null;
+  product: string | null;
+  intent_stage: string | null;
+  intent_score: number;
+  customer_tags: string[];
+  followup_note: string | null;
+  next_followup_at: string | null;
+  last_contact_at: string | null;
+  last_contact_result: string | null;
+  profile: {
+    platform_user_id: string;
+    display_name: string | null;
+    profile_url: string | null;
+  };
+  evidence: Array<{
+    id: number;
+    source_entity_type: string;
+    source_entity_id: number;
+    text: string;
+  }>;
+  ai_judgment: {
+    screening_id: number;
+    review_status: string;
+    confidence: number | null;
+    qualification_decision: string | null;
+    campaign: string | null;
+  } | null;
+};
+
+export type OperatorCustomerTimelineItem = {
+  kind: 'timeline_event' | 'followup_record';
+  id: number;
+  event_key: string;
+  occurred_at: string;
+  event_type?: string;
+  actor_id?: string | null;
+  data?: Record<string, unknown>;
+  action_type?: string;
+  channel?: string | null;
+  target?: string | null;
+  content?: string | null;
+  customer_reply?: string | null;
+  result?: string | null;
+  next_step?: string | null;
+  next_followup_at?: string | null;
+  source_entry?: string | null;
+  platform_evidence?: Record<string, unknown> | null;
+  is_completed?: boolean;
+};
+
+export type OperatorCustomerTimeline = {
+  customer_id: number;
+  items: OperatorCustomerTimelineItem[];
+  count: number;
+};

@@ -2,6 +2,8 @@ import type {
   AttentionCounts,
   LeadReviewAction,
   OperatorCustomerList,
+  OperatorCustomerSummary,
+  OperatorCustomerTimeline,
   CustomerProgression,
   OperatorReviewQueue,
   OperatorRunReport,
@@ -275,4 +277,63 @@ export function buildReviewOutcome({
     boundary: '公开回复草稿功能将在 V19-05 开放',
     customerHref: `/customers/${progression.customer_id}`,
   };
+}
+
+export function buildCustomerSummaryView(customer: OperatorCustomerSummary) {
+  const stages: Record<string, string> = {
+    new_customer: '新客户',
+    awaiting_first_contact: '待首次联系',
+    draft_confirmed: '话术已确认',
+    waiting_to_send: '等待发送',
+    contacted_waiting_reply: '已联系待回复',
+    customer_replied: '客户已回复',
+    communicating: '沟通中',
+    qualified_intent: '有明确意向',
+    converted: '已转化',
+    deferred: '暂缓',
+    temporarily_unreachable: '暂时失联',
+    invalid: '无效',
+  };
+  const syncLabels: Record<string, string> = {
+    synced: 'Base CRM 已同步',
+    pending: customer.base_record_url ? '等待再次同步' : '尚未同步到 Base',
+    failed: 'Base CRM 同步失败',
+    reconciliation_unknown: 'Base 同步结果待核对',
+  };
+  return {
+    id: customer.customer_id,
+    name: customer.customer_name || `客户 #${customer.customer_id}`,
+    stageLabel: stages[customer.crm_stage] ?? customer.crm_stage,
+    nextStep: customer.next_step || '下一步尚未安排',
+    syncLabel: syncLabels[customer.sync_status] ?? `同步状态：${customer.sync_status}`,
+    syncTone: customer.sync_status === 'synced' ? 'success' : customer.sync_status === 'failed' ? 'danger' : 'warning',
+    baseAvailable: Boolean(customer.base_record_url),
+    baseHref: customer.base_record_url,
+    miaodaHref: `/customers/${customer.customer_id}`,
+    updatedAt: customer.updated_at,
+  };
+}
+
+export function buildCustomerTimelineView(timeline: OperatorCustomerTimeline) {
+  return timeline.items.map((item) => {
+    if (item.kind === 'timeline_event') {
+      const title = ({
+        candidate_promoted: '已推进为客户',
+        candidate_deferred: '候选已暂缓',
+        candidate_rejected: '候选已淘汰',
+        crm_stage_changed: 'CRM 阶段已更新',
+        customer_crm_synced: 'Base CRM 已同步',
+      } as Record<string, string>)[item.event_type || ''] ?? '客户事实已更新';
+      const reason = typeof item.data?.reason === 'string' ? item.data.reason : '业务事实已写入 PostgreSQL';
+      return { id: `${item.kind}-${item.id}`, title, description: reason, occurredAt: item.occurred_at, raw: item };
+    }
+    const title = ({
+      first_contact_due: '首次联系待处理',
+      new_customer: '新客户跟进已建立',
+      contact_attempt: '已记录一次联系',
+      customer_reply: '客户有新回复',
+    } as Record<string, string>)[item.action_type || ''] ?? '跟进记录已更新';
+    const description = item.next_step || item.result || item.content || '跟进事实已保留';
+    return { id: `${item.kind}-${item.id}`, title, description, occurredAt: item.occurred_at, raw: item };
+  });
 }
