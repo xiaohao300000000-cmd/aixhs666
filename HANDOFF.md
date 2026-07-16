@@ -465,3 +465,4 @@ python -m apps.cli --json run-control-panel-once
 - V19-03 明确禁止修改妙搭页面、Base CRM、公开回复、私信和 14:00/15:00/21:00 调度；真实验收只允许 PostgreSQL 新迁移/报告/队列事实，不调用外部 LLM 或外部平台写入。
 - 真实只读基线：Skill Run `#8` 为 succeeded 且 checkpoint 含 50 个 Screening；当前库共 100 个 Screening、86 个未人工审核事实。执行对话必须现场重查，不得把该快照当作固定真相。
 - 下一步创建全新独立执行对话和 worktree，目标分支 `codex/v19-03-run-report-queue`；主控继续只监督、复验、返工或合并。
+- 独立执行对话已创建：`019f6b02-9e7a-7d52-b020-bd0a9d8eed8d`；worktree 为 `/Users/xiaohao30000/.codex/worktrees/8b8b/aixhs666`。执行对话必须在任何任务文件修改前切换到 `codex/v19-03-run-report-queue`。
