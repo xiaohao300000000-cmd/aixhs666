@@ -24,7 +24,7 @@ from integrations.feishu.llm_review import (
 )
 from integrations.feishu.im import FeishuIMClient, FeishuIMSettings
 from storage.database import Base
-from storage.models import CollectionEvent, Lead, LeadEvidence, LeadScreeningResult, PublicProfile
+from storage.models import CollectionEvent, CustomerTimelineEvent, Lead, LeadEvidence, LeadScreeningResult, PublicProfile
 
 
 class FakeReviewCardClient:
@@ -304,6 +304,35 @@ def test_fastapi_llm_review_callback_returns_success_when_card_update_fails(
         assert screening.workflow_status == "reviewed"
         assert screening.human_review_status == "valid"
         assert screening.feishu_card_status == "processed"
+
+
+def test_fastapi_valid_review_records_customer_progression(
+    factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    screening_id = _seed_pending_screening(factory, with_lead=True)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.SessionLocal", factory)
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks.FeishuIMClient", lambda: FakeReviewCardClient())
+    monkeypatch.setattr("apps.api.routes.feishu_callbacks._create_outreach_after_valid_review", lambda *_args: None)
+    monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "token")
+    payload = _review_payload("evt-promote-customer", screening_id, "valid")
+
+    response = TestClient(create_app()).post(
+        "/feishu/callback/llm-review",
+        content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    with factory() as session:
+        lead = session.scalar(select(Lead))
+        event = session.scalar(select(CustomerTimelineEvent))
+        assert lead is not None
+        assert lead.followup_status == "pending"
+        assert lead.recommended_next_step == "准备首次公开回复"
+        assert event is not None
+        assert event.event_key == "customer-progression:feishu-review:evt-promote-customer"
+        assert event.event_type == "candidate_promoted"
 
 
 def test_build_llm_review_card_has_exactly_three_business_buttons(factory: sessionmaker[Session]) -> None:

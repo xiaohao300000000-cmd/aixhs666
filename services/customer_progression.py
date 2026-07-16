@@ -164,7 +164,17 @@ def promote_screening_customer(
         )
     )
     if lead is None:
-        raise LookupError("lead not found for screening result")
+        lead = Lead(
+            platform=screening.platform,
+            public_profile_id=screening.public_profile_id,
+            status="new",
+            demand_type=screening.demand_type,
+            intent_stage=screening.intent_strength,
+            intent_score=screening.confidence or 0,
+            recommended_next_step="人工确认",
+        )
+        session.add(lead)
+        session.flush()
     return progress_operator_lead(
         session,
         lead.id,

@@ -22,9 +22,11 @@ from integrations.feishu.outreach import (
 )
 from integrations.feishu.webhook import decode_callback_payload, verify_callback_token, verify_webhook_signature
 from services.outreach_generation import OpenAICompatibleOutreachGenerator
+from services.customer_progression import promote_screening_customer
 from services.feishu_customer_followup import push_customer_followup
 from services.feishu_task_center import TaskCenterCallbackError, apply_task_center_callback, is_task_center_callback
 from storage.database import SessionLocal
+from storage.models import LeadScreeningResult
 
 
 router = APIRouter(prefix="/feishu/callback", tags=["feishu-callbacks"])
@@ -113,6 +115,16 @@ async def llm_review_callback(
                 client=None,
                 verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN"),
             )
+            if result.applied and result.human_review_status == "valid":
+                screening = session.get(LeadScreeningResult, result.screening_result_id)
+                event_id, _ = _callback_identity(payload)
+                promote_screening_customer(
+                    session,
+                    result.screening_result_id,
+                    reviewer_id=screening.human_reviewer_id if screening is not None else None,
+                    reason=screening.qualification_human_reason if screening is not None else None,
+                    idempotency_key=f"feishu-review:{event_id}",
+                )
         except LLMReviewCallbackError as exc:
             logger.warning("Feishu LLM review callback rejected: %s", exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
