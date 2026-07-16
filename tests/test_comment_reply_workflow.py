@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 import json
+from copy import deepcopy
 import os
 from pathlib import Path
 from threading import Barrier, Lock
@@ -18,9 +19,9 @@ from sqlalchemy.pool import StaticPool
 
 from integrations.feishu.comment_replies import (
     CommentReplyPreSubmitError,
+    CommentReplyCallbackResult,
     CommentReplySendResult,
     CommentReplyWorkflowError,
-    apply_comment_reply_callback,
     build_comment_reply_approval_card,
     adopt_reconciled_comment_reply_card,
     create_comment_reply_for_valid_screening,
@@ -107,6 +108,61 @@ class RaisingSender:
 
     def reply_to_comment(self, **_: str) -> CommentReplySendResult:
         raise self.exception
+
+
+def _run_callback_worker(
+    factory: sessionmaker[Session],
+    payload: dict[str, Any],
+    *,
+    card_client: FakeCardClient,
+    sender: Any,
+    verification_token: str | None,
+) -> CommentReplyCallbackResult:
+    """Exercise the production callback-command then worker-only sender path."""
+    command = enqueue_comment_reply_callback(factory, payload, verification_token=verification_token)
+    with factory() as session:
+        reply = session.get(LeadCommentReply, command.reply_id)
+        if reply is None:
+            raise AssertionError("callback command lost its reply")
+        current_status = reply.status
+    if current_status == "approved":
+        send_payload = deepcopy(payload)
+        event_payload = send_payload.get("event") if isinstance(send_payload.get("event"), dict) else send_payload
+        action_payload = event_payload["action"]
+        action_name = f"send_comment_reply_{command.reply_id}"
+        action_payload["name"] = action_name
+        action_payload["value"] = {"action": action_name}
+        command = enqueue_comment_reply_callback(factory, send_payload, verification_token=verification_token)
+        with factory() as session:
+            reply = session.get(LeadCommentReply, command.reply_id)
+            if reply is None:
+                raise AssertionError("send command lost its reply")
+            current_status = reply.status
+    if current_status != "queued":
+        return CommentReplyCallbackResult(False, True, command.reply_id, current_status)
+    with factory() as session:
+        task = session.scalar(
+            select(CollectionTask)
+            .where(CollectionTask.task_type == "comment_reply_send", CollectionTask.target_id == str(command.reply_id))
+            .order_by(CollectionTask.id.desc())
+        )
+        if task is None:
+            raise AssertionError("queued callback did not persist a worker task")
+        task_payload = dict(task.payload_json)
+    result = execute_approved_comment_reply(
+        factory,
+        reply_id=command.reply_id,
+        draft_revision=int(task_payload["draft_revision"]),
+        update_token=task_payload.get("update_token"),
+        card_client=card_client,
+        sender=sender,
+    )
+    with factory() as session:
+        persisted_task = session.get(CollectionTask, task.id)
+        if persisted_task is not None:
+            persisted_task.status = "success"
+            session.commit()
+    return result
 
 
 @pytest.fixture
@@ -238,8 +294,8 @@ def test_creation_requires_accepted_valid_comment_with_actual_rows(factory: sess
 def test_callback_sends_once_and_marks_sent(factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(factory)
     sender = FakeCommentReplySender.success("reply-1")
-    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    result = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    duplicate = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert result.status == "sent"
     assert result.applied is True
     assert duplicate.duplicate is True
@@ -260,9 +316,9 @@ def test_failed_send_can_retry_but_normal_confirm_cannot(factory: sessionmaker[S
         CommentReplySendResult(outcome="failed", error="temporary"),
         CommentReplySendResult(outcome="sent", platform_reply_id="reply-2"),
     ])
-    failed = apply_comment_reply_callback(factory, _payload(reply_id, "第一次"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    duplicate_confirm = apply_comment_reply_callback(factory, _payload(reply_id, "第二次"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    retried = apply_comment_reply_callback(factory, _payload(reply_id, "第二次", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    failed = _run_callback_worker(factory, _payload(reply_id, "第一次"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    duplicate_confirm = _run_callback_worker(factory, _payload(reply_id, "第二次"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    retried = _run_callback_worker(factory, _payload(reply_id, "第二次", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert failed.status == "failed"
     assert duplicate_confirm.duplicate is True
     assert retried.status == "sent"
@@ -272,8 +328,8 @@ def test_failed_send_can_retry_but_normal_confirm_cannot(factory: sessionmaker[S
 def test_result_unknown_is_duplicate_protected(factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(factory)
     sender = FakeCommentReplySender([CommentReplySendResult(outcome="result_unknown", error="timeout")])
-    first = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    first = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    duplicate = _run_callback_worker(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert first.status == "result_unknown"
     assert duplicate.duplicate is True
     assert len(sender.calls) == 1
@@ -285,12 +341,12 @@ def test_result_unknown_requires_explicit_not_sent_confirmation_before_one_retry
         CommentReplySendResult(outcome="result_unknown", error="timeout"),
         CommentReplySendResult(outcome="sent", platform_reply_id="reply-2"),
     ])
-    apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    blocked = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    blocked = _run_callback_worker(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     card_client = FakeCardClient()
     confirmed = confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops@example.com", reason="checked XHS comment thread", card_client=card_client)
-    retried = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
-    duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    retried = _run_callback_worker(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    duplicate = _run_callback_worker(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert blocked.duplicate is True
     assert confirmed.status == "failed"
     assert confirmed.card_status == "replaced"
@@ -315,9 +371,9 @@ def test_synchronous_sender_delay_still_duplicate_protects_followup_request(fact
 
     sender = DelayedSender([CommentReplySendResult(outcome="sent", platform_reply_id="reply-delayed")])
     with ThreadPoolExecutor(max_workers=1) as executor:
-        first_future = executor.submit(apply_comment_reply_callback, factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+        first_future = executor.submit(_run_callback_worker, factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
         started.wait()
-        duplicate = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+        duplicate = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
         first = first_future.result()
     assert first.status == "sent"
     assert duplicate.duplicate is True
@@ -331,7 +387,7 @@ def test_late_unknown_completion_cannot_overwrite_confirmed_retry(factory: sessi
         session.commit()
     confirm_comment_reply_not_sent(factory, reply_id=reply_id, operator="ops", reason="not present on platform", card_client=FakeCardClient())
     sender = FakeCommentReplySender([CommentReplySendResult(outcome="sent", platform_reply_id="reply-new")])
-    apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    _run_callback_worker(factory, _payload(reply_id, "最终回复", action="retry"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     with factory() as session:
         stale = session.execute(
             update(LeadCommentReply)
@@ -372,7 +428,7 @@ def test_invalid_final_text_is_rejected_without_claim(factory: sessionmaker[Sess
     reply_id = _seed_pending_reply(factory)
     sender = FakeCommentReplySender.success()
     with pytest.raises(ValueError):
-        apply_comment_reply_callback(factory, _payload(reply_id, text), card_client=FakeCardClient(), sender=sender, verification_token="token")
+        _run_callback_worker(factory, _payload(reply_id, text), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert sender.calls == []
     with factory() as session:
         assert session.get(LeadCommentReply, reply_id).status == "pending_review"
@@ -388,7 +444,7 @@ def test_send_result_is_persisted_before_card_update(factory: sessionmaker[Sessi
                 assert saved.platform_reply_id == "platform-reply-1"
             raise RuntimeError("card update failed")
 
-    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=ObservingFailingCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+    result = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=ObservingFailingCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
     assert result.status == "sent"
     with factory() as session:
         saved = session.get(LeadCommentReply, reply_id)
@@ -449,7 +505,7 @@ def test_conditional_claim_loss_does_not_send(factory: sessionmaker[Session]) ->
         session.execute(update(LeadCommentReply).where(LeadCommentReply.id == reply_id).values(status="sending"))
         session.commit()
     sender = FakeCommentReplySender.success()
-    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    result = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert result.duplicate is True
     assert result.status == "sending"
     assert sender.calls == []
@@ -470,11 +526,11 @@ def test_callback_identification_and_card_rendering(factory: sessionmaker[Sessio
 def test_callback_rejects_invalid_token_and_stored_context_mismatch(factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(factory)
     with pytest.raises(ValueError, match="token"):
-        apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", token="wrong"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+        _run_callback_worker(factory, _payload(reply_id, "最终回复", token="wrong"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
     with pytest.raises(ValueError, match="message"):
-        apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", message_id="forged"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+        _run_callback_worker(factory, _payload(reply_id, "最终回复", message_id="forged"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
     with pytest.raises(ValueError, match="chat"):
-        apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", chat_id="forged"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+        _run_callback_worker(factory, _payload(reply_id, "最终回复", chat_id="forged"), card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
 
 
 @pytest.mark.parametrize("name", ["confirm_comment_reply_1_extra", "confirm_comment_reply_-1", "xconfirm_comment_reply_1", "retry_comment_reply_abc"])
@@ -484,7 +540,7 @@ def test_callback_rejects_malformed_or_forged_actions(factory: sessionmaker[Sess
     payload["event"]["action"]["name"] = name
     assert is_comment_reply_callback(payload) is False
     with pytest.raises(ValueError, match="callback"):
-        apply_comment_reply_callback(factory, payload, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+        _run_callback_worker(factory, payload, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
 
 
 def test_direct_event_shape_is_supported_and_operator_is_required(factory: sessionmaker[Session]) -> None:
@@ -492,13 +548,13 @@ def test_direct_event_shape_is_supported_and_operator_is_required(factory: sessi
     wrapped = _payload(reply_id, "最终回复")
     direct = {"token": wrapped["token"], **wrapped["event"]}
     assert is_comment_reply_callback(direct) is True
-    result = apply_comment_reply_callback(factory, direct, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="update-token")
+    result = _run_callback_worker(factory, direct, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="update-token")
     assert result.status == "sent"
     other_id = _seed_pending_reply(factory, suffix="2")
     missing_operator = _payload(other_id, "最终回复")
     missing_operator["event"].pop("operator")
     with pytest.raises(ValueError, match="operator"):
-        apply_comment_reply_callback(factory, missing_operator, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
+        _run_callback_worker(factory, missing_operator, card_client=FakeCardClient(), sender=FakeCommentReplySender.success(), verification_token="token")
 
 
 def test_stale_send_completion_does_not_overwrite_new_attempt(factory: sessionmaker[Session]) -> None:
@@ -511,7 +567,7 @@ def test_stale_send_completion_does_not_overwrite_new_attempt(factory: sessionma
                 session.commit()
             return CommentReplySendResult(outcome="sent", platform_reply_id="stale")
 
-    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=StealingSender(), verification_token="token")
+    result = _run_callback_worker(factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=StealingSender(), verification_token="token")
     assert result.status == "sending"
     assert result.reconciliation_required is True
     with factory() as session:
@@ -589,7 +645,7 @@ def test_card_result_unknown_never_resends_and_adoption_enables_callback(factory
         assert saved.feishu_chat_id == "oc_located"
         assert saved.feishu_sync_error == "operator ou_admin adopted reconciled card: located in Feishu message history"
     sender = FakeCommentReplySender.success()
-    result = apply_comment_reply_callback(factory, _payload(reply_id, "最终回复", message_id="om_located", chat_id="oc_located"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+    result = _run_callback_worker(factory, _payload(reply_id, "最终回复", message_id="om_located", chat_id="oc_located"), card_client=FakeCardClient(), sender=sender, verification_token="token")
     assert result.status == "sent"
     assert len(sender.calls) == 1
 
@@ -647,13 +703,13 @@ def test_reconciliation_does_not_change_fresh_or_completed_card_claim(factory: s
 
 def test_sender_exception_contract_and_unsupported_outcome_are_durable(factory: sessionmaker[Session]) -> None:
     failed_id = _seed_pending_reply(factory)
-    failed = apply_comment_reply_callback(factory, _payload(failed_id, "最终回复"), card_client=FakeCardClient(), sender=RaisingSender(CommentReplyPreSubmitError("not submitted")), verification_token="token")
+    failed = _run_callback_worker(factory, _payload(failed_id, "最终回复"), card_client=FakeCardClient(), sender=RaisingSender(CommentReplyPreSubmitError("not submitted")), verification_token="token")
     assert failed.status == "failed"
     unknown_id = _seed_pending_reply(factory, suffix="2")
-    unknown = apply_comment_reply_callback(factory, _payload(unknown_id, "最终回复"), card_client=FakeCardClient(), sender=RaisingSender(RuntimeError("after submit maybe")), verification_token="token")
+    unknown = _run_callback_worker(factory, _payload(unknown_id, "最终回复"), card_client=FakeCardClient(), sender=RaisingSender(RuntimeError("after submit maybe")), verification_token="token")
     assert unknown.status == "result_unknown"
     unsupported_id = _seed_pending_reply(factory, suffix="3")
-    unsupported = apply_comment_reply_callback(factory, _payload(unsupported_id, "最终回复"), card_client=FakeCardClient(), sender=FakeCommentReplySender([CommentReplySendResult(outcome="mystery")]), verification_token="token")
+    unsupported = _run_callback_worker(factory, _payload(unsupported_id, "最终回复"), card_client=FakeCardClient(), sender=FakeCommentReplySender([CommentReplySendResult(outcome="mystery")]), verification_token="token")
     assert unsupported.status == "result_unknown"
     with factory() as session:
         assert session.get(LeadCommentReply, unsupported_id).status == "result_unknown"
@@ -661,7 +717,7 @@ def test_sender_exception_contract_and_unsupported_outcome_are_durable(factory: 
     class MalformedSender:
         def reply_to_comment(self, **_: str) -> object:
             return object()
-    malformed = apply_comment_reply_callback(factory, _payload(malformed_id, "最终回复"), card_client=FakeCardClient(), sender=MalformedSender(), verification_token="token")
+    malformed = _run_callback_worker(factory, _payload(malformed_id, "最终回复"), card_client=FakeCardClient(), sender=MalformedSender(), verification_token="token")
     assert malformed.status == "result_unknown"
     with factory() as session:
         assert session.get(LeadCommentReply, malformed_id).status == "result_unknown"
@@ -669,9 +725,11 @@ def test_sender_exception_contract_and_unsupported_outcome_are_durable(factory: 
 
 def test_concurrent_callbacks_only_one_claims_send(file_factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(file_factory)
+    enqueue_comment_reply_callback(file_factory, _payload(reply_id, "最终回复"), verification_token="token")
+    enqueue_comment_reply_callback(file_factory, _payload(reply_id, "最终回复", action="send"), verification_token="token")
     sender = FakeCommentReplySender.success()
     def invoke() -> Any:
-        return apply_comment_reply_callback(file_factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token")
+        return execute_approved_comment_reply(file_factory, reply_id=reply_id, draft_revision=2, update_token="update-token", card_client=FakeCardClient(), sender=sender)
     with _claim_boundary_barrier(file_factory, "status="):
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda _: invoke(), range(2)))
@@ -709,10 +767,12 @@ def test_postgres_conditional_send_claim_race() -> None:
     suffix = f"pg-{datetime.now(UTC).timestamp()}"
     try:
         reply_id = _seed_pending_reply(postgres_factory, suffix=suffix)
+        enqueue_comment_reply_callback(postgres_factory, _payload(reply_id, "最终回复"), verification_token="token")
+        enqueue_comment_reply_callback(postgres_factory, _payload(reply_id, "最终回复", action="send"), verification_token="token")
         sender = FakeCommentReplySender.success()
         with _claim_boundary_barrier(postgres_factory, "status="):
             with ThreadPoolExecutor(max_workers=2) as pool:
-                results = list(pool.map(lambda _: apply_comment_reply_callback(postgres_factory, _payload(reply_id, "最终回复"), card_client=FakeCardClient(), sender=sender, verification_token="token"), range(2)))
+                results = list(pool.map(lambda _: execute_approved_comment_reply(postgres_factory, reply_id=reply_id, draft_revision=2, update_token="update-token", card_client=FakeCardClient(), sender=sender), range(2)))
         assert len(sender.calls) == 1
         assert sorted(result.duplicate for result in results) == [False, True]
     finally:
@@ -861,7 +921,7 @@ def _seed_pending_reply(factory: sessionmaker[Session], *, suffix: str = "1") ->
 
 
 def _payload(reply_id: int, text: str, *, action: str = "confirm", token: str = "token", message_id: str = "om_reply_1", chat_id: str = "oc_review") -> dict[str, Any]:
-    return {"token": token, "event": {"token": "update-token", "operator": {"open_id": "ou_reviewer"}, "context": {"open_message_id": message_id, "open_chat_id": chat_id}, "action": {"name": f"{action}_comment_reply_{reply_id}", "form_value": {"comment_reply_text": text}}}}
+    return {"token": token, "header": {"event_id": f"event-{reply_id}-{action}-{text}"}, "event": {"token": "update-token", "operator": {"open_id": "ou_reviewer"}, "context": {"open_message_id": message_id, "open_chat_id": chat_id}, "action": {"name": f"{action}_comment_reply_{reply_id}", "form_value": {"comment_reply_text": text}}}}
 
 
 @contextmanager

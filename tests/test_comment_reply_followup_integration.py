@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from integrations.feishu.bitable import FeishuBitableSettings, FeishuBitableWriteResult
-from integrations.feishu.comment_replies import CommentReplySendResult, apply_comment_reply_callback, create_comment_reply_for_valid_screening
+from integrations.feishu.comment_replies import CommentReplySendResult, create_comment_reply_for_valid_screening, enqueue_comment_reply_callback, execute_approved_comment_reply
 from services.comment_reply_generation import CommentReplyDraft
 from services.feishu_customer_followup import push_customer_followup
 from storage.database import Base
-from storage.models import Comment, Content, FeishuBitableRecord, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
+from storage.models import CollectionTask, Comment, Content, FeishuBitableRecord, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
 
 
 class Generator:
@@ -30,6 +30,26 @@ class CardClient:
 class Sender:
     def reply_to_comment(self, **kwargs: Any) -> CommentReplySendResult:
         return CommentReplySendResult(outcome="sent", platform_reply_id="xhs-reply-1", response_json={"ok": True})
+
+
+def run_callback_worker(factory: sessionmaker[Session], payload: dict[str, Any], sender: Sender):
+    approved = enqueue_comment_reply_callback(factory, payload, verification_token="token")
+    if approved.duplicate:
+        return approved
+    reply_id = approved.reply_id
+    send_payload = {
+        **payload,
+        "event": {
+            **payload["event"],
+            "action": {"name": f"send_comment_reply_{reply_id}", "value": {"action": f"send_comment_reply_{reply_id}"}},
+        },
+    }
+    queued = enqueue_comment_reply_callback(factory, send_payload, verification_token="token")
+    if queued.duplicate:
+        return queued
+    with factory() as session:
+        task = session.scalar(select(CollectionTask).where(CollectionTask.task_type == "comment_reply_send", CollectionTask.target_id == str(reply_id)))
+    return execute_approved_comment_reply(factory, reply_id=reply_id, draft_revision=int(task.payload_json["draft_revision"]), update_token=task.payload_json.get("update_token"), card_client=CardClient(), sender=sender)
 
 
 class FollowupClient:
@@ -68,7 +88,7 @@ def test_create_callback_sent_then_customer_followup_upsert() -> None:
         reply_id = reply.id
 
     payload = {"token": "token", "event": {"token": "update-token", "operator": {"open_id": "ou-reviewer"}, "context": {"open_message_id": "om-integration", "open_chat_id": "oc-review"}, "action": {"name": f"confirm_comment_reply_{reply_id}", "form_value": {"comment_reply_text": "可以先做一次能力诊断，再按薄弱项规划。"}}}}
-    result = apply_comment_reply_callback(factory, payload, card_client=CardClient(), sender=Sender(), verification_token="token")
+    result = run_callback_worker(factory, payload, Sender())
     assert result.status == "sent"
 
     client = FollowupClient()
@@ -128,7 +148,7 @@ def test_operator_cli_replaces_unknown_card_then_retry_succeeds_once(monkeypatch
 
     sender = Sender()
     retry_payload = {"token": "token", "event": {"token": "update-token", "operator": {"open_id": "ou-reviewer"}, "context": {"open_message_id": "om-retry", "open_chat_id": "oc-review"}, "action": {"name": f"retry_comment_reply_{reply_id}", "form_value": {"comment_reply_text": "可以先做一次能力诊断，再按薄弱项规划。"}}}}
-    first = apply_comment_reply_callback(factory, retry_payload, card_client=CardClient(), sender=sender, verification_token="token")
-    duplicate = apply_comment_reply_callback(factory, retry_payload, card_client=CardClient(), sender=sender, verification_token="token")
+    first = run_callback_worker(factory, retry_payload, sender)
+    duplicate = run_callback_worker(factory, retry_payload, sender)
     assert first.status == "sent"
     assert duplicate.duplicate is True

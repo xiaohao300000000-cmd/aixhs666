@@ -265,53 +265,6 @@ def build_comment_reply_send_card(reply: LeadCommentReply) -> dict[str, Any]:
     }
 
 
-def apply_comment_reply_callback(
-    session_factory: sessionmaker[Session],
-    payload: dict[str, Any],
-    *,
-    card_client: FeishuMessageClient,
-    sender: CommentReplySender,
-    verification_token: str | None,
-) -> CommentReplyCallbackResult:
-    if not verify_callback_token(payload, verification_token):
-        raise ValueError("invalid Feishu callback token")
-    event = _event(payload)
-    match = _ACTION_RE.fullmatch(_action_name(payload))
-    if match is None:
-        raise ValueError("not a valid comment reply callback")
-    action, reply_id_text = match.groups()
-    reply_id = int(reply_id_text)
-    operator = event.get("operator") if isinstance(event.get("operator"), dict) else {}
-    operator_id = operator.get("open_id") or operator.get("user_id")
-    if not operator_id:
-        raise ValueError("comment reply callback operator identity is required")
-    context = event.get("context") if isinstance(event.get("context"), dict) else {}
-    message_id = str(context.get("open_message_id") or "")
-    chat_id = str(context.get("open_chat_id") or "")
-    final_text = validate_comment_reply_text(_form_text(payload))
-
-    claim = _claim_send(
-        session_factory,
-        reply_id=reply_id,
-        action=action,
-        final_text=final_text,
-        operator_id=str(operator_id),
-        message_id=message_id,
-        chat_id=chat_id,
-    )
-    if isinstance(claim, CommentReplyCallbackResult):
-        return claim
-
-    return _execute_send_claim(
-        session_factory,
-        claim=claim,
-        final_text=final_text,
-        update_token=str(event.get("token") or "") or None,
-        card_client=card_client,
-        sender=sender,
-    )
-
-
 def enqueue_comment_reply_callback(
     session_factory: sessionmaker[Session],
     payload: dict[str, Any],
@@ -347,6 +300,13 @@ def enqueue_comment_reply_callback(
         if not chat_id or chat_id != reply.feishu_chat_id:
             raise ValueError("comment reply callback chat does not match stored chat")
         before = reply.status
+        allowed_states = {
+            "confirm": {"pending_review", "awaiting_approval", "approved"},
+            "retry": {"failed", "approved"},
+            "send": {"approved"},
+        }
+        if reply.status not in allowed_states[action]:
+            return CommentReplyCallbackResult(False, True, reply_id, reply.status)
         if action in {"confirm", "retry"}:
             revision = reply.draft_revision
             if final_text != reply.draft_text:
@@ -734,54 +694,6 @@ def confirm_comment_reply_not_sent(
         error = "retry card was sent but database binding lost ownership; operator reconciliation required"
         return CommentReplyCallbackResult(True, False, reply_id, "failed", True, "replacement_unknown", error)
     return CommentReplyCallbackResult(True, False, reply_id, "failed", False, "replaced", None)
-
-
-def _claim_send(
-    session_factory: sessionmaker[Session],
-    *,
-    reply_id: int,
-    action: str,
-    final_text: str,
-    operator_id: str,
-    message_id: str,
-    chat_id: str,
-) -> _SendClaim | CommentReplyCallbackResult:
-    allowed = ("pending_review",) if action == "confirm" else ("failed",)
-    with session_factory() as session:
-        reply = session.get(LeadCommentReply, reply_id)
-        if reply is None:
-            raise ValueError(f"comment reply not found: {reply_id}")
-        if not message_id or message_id != reply.feishu_message_id:
-            raise ValueError("comment reply callback message does not match stored message")
-        if not chat_id or chat_id != reply.feishu_chat_id:
-            raise ValueError("comment reply callback chat does not match stored chat")
-        claimed = session.execute(
-            update(LeadCommentReply)
-            .where(LeadCommentReply.id == reply_id, LeadCommentReply.status.in_(allowed))
-            .values(
-                status="sending",
-                approved_text=final_text,
-                approved_revision=LeadCommentReply.draft_revision,
-                approved_by=operator_id,
-                approved_at=_utc_now(),
-                last_attempt_at=_utc_now(),
-                attempt_count=LeadCommentReply.attempt_count + 1,
-                last_error=None,
-            )
-        ).rowcount == 1
-        if not claimed:
-            session.refresh(reply)
-            return CommentReplyCallbackResult(False, True, reply_id, reply.status)
-        session.commit()
-        claimed_reply = session.get(LeadCommentReply, reply_id)
-        return _SendClaim(
-            reply_id=reply_id,
-            attempt_count=claimed_reply.attempt_count,
-            draft_revision=claimed_reply.draft_revision,
-            platform_comment_id=claimed_reply.target_platform_comment_id,
-            platform_content_id=claimed_reply.target_platform_content_id,
-            target_url=claimed_reply.target_url,
-        )
 
 
 def _find_reply(session: Session, screening_id: int, platform_comment_id: str) -> LeadCommentReply | None:
