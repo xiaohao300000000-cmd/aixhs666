@@ -150,7 +150,7 @@ def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: P
             task_type="comment_reply_send",
             platform="xhs",
             target_id=str(reply.id),
-            payload_json={"update_token": "card-token"},
+            payload_json={"update_token": "card-token", "draft_revision": 1},
             max_attempts=1,
         )
         session.commit()
@@ -158,9 +158,9 @@ def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: P
     class Result:
         status = "sent"
 
-    def execute(session_factory, *, reply_id, update_token, card_client, sender):
+    def execute(session_factory, *, reply_id, draft_revision, update_token, card_client, sender):
         del session_factory, card_client, sender
-        calls.append((reply_id, update_token))
+        calls.append((reply_id, draft_revision, update_token))
         with factory() as session:
             reply = session.get(LeadCommentReply, reply_id)
             assert reply is not None
@@ -179,7 +179,7 @@ def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: P
 
     assert first is not None
     assert second is None
-    assert calls == [(1, "card-token")]
+    assert calls == [(1, 1, "card-token")]
     with factory() as session:
         task = session.get(CollectionTask, first.id)
         assert task is not None

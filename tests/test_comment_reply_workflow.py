@@ -25,13 +25,14 @@ from integrations.feishu.comment_replies import (
     adopt_reconciled_comment_reply_card,
     create_comment_reply_for_valid_screening,
     enqueue_comment_reply_callback,
+    execute_approved_comment_reply,
     confirm_comment_reply_not_sent,
     is_comment_reply_callback,
     reconcile_stale_comment_reply,
 )
 from services.comment_reply_generation import CommentReplyDraft
 from storage.database import Base
-from storage.models import CollectionTask, Comment, Content, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
+from storage.models import CollectionTask, Comment, ContactCommandOperation, Content, CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
 
 
 class FakeCommentReplyGenerator:
@@ -360,8 +361,51 @@ def test_send_result_is_persisted_before_card_update(factory: sessionmaker[Sessi
     assert result.status == "sent"
     with factory() as session:
         saved = session.get(LeadCommentReply, reply_id)
+        lead = session.get(Lead, saved.lead_id)
         assert saved.status == "sent"
         assert "card update failed" in saved.feishu_sync_error
+        assert lead.crm_stage == "contact_sent_waiting_reply"
+        assert lead.last_contact_result == "public_reply_sent"
+        assert session.query(CustomerFollowupRecord).filter_by(lead_id=lead.id, result="sent").count() == 1
+
+
+@pytest.mark.parametrize("outcome", ["sent", "failed", "result_unknown"])
+def test_worker_result_uses_contact_command_and_persists_customer_facts(factory: sessionmaker[Session], outcome: str) -> None:
+    reply_id = _seed_pending_reply(factory, suffix=f"result-{outcome}")
+    enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
+    enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="send"), verification_token="token")
+    sender = FakeCommentReplySender([CommentReplySendResult(outcome=outcome, error="safe failure" if outcome != "sent" else None)])
+
+    result = execute_approved_comment_reply(
+        factory,
+        reply_id=reply_id,
+        draft_revision=1,
+        update_token=None,
+        card_client=FakeCardClient(),
+        sender=sender,
+    )
+
+    assert result.status == outcome
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        assert reply.status == outcome
+        assert session.query(ContactCommandOperation).filter_by(operation_scope="record_contact_result", entity_id=reply_id).count() == 1
+        assert session.query(CustomerFollowupRecord).filter_by(lead_id=reply.lead_id, result=outcome).count() == 1
+        assert session.query(CustomerTimelineEvent).filter_by(lead_id=reply.lead_id, event_type=f"contact_result_{outcome}").count() == 1
+
+
+def test_result_revision_fence_rejects_stale_worker_payload_without_sender_call(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory, suffix="stale-payload")
+    enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
+    enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="send"), verification_token="token")
+    sender = FakeCommentReplySender.success()
+
+    result = execute_approved_comment_reply(factory, reply_id=reply_id, draft_revision=99, update_token=None, card_client=FakeCardClient(), sender=sender)
+
+    assert result.duplicate is True
+    assert sender.calls == []
+    with factory() as session:
+        assert session.get(LeadCommentReply, reply_id).status == "queued"
 
 
 def test_conditional_claim_loss_does_not_send(factory: sessionmaker[Session]) -> None:

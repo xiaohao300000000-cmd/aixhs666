@@ -118,6 +118,19 @@ def test_approve_freezes_exact_revision_without_queueing(factory: sessionmaker[S
         assert session.query(CollectionTask).count() == 0
 
 
+def test_reapproving_same_revision_with_new_key_is_stable(factory: sessionmaker[Session]) -> None:
+    from services.contact_commands import approve_contact_draft
+
+    with factory() as session:
+        reply = _reply(session)
+        first = approve_contact_draft(session, reply_id=reply.id, draft_revision=1, operator="op", idempotency_key="approve-1")
+        second = approve_contact_draft(session, reply_id=reply.id, draft_revision=1, operator="op", idempotency_key="approve-2")
+        session.commit()
+
+        assert second == first
+        assert session.query(models.CustomerTimelineEvent).filter_by(event_type="contact_draft_approved").count() == 1
+
+
 def test_send_requires_confirmation_and_replays_one_task(factory: sessionmaker[Session]) -> None:
     from services.contact_commands import approve_contact_draft, send_approved_contact
 
