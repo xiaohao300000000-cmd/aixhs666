@@ -101,11 +101,28 @@ def build_run_candidates(session: Session, run: SkillRun) -> list[dict[str, Any]
     screenings = session.scalars(
         select(LeadScreeningResult).where(LeadScreeningResult.id.in_(screening_ids))
     ).all()
+    return build_candidates_from_screenings(session, screenings, run_id=run.id)
+
+
+def build_candidates_from_screenings(
+    session: Session,
+    screenings: list[LeadScreeningResult],
+    *,
+    run_id: int | None = None,
+    errors: list[dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
     groups: dict[str, list[LeadScreeningResult]] = {}
     for screening in screenings:
         groups.setdefault(candidate_key(screening), []).append(screening)
 
-    items = [_group_view(session, run.id, key, values) for key, values in groups.items()]
+    items: list[dict[str, Any]] = []
+    for key, values in groups.items():
+        try:
+            items.append(_group_view(session, run_id, key, values))
+        except Exception as exc:
+            if errors is None:
+                raise
+            errors.append({"candidate_key": key, "error": str(exc)[:240]})
     return sorted(
         items,
         key=lambda item: (
@@ -188,7 +205,7 @@ def rebuild_skill_run_report(session: Session, run_id: int) -> dict[str, Any]:
 
 def _group_view(
     session: Session,
-    run_id: int,
+    run_id: int | None,
     key: str,
     screenings: list[LeadScreeningResult],
 ) -> dict[str, Any]:
