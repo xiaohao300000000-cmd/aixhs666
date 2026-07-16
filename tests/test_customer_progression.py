@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from services.customer_progression import progress_operator_lead
 from storage.database import Base
-from storage.models import CustomerTimelineEvent, Lead, LeadScreeningResult, PublicProfile
+from storage.models import CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadScreeningResult, PublicProfile
 
 
 def _factory() -> sessionmaker[Session]:
@@ -57,12 +57,21 @@ def test_promote_sets_customer_facts_and_timeline() -> None:
         assert result.customer_stage == "awaiting_first_contact"
         assert result.next_action == "prepare_public_reply"
         assert result.timeline_event_type == "candidate_promoted"
+        assert result.crm_sync_status == "pending"
+        assert result.followup_record_id is not None
         assert lead.status == "qualified"
         assert lead.followup_status == "pending"
+        assert lead.crm_stage == "awaiting_first_contact"
+        assert lead.crm_sync_version == 1
         assert lead.recommended_next_step == "准备首次公开回复"
         event = session.scalar(select(CustomerTimelineEvent))
         assert event is not None
         assert event.event_key == "customer-progression:review-1"
+        followup = session.scalar(select(CustomerFollowupRecord))
+        assert followup is not None
+        assert followup.event_key == "customer-followup:customer-progression:review-1:first-contact"
+        assert followup.action_type == "待首次联系"
+        assert followup.result == "pending"
 
 
 def test_duplicate_progression_reuses_timeline_event() -> None:
@@ -90,6 +99,8 @@ def test_duplicate_progression_reuses_timeline_event() -> None:
         assert second.timeline_event_id == first.timeline_event_id
         assert second.idempotent_replay is True
         assert len(session.scalars(select(CustomerTimelineEvent)).all()) == 1
+        assert len(session.scalars(select(CustomerFollowupRecord)).all()) == 1
+        assert lead.crm_sync_version == 1
 
 
 def test_defer_requires_reason_and_future_time() -> None:
