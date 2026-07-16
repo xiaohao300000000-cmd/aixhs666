@@ -8,9 +8,15 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
+from services.customer_crm_sync import sync_customer_crm
 from services.customer_progression import progress_operator_lead
+from services.operator_customers import (
+    get_operator_customer,
+    get_operator_customer_timeline,
+    list_operator_customers,
+)
 from services.operator_leads import get_operator_lead, list_operator_leads
 from services.operator_tasks import (
     cancel_operator_run,
@@ -74,6 +80,11 @@ class RunActionPayload(BaseModel):
     requested_by: str | None = None
 
 
+class SyncCustomersPayload(BaseModel):
+    customer_ids: list[int] | None = None
+    idempotency_key: Annotated[str, Field(min_length=1, pattern=r".*\S.*")]
+
+
 @router.get("/workbench")
 def get_operator_workbench(session: SessionDep, _: OperatorAuth) -> dict[str, Any]:
     return build_operator_workbench(session)
@@ -133,6 +144,46 @@ def post_operator_lead_review(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/customers")
+def get_operator_customers(
+    session: SessionDep,
+    _: OperatorAuth,
+    limit: Annotated[int, Field(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    return list_operator_customers(session, limit=limit)
+
+
+@router.post("/customers/sync")
+def post_operator_customer_sync(
+    payload: SyncCustomersPayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    factory = sessionmaker(bind=session.get_bind(), autoflush=False, expire_on_commit=False)
+    result = sync_customer_crm(factory, customer_ids=payload.customer_ids)
+    return {"idempotency_key": payload.idempotency_key, "sync": result.to_dict()}
+
+
+@router.get("/customers/{customer_id}")
+def get_operator_customer_detail(customer_id: int, session: SessionDep, _: OperatorAuth) -> dict[str, Any]:
+    try:
+        return get_operator_customer(session, customer_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/customers/{customer_id}/timeline")
+def get_operator_customer_timeline_view(
+    customer_id: int,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    try:
+        return get_operator_customer_timeline(session, customer_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/tasks")

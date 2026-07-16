@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from apps.api.main import create_app
 from services.customer_progression import CustomerProgressionResult
+from services.customer_crm_sync import CustomerCrmSyncResult
 from storage.database import Base, get_session
 
 
@@ -124,3 +125,48 @@ def test_operator_promote_returns_structured_consequences(
     assert response.json()["progression"]["next_action"] == "prepare_public_reply"
     assert calls[0]["action"] == "promote"
     assert calls[0]["idempotency_key"] == "ui-review-1"
+
+
+def test_operator_customer_routes_and_sync_require_idempotency_key(
+    operator_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": "Bearer operator-secret"}
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.list_operator_customers",
+        lambda _session, **_kwargs: {"items": [{"customer_id": 151}], "count": 1},
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.get_operator_customer",
+        lambda _session, customer_id: {"customer_id": customer_id},
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.get_operator_customer_timeline",
+        lambda _session, customer_id: {"customer_id": customer_id, "items": []},
+    )
+    sync_calls: list[list[int] | None] = []
+
+    def sync(_factory, *, customer_ids=None):
+        sync_calls.append(customer_ids)
+        return CustomerCrmSyncResult(status="synced", customers_synced=1)
+
+    monkeypatch.setattr("apps.api.routes.operator_api.sync_customer_crm", sync)
+
+    listing = operator_client.get("/operator/api/customers", headers=headers)
+    detail = operator_client.get("/operator/api/customers/151", headers=headers)
+    timeline = operator_client.get("/operator/api/customers/151/timeline", headers=headers)
+    missing_key = operator_client.post("/operator/api/customers/sync", headers=headers, json={})
+    synced = operator_client.post(
+        "/operator/api/customers/sync",
+        headers=headers,
+        json={"customer_ids": [151], "idempotency_key": "customer-sync-1"},
+    )
+
+    assert listing.status_code == 200
+    assert detail.json()["customer_id"] == 151
+    assert timeline.json()["items"] == []
+    assert missing_key.status_code == 422
+    assert synced.status_code == 200
+    assert synced.json()["idempotency_key"] == "customer-sync-1"
+    assert synced.json()["sync"]["customers_synced"] == 1
+    assert sync_calls == [[151]]
