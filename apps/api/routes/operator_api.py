@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hmac
 import os
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from services.operator_leads import get_operator_lead, list_operator_leads, review_operator_lead
+from services.customer_progression import progress_operator_lead
+from services.operator_leads import get_operator_lead, list_operator_leads
 from services.operator_tasks import (
     cancel_operator_run,
     copy_operator_run,
@@ -51,6 +54,8 @@ class LeadReviewPayload(BaseModel):
     reason: str | None = None
     owner_name: str | None = None
     reviewer_id: str | None = None
+    idempotency_key: str | None = None
+    defer_until: datetime | None = None
 
 
 class CreateRunPayload(BaseModel):
@@ -100,16 +105,30 @@ def post_operator_lead_review(
     _: OperatorAuth,
 ) -> dict[str, Any]:
     try:
-        result = review_operator_lead(
+        legacy_actions = {
+            "valid": "promote",
+            "follow_up": "promote",
+            "watch": "defer",
+            "needs_information": "defer",
+            "invalid": "reject",
+        }
+        action = legacy_actions.get(payload.action, payload.action)
+        defer_until = payload.defer_until
+        if action == "defer" and defer_until is None and payload.action in legacy_actions:
+            defer_until = datetime.now(UTC) + timedelta(days=3)
+        progression = progress_operator_lead(
             session,
             lead_id,
-            action=payload.action,
+            action=action,
             reason=payload.reason,
             owner_name=payload.owner_name,
             reviewer_id=payload.reviewer_id,
+            defer_until=defer_until,
+            idempotency_key=payload.idempotency_key or f"operator-review:{uuid4().hex}",
         )
+        lead = get_operator_lead(session, lead_id)
         session.commit()
-        return result
+        return {"lead": lead, "progression": progression.as_dict()}
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

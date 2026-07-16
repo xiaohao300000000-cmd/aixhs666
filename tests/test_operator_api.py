@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from apps.api.main import create_app
+from services.customer_progression import CustomerProgressionResult
 from storage.database import Base, get_session
 
 
@@ -83,3 +84,43 @@ def test_operator_leads_and_tasks_require_same_token(operator_client: TestClient
     assert missing_tasks.status_code == 401
     assert leads.status_code == 200
     assert tasks.status_code == 200
+
+
+def test_operator_promote_returns_structured_consequences(
+    operator_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def progress(_session: Session, lead_id: int, **kwargs: object) -> CustomerProgressionResult:
+        calls.append({"lead_id": lead_id, **kwargs})
+        return CustomerProgressionResult(
+            customer_id=lead_id,
+            customer_stage="awaiting_first_contact",
+            next_action="prepare_public_reply",
+            timeline_event_id=91,
+            timeline_event_type="candidate_promoted",
+            screening_id=17,
+            idempotent_replay=False,
+        )
+
+    monkeypatch.setattr("apps.api.routes.operator_api.progress_operator_lead", progress)
+    monkeypatch.setattr("apps.api.routes.operator_api.get_operator_lead", lambda _session, lead_id: {"id": lead_id})
+
+    response = operator_client.post(
+        "/operator/api/leads/151/review",
+        headers={"Authorization": "Bearer operator-secret"},
+        json={
+            "action": "promote",
+            "reason": "需求明确",
+            "reviewer_id": "operator-1",
+            "idempotency_key": "ui-review-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["lead"] == {"id": 151}
+    assert response.json()["progression"]["customer_stage"] == "awaiting_first_contact"
+    assert response.json()["progression"]["next_action"] == "prepare_public_reply"
+    assert calls[0]["action"] == "promote"
+    assert calls[0]["idempotency_key"] == "ui-review-1"
