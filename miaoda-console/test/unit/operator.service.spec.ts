@@ -87,6 +87,7 @@ describe('OperatorService', () => {
     const request = jest.fn().mockReturnValue(of({ data: { ok: true } }));
     const service = new OperatorService({ request } as unknown as HttpService);
 
+    await service.getLead(214);
     await service.getReviewQueue('2026-07-16', 'priority_review', 5, 20);
     await service.getRunReport(8);
     await service.getRunCandidates(8, 'uncertain_review');
@@ -96,25 +97,30 @@ describe('OperatorService', () => {
 
     expect(request).toHaveBeenNthCalledWith(1, expect.objectContaining({
       method: 'GET',
+      url: 'https://backend.example.com/operator/api/leads/214',
+      headers: { Authorization: 'Bearer server-only-secret' },
+    }));
+    expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      method: 'GET',
       url: 'https://backend.example.com/operator/api/review-queue',
       params: { queue_date: '2026-07-16', layer: 'priority_review', offset: 5, limit: 20 },
       headers: { Authorization: 'Bearer server-only-secret' },
     }));
-    expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(request).toHaveBeenNthCalledWith(3, expect.objectContaining({
       url: 'https://backend.example.com/operator/api/tasks/runs/8/report',
     }));
-    expect(request).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    expect(request).toHaveBeenNthCalledWith(4, expect.objectContaining({
       url: 'https://backend.example.com/operator/api/tasks/runs/8/candidates',
       params: { layer: 'uncertain_review' },
     }));
-    expect(request).toHaveBeenNthCalledWith(4, expect.objectContaining({
+    expect(request).toHaveBeenNthCalledWith(5, expect.objectContaining({
       url: 'https://backend.example.com/operator/api/customers',
       params: { limit: 25 },
     }));
-    expect(request).toHaveBeenNthCalledWith(5, expect.objectContaining({
+    expect(request).toHaveBeenNthCalledWith(6, expect.objectContaining({
       url: 'https://backend.example.com/operator/api/customers/147',
     }));
-    expect(request).toHaveBeenNthCalledWith(6, expect.objectContaining({
+    expect(request).toHaveBeenNthCalledWith(7, expect.objectContaining({
       url: 'https://backend.example.com/operator/api/customers/147/timeline',
     }));
   });

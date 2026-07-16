@@ -30,6 +30,10 @@ export class OperatorService {
     });
   }
 
+  async getLead(leadId: number): Promise<unknown> {
+    return this.request('GET', `/operator/api/leads/${leadId}`);
+  }
+
   async reviewLead(leadId: number, payload: unknown): Promise<unknown> {
     return this.request('POST', `/operator/api/leads/${leadId}/review`, payload);
   }

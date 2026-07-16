@@ -381,6 +381,9 @@ function sanitizeFailureSummary(value: string | null): string {
   return value
     .split('\n')[0]
     .replace(/https?:\/\/\S+/gi, '[内部地址已隐藏]')
+    .replace(/(?:\/Users|\/home|\/var|\/tmp)\/[^;\s]+/g, '[本机路径已隐藏]')
+    .replace(/(['"])(?:\.{0,2}\/)?(?:[\w.-]+\/)+[\w./-]+\1/g, "'[本机路径已隐藏]'")
+    .replace(/(?:stderr=)?Traceback\b.*$/gi, '[错误堆栈已隐藏]')
     .replace(/(token|secret|authorization|password)\s*[=:]\s*\S+/gi, '$1=[敏感信息已隐藏]')
     .slice(0, 180);
 }

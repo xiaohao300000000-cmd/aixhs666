@@ -17,6 +17,11 @@ export class OperatorController {
     return this.operatorService.getLeads(statusFilter, limit ? Number(limit) : undefined);
   }
 
+  @Get('leads/:leadId')
+  getLead(@Param('leadId', ParseIntPipe) leadId: number): Promise<unknown> {
+    return this.operatorService.getLead(leadId);
+  }
+
   @Post('leads/:leadId/review')
   reviewLead(@Param('leadId', ParseIntPipe) leadId: number, @Body() payload: unknown): Promise<unknown> {
     return this.operatorService.reviewLead(leadId, payload);

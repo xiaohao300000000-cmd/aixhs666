@@ -336,7 +336,7 @@ describe('operator view model', () => {
           target_id: null,
           attempt_count: 1,
           max_attempts: 3,
-          last_error: 'timeout',
+          last_error: "MediaCrawler failed; run_dir=/Users/example/aixhs666/.runtime/run-1; command='third_party/MediaCrawler/.venv/bin/python'; stderr=Traceback (most recent call last):",
           finished_at: null,
           updated_at: '2026-07-16T08:00:00Z',
         },
@@ -357,6 +357,9 @@ describe('operator view model', () => {
     expect(model.nonBlockingFailures).toHaveLength(1);
     expect(model.blockingFailures[0].summary).not.toContain('internal.example.com');
     expect(model.blockingFailures[0].summary).not.toContain('server-only-secret');
+    expect(model.nonBlockingFailures[0].summary).not.toContain('/Users/');
+    expect(model.nonBlockingFailures[0].summary).not.toContain('third_party/');
+    expect(model.nonBlockingFailures[0].summary).not.toContain('Traceback');
     expect(model.workers).toEqual([expect.objectContaining({ label: '需要恢复', currentTask: '当前无任务' })]);
     expect(model.integrations).toEqual([
       { key: 'base', label: 'Base CRM', status: '未提供状态' },
