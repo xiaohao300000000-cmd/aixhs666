@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from scheduler import create_task
+from services.daily_review_queue import prepare_daily_review_queue
 from services.feishu_ai_review_sync import sync_feishu_ai_review_rows
 from services.llm_lead_screening import run_llm_lead_screening
 from services.skill_registry import ScreenHistoricalLeadsParameters, get_skill_definition, load_registered_campaign
+from services.skill_run_report import rebuild_skill_run_report
 from storage.models import CollectionTask, Comment, Content, LeadScreeningResult, SkillRun, SkillRunEvent
 
 SKILL_TASK_TYPE = "skill_run_execute"
@@ -142,6 +144,43 @@ def copy_skill_run(session: Session, run_id: int, *, requested_by: str | None = 
     return copied
 
 
+def finalize_skill_run(
+    session: Session,
+    run: SkillRun,
+    *,
+    raw_summary: dict[str, Any],
+    queue_date: date | None = None,
+) -> dict[str, Any]:
+    run.result_summary_json = dict(raw_summary)
+    run.status = "succeeded"
+    run.current_stage = "summarize"
+    run.progress_percent = 100
+    run.finished_at = run.finished_at or _now()
+    report = rebuild_skill_run_report(session, run.id)
+    queue = prepare_daily_review_queue(session, queue_date=queue_date)
+    report = {
+        **report,
+        "queue": {
+            "scope": "global_unreviewed_backlog",
+            "prepared": queue["total"],
+            "quality_control": queue["quality_control"],
+            "emergency": queue["emergency"],
+            "backlog": queue["backlog"],
+            "errors": queue["errors"],
+        },
+    }
+    run.business_report_json = report
+    _event(
+        session,
+        run,
+        "succeeded",
+        event_key=f"skill-run:{run.id}:succeeded",
+        data=run.result_summary_json,
+    )
+    session.flush()
+    return report
+
+
 def execute_skill_run(session_factory: sessionmaker[Session], run_id: int, *, llm_client: Any = None, customer_client: Any = None, evidence_client: Any = None, progress_callback: Callable[[int], None] | None = None) -> SkillRun:
     def notify() -> None:
         if progress_callback is None:
@@ -199,8 +238,9 @@ def execute_skill_run(session_factory: sessionmaker[Session], run_id: int, *, ll
             run.current_stage = "summarize"
             screenings = session.scalars(select(LeadScreeningResult).where(LeadScreeningResult.id.in_(ids))).all() if ids else []
             sync_data = sync_result.to_dict()
-            run.result_summary_json = {"processed_count": len(screenings), "valid_demands": sum(item.valuable is True for item in screenings), "high_intent_customers": sum(item.intent_strength == "high" for item in screenings), "needs_confirmation": sum(item.review_status == "needs_review" or item.qualification_decision == "needs_review" for item in screenings), "feishu_sync": {**sync_data, "created": sync_data.get("customers_created", 0) + sync_data.get("evidence_created", 0), "updated": sync_data.get("customers_updated", 0) + sync_data.get("evidence_updated", 0)}}
-            run.status = "succeeded"; run.progress_percent = 100; run.finished_at = _now(); _event(session, run, "succeeded", data=run.result_summary_json); _project_history(session, run); session.commit()
+            raw_summary = {"processed_count": len(screenings), "valid_demands": sum(item.valuable is True for item in screenings), "high_intent_customers": sum(item.intent_strength == "high" for item in screenings), "needs_confirmation": sum(item.review_status == "needs_review" or item.qualification_decision == "needs_review" for item in screenings), "feishu_sync": {**sync_data, "created": sync_data.get("customers_created", 0) + sync_data.get("evidence_created", 0), "updated": sync_data.get("customers_updated", 0) + sync_data.get("evidence_updated", 0)}}
+            finalize_skill_run(session, run, raw_summary=raw_summary)
+            _project_history(session, run); session.commit()
             notify()
             return run
     except Exception as exc:

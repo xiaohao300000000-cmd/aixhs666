@@ -36,20 +36,29 @@ def prepare_daily_review_queue(
     candidates, errors = _eligible_candidates(session, source_run_id=source_run_id)
     existing_keys = {item.candidate_key for item in existing}
     remaining = [item for item in candidates if item["candidate_key"] not in existing_keys]
-    if existing:
+    regular_existing = [item for item in existing if not item.is_emergency]
+    if len(regular_existing) >= bounded_budget:
         return _summary(existing, created=0, backlog=len(remaining), errors=errors)
 
     by_layer = _by_layer(remaining)
     qc: list[dict[str, Any]] = []
-    selected_keys: set[str] = set()
+    selected_keys: set[str] = set(existing_keys)
+    existing_qc = sum(item.slot_type == "quality_control" for item in regular_existing)
+    qc_capacity = max(0, min(QUALITY_CONTROL_BUDGET, bounded_budget) - existing_qc)
     for layer in ("uncertain_review", "automatic_exclusion", "standard_review"):
         for candidate in by_layer[layer]:
-            if len(qc) >= min(QUALITY_CONTROL_BUDGET, bounded_budget):
+            if len(qc) >= qc_capacity:
                 break
             qc.append(candidate)
             selected_keys.add(str(candidate["candidate_key"]))
 
-    business_slots = max(0, bounded_budget - QUALITY_CONTROL_BUDGET)
+    existing_business = sum(
+        item.slot_type != "quality_control" for item in regular_existing
+    )
+    business_slots = max(
+        0,
+        max(0, bounded_budget - QUALITY_CONTROL_BUDGET) - existing_business,
+    )
     business: list[dict[str, Any]] = []
     for layer in ("priority_review", "standard_review", "uncertain_review"):
         for candidate in by_layer[layer]:
@@ -62,12 +71,13 @@ def prepare_daily_review_queue(
             selected_keys.add(key)
 
     created: list[ReviewQueueItem] = []
+    next_position = max((item.position for item in existing), default=0) + 1
     for candidate in qc:
         created.append(
             _new_item(
                 day,
                 candidate,
-                position=len(created) + 1,
+                position=next_position + len(created),
                 slot_type="quality_control",
                 source_run_id=source_run_id,
             )
@@ -77,7 +87,7 @@ def prepare_daily_review_queue(
             _new_item(
                 day,
                 candidate,
-                position=len(created) + 1,
+                position=next_position + len(created),
                 slot_type="business",
                 source_run_id=source_run_id,
             )
@@ -85,7 +95,7 @@ def prepare_daily_review_queue(
     session.add_all(created)
     session.flush()
     backlog = len([item for item in remaining if item["candidate_key"] not in selected_keys])
-    return _summary(created, created=len(created), backlog=backlog, errors=errors)
+    return _summary([*existing, *created], created=len(created), backlog=backlog, errors=errors)
 
 
 def extend_daily_review_queue(
@@ -195,6 +205,75 @@ def append_emergency_candidate(
     return item
 
 
+def list_daily_review_queue(
+    session: Session,
+    *,
+    queue_date: date | None = None,
+    layer: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> dict[str, Any]:
+    day = queue_date or business_date()
+    statement = select(ReviewQueueItem).where(ReviewQueueItem.queue_date == day)
+    if layer is not None:
+        statement = statement.where(ReviewQueueItem.layer == layer)
+    all_items = session.scalars(
+        statement.order_by(ReviewQueueItem.position, ReviewQueueItem.id)
+    ).all()
+    start = max(0, offset)
+    items = all_items[start : start + min(max(limit, 1), 200)]
+    return {
+        "queue_date": day.isoformat(),
+        "total": len(all_items),
+        "items": [_item_view(item) for item in items],
+        "progress": review_queue_progress(session, queue_date=day),
+    }
+
+
+def review_queue_progress(session: Session, *, queue_date: date | None = None) -> dict[str, int]:
+    day = queue_date or business_date()
+    items = _queue_items(session, day)
+    return {
+        "completed": sum(item.status == "completed" for item in items),
+        "target": len(items),
+        "pending": sum(item.status == "pending" for item in items),
+        "quality_control": sum(item.slot_type == "quality_control" for item in items),
+    }
+
+
+def complete_candidate_review(
+    session: Session,
+    *,
+    decision: str,
+    reviewed_at: datetime,
+    lead_id: int | None = None,
+    public_profile_id: int | None = None,
+    screening_id: int | None = None,
+) -> int:
+    pending = session.scalars(
+        select(ReviewQueueItem).where(ReviewQueueItem.status == "pending")
+    ).all()
+    profile_key = f"profile:{public_profile_id}" if public_profile_id is not None else None
+    completed = 0
+    for item in pending:
+        matches = any(
+            (
+                lead_id is not None and item.lead_id == lead_id,
+                public_profile_id is not None and item.public_profile_id == public_profile_id,
+                profile_key is not None and item.candidate_key == profile_key,
+                screening_id is not None and screening_id in (item.screening_ids_json or []),
+            )
+        )
+        if not matches:
+            continue
+        item.status = "completed"
+        item.human_decision = decision
+        item.reviewed_at = reviewed_at
+        completed += 1
+    session.flush()
+    return completed
+
+
 def _eligible_candidates(
     session: Session,
     *,
@@ -221,6 +300,36 @@ def _eligible_candidates(
         run_id=source_run_id,
         errors=errors,
     )
+    if source_run_id is not None:
+        for candidate in candidates:
+            candidate["source_run_id"] = source_run_id
+    else:
+        succeeded_runs = session.scalars(
+            select(SkillRun)
+            .where(SkillRun.status == "succeeded")
+            .order_by(SkillRun.id.desc())
+        ).all()
+        run_screenings = [
+            (
+                run.id,
+                {
+                    int(value)
+                    for value in (run.checkpoint_json or {}).get("screening_ids", [])
+                    if str(value).isdigit()
+                },
+            )
+            for run in succeeded_runs
+        ]
+        for candidate in candidates:
+            candidate_ids = {int(value) for value in candidate["screening_ids"]}
+            candidate["source_run_id"] = next(
+                (
+                    run_id
+                    for run_id, screening_ids in run_screenings
+                    if candidate_ids & screening_ids
+                ),
+                None,
+            )
     return candidates, errors
 
 
@@ -256,7 +365,15 @@ def _new_item(
             if candidate.get("public_profile_id") is not None
             else None
         ),
-        source_run_id=source_run_id,
+        source_run_id=(
+            source_run_id
+            if source_run_id is not None
+            else (
+                int(candidate["source_run_id"])
+                if candidate.get("source_run_id") is not None
+                else None
+            )
+        ),
         screening_ids_json=[int(value) for value in candidate["screening_ids"]],
         layer=str(candidate["layer"]),
         slot_type=slot_type,
@@ -300,4 +417,26 @@ def _summary(
         "errors": errors,
         "item_ids": [item.id for item in items],
         "candidate_keys": [item.candidate_key for item in items],
+    }
+
+
+def _item_view(item: ReviewQueueItem) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "queue_date": item.queue_date.isoformat(),
+        "run_id": item.source_run_id,
+        "candidate_key": item.candidate_key,
+        "lead_id": item.lead_id,
+        "screening_id": item.representative_screening_id,
+        "screening_ids": list(item.screening_ids_json or []),
+        "layer": item.layer,
+        "reason": item.queue_reason,
+        "exclusion_sample_reason": item.exclusion_sample_reason,
+        "position": item.position,
+        "slot_type": item.slot_type,
+        "status": item.status,
+        "emergency": item.is_emergency,
+        "human_decision": item.human_decision,
+        "miaoda_href": f"/leads?candidate_key={item.candidate_key}",
+        "next_action": "继续人工审核" if item.status == "pending" else "查看审核结果",
     }

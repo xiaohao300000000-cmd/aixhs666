@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from services.customer_progression import progress_operator_lead
+from services.daily_review_queue import review_queue_progress
 from storage.database import Base
-from storage.models import CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadScreeningResult, PublicProfile
+from storage.models import (
+    CustomerFollowupRecord,
+    CustomerTimelineEvent,
+    Lead,
+    LeadScreeningResult,
+    PublicProfile,
+    ReviewQueueItem,
+)
 
 
 def _factory() -> sessionmaker[Session]:
@@ -101,6 +109,63 @@ def test_duplicate_progression_reuses_timeline_event() -> None:
         assert len(session.scalars(select(CustomerTimelineEvent)).all()) == 1
         assert len(session.scalars(select(CustomerFollowupRecord)).all()) == 1
         assert lead.crm_sync_version == 1
+
+
+def test_progression_completes_matching_queue_position_exactly_once() -> None:
+    factory = _factory()
+    business_day = date(2026, 7, 16)
+    with factory() as session:
+        lead = _seed(session)
+        screening = session.scalar(select(LeadScreeningResult))
+        assert screening is not None
+        item = ReviewQueueItem(
+            queue_date=business_day,
+            candidate_key=f"profile:{lead.public_profile_id}",
+            representative_screening_id=screening.id,
+            lead_id=lead.id,
+            public_profile_id=lead.public_profile_id,
+            screening_ids_json=[screening.id],
+            layer="priority_review",
+            slot_type="business",
+            priority_rank=492,
+            position=1,
+            status="pending",
+            is_emergency=False,
+            queue_reason="强需求信号",
+        )
+        session.add(item)
+        session.commit()
+
+        first = progress_operator_lead(
+            session,
+            lead.id,
+            action="promote",
+            reason="需求明确",
+            reviewer_id="operator-1",
+            idempotency_key="queue-review-1",
+        )
+        session.commit()
+        second = progress_operator_lead(
+            session,
+            lead.id,
+            action="promote",
+            reason="需求明确",
+            reviewer_id="operator-1",
+            idempotency_key="queue-review-1",
+        )
+        session.commit()
+
+        assert first.idempotent_replay is False
+        assert second.idempotent_replay is True
+        assert item.status == "completed"
+        assert item.human_decision == "promote"
+        assert item.reviewed_at is not None
+        assert review_queue_progress(session, queue_date=business_day) == {
+            "completed": 1,
+            "target": 1,
+            "pending": 0,
+            "quality_control": 0,
+        }
 
 
 def test_defer_requires_reason_and_future_time() -> None:

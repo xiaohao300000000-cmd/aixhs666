@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from services.daily_review_queue import (
+    extend_daily_review_queue,
+    list_daily_review_queue,
+    prepare_daily_review_queue,
+)
 from services.skill_registry import list_campaign_options, list_skill_definitions
+from services.skill_run_report import build_run_candidates, rebuild_skill_run_report
 from services.skill_runtime import (
     copy_skill_run,
     create_skill_run,
@@ -121,11 +127,126 @@ def get_operator_run(session: Session, run_id: int) -> dict[str, Any]:
     return _run_view(_get_run(session, run_id))
 
 
+def get_operator_run_report(
+    session: Session,
+    run_id: int,
+    *,
+    rebuild: bool = False,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    run = _get_run(session, run_id)
+    if rebuild:
+        _require_idempotency_key(idempotency_key)
+        return rebuild_skill_run_report(session, run.id)
+    if run.business_report_json is None:
+        raise LookupError("business report has not been built")
+    return dict(run.business_report_json)
+
+
+def list_operator_run_candidates(
+    session: Session,
+    run_id: int,
+    *,
+    layer: str | None = None,
+) -> dict[str, Any]:
+    run = _get_run(session, run_id)
+    items = build_run_candidates(session, run)
+    if layer is not None:
+        items = [item for item in items if item["layer"] == layer]
+    return {
+        "run_id": run.id,
+        "layer": layer,
+        "count": len(items),
+        "items": items,
+        "next_action": {
+            "kind": "prepare_review_queue",
+            "label": "准备审核队列",
+            "href": f"/tasks?run_id={run.id}",
+        },
+    }
+
+
+def prepare_operator_review_queue(
+    session: Session,
+    run_id: int,
+    *,
+    queue_date: date | None = None,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    normalized_key = _require_idempotency_key(idempotency_key)
+    run = _get_run(session, run_id)
+    report = rebuild_skill_run_report(session, run.id)
+    queue = prepare_daily_review_queue(
+        session,
+        queue_date=queue_date,
+    )
+    report = {
+        **report,
+        "queue": {
+            "scope": "global_unreviewed_backlog",
+            "prepared": queue["total"],
+            "quality_control": queue["quality_control"],
+            "emergency": queue["emergency"],
+            "backlog": queue["backlog"],
+            "errors": queue["errors"],
+        },
+    }
+    run.business_report_json = report
+    session.flush()
+    return {"run_id": run.id, "idempotency_key": normalized_key, **queue}
+
+
+def get_operator_review_queue(
+    session: Session,
+    *,
+    queue_date: date | None = None,
+    layer: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> dict[str, Any]:
+    return list_daily_review_queue(
+        session,
+        queue_date=queue_date,
+        layer=layer,
+        offset=offset,
+        limit=limit,
+    )
+
+
+def continue_operator_review_queue(
+    session: Session,
+    *,
+    queue_date: date | None = None,
+    additional: int = 20,
+    priority_only: bool = False,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    normalized_key = _require_idempotency_key(idempotency_key)
+    queue = extend_daily_review_queue(
+        session,
+        queue_date=queue_date,
+        additional=additional,
+        priority_only=priority_only,
+    )
+    return {
+        "idempotency_key": normalized_key,
+        "priority_only": priority_only,
+        **queue,
+    }
+
+
 def _get_run(session: Session, run_id: int) -> SkillRun:
     run = session.get(SkillRun, run_id)
     if run is None:
         raise LookupError("skill run not found")
     return run
+
+
+def _require_idempotency_key(value: str | None) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        raise ValueError("idempotency_key is required")
+    return normalized
 
 
 def _run_view(run: SkillRun) -> dict[str, Any]:
@@ -165,4 +286,3 @@ def _iso(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat()
-

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from services.daily_review_queue import complete_candidate_review
 from storage.models import CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadScreeningResult
 
 
@@ -78,6 +79,20 @@ def progress_operator_lead(
     if existing is not None:
         if existing.lead_id != lead_id:
             raise ValueError("idempotency_key already belongs to another customer")
+        existing_lead = session.get(Lead, lead_id)
+        existing_data = existing.data_json or {}
+        complete_candidate_review(
+            session,
+            decision=str(existing_data.get("action") or normalized_action),
+            reviewed_at=existing.occurred_at,
+            lead_id=lead_id,
+            public_profile_id=existing_lead.public_profile_id if existing_lead is not None else None,
+            screening_id=(
+                int(existing_data["screening_id"])
+                if existing_data.get("screening_id") is not None
+                else None
+            ),
+        )
         return _result_from_event(existing, idempotent_replay=True)
 
     lead = session.get(Lead, lead_id)
@@ -168,6 +183,14 @@ def progress_operator_lead(
     )
     session.add(event)
     session.flush()
+    complete_candidate_review(
+        session,
+        decision=normalized_action,
+        reviewed_at=now,
+        lead_id=lead.id,
+        public_profile_id=lead.public_profile_id,
+        screening_id=screening.id if screening is not None else None,
+    )
     return _result_from_event(event, idempotent_replay=False)
 
 

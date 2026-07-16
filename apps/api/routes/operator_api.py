@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -20,9 +20,14 @@ from services.operator_customers import (
 from services.operator_leads import get_operator_lead, list_operator_leads
 from services.operator_tasks import (
     cancel_operator_run,
+    continue_operator_review_queue,
     copy_operator_run,
     create_operator_run,
+    get_operator_review_queue,
     get_operator_run,
+    get_operator_run_report,
+    list_operator_run_candidates,
+    prepare_operator_review_queue,
     preview_operator_run,
     queue_operator_run,
     retry_operator_run,
@@ -83,6 +88,20 @@ class RunActionPayload(BaseModel):
 class SyncCustomersPayload(BaseModel):
     customer_ids: list[int] | None = None
     idempotency_key: Annotated[str, Field(min_length=1, pattern=r".*\S.*")]
+
+
+class IdempotencyPayload(BaseModel):
+    idempotency_key: Annotated[str, Field(min_length=1, pattern=r".*\S.*")]
+
+
+class PrepareReviewQueuePayload(IdempotencyPayload):
+    queue_date: date | None = None
+
+
+class ContinueReviewQueuePayload(IdempotencyPayload):
+    queue_date: date | None = None
+    additional: Annotated[int, Field(ge=1, le=200)] = 20
+    priority_only: bool = False
 
 
 @router.get("/workbench")
@@ -201,6 +220,99 @@ def get_operator_task_run(run_id: int, session: SessionDep, _: OperatorAuth) -> 
         return get_operator_run(session, run_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/tasks/runs/{run_id}/report")
+def get_operator_task_report(run_id: int, session: SessionDep, _: OperatorAuth) -> dict[str, Any]:
+    try:
+        return get_operator_run_report(session, run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/tasks/runs/{run_id}/report/rebuild")
+def post_operator_task_report_rebuild(
+    run_id: int,
+    payload: IdempotencyPayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    return _task_write(
+        session,
+        lambda: get_operator_run_report(
+            session,
+            run_id,
+            rebuild=True,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@router.get("/tasks/runs/{run_id}/candidates")
+def get_operator_task_candidates(
+    run_id: int,
+    session: SessionDep,
+    _: OperatorAuth,
+    layer: str | None = None,
+) -> dict[str, Any]:
+    try:
+        return list_operator_run_candidates(session, run_id, layer=layer)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/tasks/runs/{run_id}/review-queue")
+def post_operator_task_review_queue(
+    run_id: int,
+    payload: PrepareReviewQueuePayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    return _task_write(
+        session,
+        lambda: prepare_operator_review_queue(
+            session,
+            run_id,
+            queue_date=payload.queue_date,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@router.get("/review-queue")
+def get_operator_daily_review_queue(
+    session: SessionDep,
+    _: OperatorAuth,
+    queue_date: date | None = None,
+    layer: str | None = None,
+    offset: Annotated[int, Field(ge=0)] = 0,
+    limit: Annotated[int, Field(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    return get_operator_review_queue(
+        session,
+        queue_date=queue_date,
+        layer=layer,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.post("/review-queue/continue")
+def post_operator_daily_review_queue_continue(
+    payload: ContinueReviewQueuePayload,
+    session: SessionDep,
+    _: OperatorAuth,
+) -> dict[str, Any]:
+    return _task_write(
+        session,
+        lambda: continue_operator_review_queue(
+            session,
+            queue_date=payload.queue_date,
+            additional=payload.additional,
+            priority_only=payload.priority_only,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
 
 
 @router.post("/tasks/runs")

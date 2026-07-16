@@ -170,3 +170,111 @@ def test_operator_customer_routes_and_sync_require_idempotency_key(
     assert synced.json()["idempotency_key"] == "customer-sync-1"
     assert synced.json()["sync"]["customers_synced"] == 1
     assert sync_calls == [[151]]
+
+
+def test_operator_run_report_candidate_and_review_queue_routes_require_stable_contracts(
+    operator_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": "Bearer operator-secret"}
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.get_operator_run_report",
+        lambda _session, run_id, **kwargs: {
+            "run_id": run_id,
+            "conclusion": "发现候选",
+            "counts": {"priority_review": 1},
+            "next_action": {"label": "审核本次候选"},
+            "rebuild": kwargs.get("rebuild", False),
+        },
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.list_operator_run_candidates",
+        lambda _session, run_id, **kwargs: {
+            "run_id": run_id,
+            "layer": kwargs.get("layer"),
+            "count": 1,
+            "items": [{"candidate_key": "profile:1", "layer": kwargs.get("layer")}],
+        },
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.prepare_operator_review_queue",
+        lambda _session, run_id, **kwargs: {
+            "run_id": run_id,
+            "idempotency_key": kwargs["idempotency_key"],
+            "queue_date": kwargs["queue_date"].isoformat(),
+            "item_ids": [1],
+        },
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.get_operator_review_queue",
+        lambda _session, **kwargs: {
+            "queue_date": kwargs["queue_date"].isoformat(),
+            "total": 1,
+            "items": [{"candidate_key": "profile:1", "layer": kwargs.get("layer")}],
+            "progress": {"completed": 0, "target": 1, "pending": 1, "quality_control": 0},
+        },
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.continue_operator_review_queue",
+        lambda _session, **kwargs: {
+            "idempotency_key": kwargs["idempotency_key"],
+            "priority_only": kwargs["priority_only"],
+            "created": kwargs["additional"],
+        },
+    )
+
+    report = operator_client.get("/operator/api/tasks/runs/8/report", headers=headers)
+    candidates = operator_client.get(
+        "/operator/api/tasks/runs/8/candidates?layer=automatic_exclusion",
+        headers=headers,
+    )
+    missing_rebuild_key = operator_client.post(
+        "/operator/api/tasks/runs/8/report/rebuild", headers=headers, json={}
+    )
+    rebuilt = operator_client.post(
+        "/operator/api/tasks/runs/8/report/rebuild",
+        headers=headers,
+        json={"idempotency_key": "rebuild-8"},
+    )
+    missing_prepare_key = operator_client.post(
+        "/operator/api/tasks/runs/8/review-queue",
+        headers=headers,
+        json={"queue_date": "2026-07-16"},
+    )
+    prepared = operator_client.post(
+        "/operator/api/tasks/runs/8/review-queue",
+        headers=headers,
+        json={"queue_date": "2026-07-16", "idempotency_key": "prepare-8"},
+    )
+    queue = operator_client.get(
+        "/operator/api/review-queue?queue_date=2026-07-16&layer=priority_review",
+        headers=headers,
+    )
+    missing_continue_key = operator_client.post(
+        "/operator/api/review-queue/continue", headers=headers, json={}
+    )
+    continued = operator_client.post(
+        "/operator/api/review-queue/continue",
+        headers=headers,
+        json={
+            "queue_date": "2026-07-16",
+            "additional": 20,
+            "priority_only": True,
+            "idempotency_key": "continue-1",
+        },
+    )
+
+    assert report.status_code == 200
+    assert report.json()["next_action"]["label"] == "审核本次候选"
+    assert candidates.json()["items"][0]["layer"] == "automatic_exclusion"
+    assert missing_rebuild_key.status_code == 422
+    assert rebuilt.json()["rebuild"] is True
+    assert missing_prepare_key.status_code == 422
+    assert prepared.json()["item_ids"] == [1]
+    assert queue.json()["progress"]["target"] == 1
+    assert missing_continue_key.status_code == 422
+    assert continued.json() == {
+        "idempotency_key": "continue-1",
+        "priority_only": True,
+        "created": 20,
+    }

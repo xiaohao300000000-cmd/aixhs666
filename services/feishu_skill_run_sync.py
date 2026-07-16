@@ -14,7 +14,11 @@ from storage.models import FeishuBitableRecord, SkillRun
 
 def skill_run_history_fields(run: SkillRun) -> dict[str, Any]:
     result = run.result_summary_json or {}
-    return {"任务运行ID": str(run.id), "任务": "历史线索智能筛选", "状态": run.status, "当前阶段": run.current_stage or "", "进度": run.progress_percent, "处理数量": result.get("processed_count", 0), "有效需求": result.get("valid_demands", 0), "高意向客户": result.get("high_intent_customers", 0), "待确认数量": result.get("needs_confirmation", 0), "Campaign": (run.parameters_json or {}).get("campaign_id", ""), "请求人": run.requested_by or "", "错误": run.error_message or ""}
+    report = run.business_report_json or {}
+    counts = report.get("counts", {})
+    queue = report.get("queue", {})
+    next_action = report.get("next_action", {})
+    return {"任务运行ID": str(run.id), "任务": "历史线索智能筛选", "状态": run.status, "当前阶段": run.current_stage or "", "进度": run.progress_percent, "处理数量": result.get("processed_count", 0), "有效需求": result.get("valid_demands", 0), "高意向客户": result.get("high_intent_customers", 0), "待确认数量": result.get("needs_confirmation", 0), "业务结论": report.get("conclusion", ""), "高优先级候选": counts.get("priority_review", 0), "普通候选": counts.get("standard_review", 0), "不确定候选": counts.get("uncertain_review", 0), "明确自动排除": counts.get("automatic_exclusion", 0), "今日队列": queue.get("prepared", 0), "质量控制": queue.get("quality_control", 0), "下一步": next_action.get("label", ""), "Campaign": (run.parameters_json or {}).get("campaign_id", ""), "请求人": run.requested_by or "", "错误": run.error_message or ""}
 
 
 def sync_skill_run_history(session: Session, run: SkillRun, *, client: FeishuBitableClient | None = None) -> bool:

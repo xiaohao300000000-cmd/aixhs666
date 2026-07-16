@@ -11,10 +11,12 @@ from services.daily_review_queue import (
     append_emergency_candidate,
     business_date,
     extend_daily_review_queue,
+    list_daily_review_queue,
     prepare_daily_review_queue,
+    review_queue_progress,
 )
 from storage.database import Base
-from storage.models import LeadScreeningResult, PublicProfile, ReviewQueueItem
+from storage.models import LeadScreeningResult, PublicProfile, ReviewQueueItem, SkillRun
 
 
 def _factory() -> sessionmaker[Session]:
@@ -201,6 +203,86 @@ def test_rebuild_is_stable_and_continue_20_never_duplicates() -> None:
         assert len({item.candidate_key for item in items}) == 85
 
 
+def test_prepare_refills_stable_partial_queue_from_later_run_without_reordering() -> None:
+    factory = _factory()
+    business_day = date(2026, 7, 16)
+    with factory() as session:
+        _seed_screenings(session, "standard", 10)
+        first = prepare_daily_review_queue(session, queue_date=business_day)
+        session.commit()
+        original = session.scalars(
+            select(ReviewQueueItem).order_by(ReviewQueueItem.position)
+        ).all()
+        original_identity = [(item.id, item.candidate_key, item.position) for item in original]
+
+        before_ids = set(session.scalars(select(LeadScreeningResult.id)).all())
+        _seed_screenings(session, "priority", 45)
+        session.flush()
+        later_ids = [
+            value
+            for value in session.scalars(select(LeadScreeningResult.id)).all()
+            if value not in before_ids
+        ]
+        later_run = SkillRun(
+            skill_key="screen_historical_leads",
+            skill_version=1,
+            status="succeeded",
+            checkpoint_json={"screening_ids": later_ids},
+            result_summary_json={"processed_count": 45},
+        )
+        session.add(later_run)
+        session.flush()
+
+        refilled = prepare_daily_review_queue(
+            session,
+            queue_date=business_day,
+            source_run_id=later_run.id,
+        )
+        session.commit()
+        repeated = prepare_daily_review_queue(
+            session,
+            queue_date=business_day,
+            source_run_id=later_run.id,
+        )
+        session.commit()
+
+        items = session.scalars(
+            select(ReviewQueueItem).order_by(ReviewQueueItem.position)
+        ).all()
+        assert first["created"] == 10
+        assert refilled["created"] == 40
+        assert repeated["created"] == 0
+        assert len(items) == 50
+        assert original_identity == [
+            (item.id, item.candidate_key, item.position) for item in items[:10]
+        ]
+        assert len({item.candidate_key for item in items}) == 50
+
+
+def test_global_backlog_queue_retains_known_source_run() -> None:
+    factory = _factory()
+    with factory() as session:
+        screening = _screening(1, "standard")
+        session.add(screening)
+        session.flush()
+        run = SkillRun(
+            skill_key="screen_historical_leads",
+            skill_version=1,
+            status="succeeded",
+            checkpoint_json={"screening_ids": [screening.id]},
+            result_summary_json={"processed_count": 1},
+        )
+        session.add(run)
+        session.flush()
+
+        prepare_daily_review_queue(session, queue_date=date(2026, 7, 16))
+        session.commit()
+
+        item = session.scalar(select(ReviewQueueItem))
+        assert item is not None
+        assert item.source_run_id == run.id
+
+
 def test_priority_only_continuation_and_emergency_can_exceed_default_budget() -> None:
     factory = _factory()
     business_day = date(2026, 7, 16)
@@ -262,6 +344,52 @@ def test_one_bad_candidate_is_visible_without_aborting_the_daily_plan(
         assert result["errors"] == [
             {"candidate_key": "source:comment:1", "error": "malformed candidate"}
         ]
+
+
+def test_queue_list_filters_priority_and_progress_comes_from_persisted_facts() -> None:
+    factory = _factory()
+    business_day = date(2026, 7, 16)
+    with factory() as session:
+        _seed_screenings(session, "standard", 5)
+        _seed_screenings(session, "priority", 3)
+        session.flush()
+        prepare_daily_review_queue(session, queue_date=business_day)
+        session.commit()
+        first = session.scalar(
+            select(ReviewQueueItem).order_by(ReviewQueueItem.position)
+        )
+        assert first is not None
+        first.status = "completed"
+        first.human_decision = "promote"
+        session.commit()
+
+        payload = list_daily_review_queue(
+            session,
+            queue_date=business_day,
+            layer="priority_review",
+        )
+        progress = review_queue_progress(session, queue_date=business_day)
+
+        assert payload["total"] == 3
+        assert all(item["layer"] == "priority_review" for item in payload["items"])
+        assert {
+            "run_id",
+            "candidate_key",
+            "lead_id",
+            "screening_id",
+            "layer",
+            "reason",
+            "position",
+            "status",
+            "miaoda_href",
+            "next_action",
+        }.issubset(payload["items"][0])
+        assert progress == {
+            "completed": 1,
+            "target": 8,
+            "pending": 7,
+            "quality_control": 5,
+        }
 
 
 def _seed_screenings(session: Session, kind: str, count: int) -> None:
