@@ -55,6 +55,30 @@ class FeishuBitableSettings:
             lark_cli_as=settings.lark_cli_as,
         )
 
+    @classmethod
+    def from_customer_crm_env(cls) -> "FeishuBitableSettings":
+        return cls._from_named_table_env("FEISHU_CUSTOMER_CRM_TABLE_ID")
+
+    @classmethod
+    def from_customer_followup_record_env(cls) -> "FeishuBitableSettings":
+        return cls._from_named_table_env("FEISHU_CUSTOMER_FOLLOWUP_RECORD_TABLE_ID")
+
+    @classmethod
+    def _from_named_table_env(cls, table_env_name: str) -> "FeishuBitableSettings":
+        settings = cls.from_env()
+        return cls(
+            enabled=settings.enabled,
+            app_id=settings.app_id,
+            app_secret=settings.app_secret,
+            app_token=_empty_to_none(os.getenv("FEISHU_CUSTOMER_CRM_APP_TOKEN")) or settings.app_token,
+            table_id=_empty_to_none(os.getenv(table_env_name)),
+            timeout_seconds=settings.timeout_seconds,
+            page_size=settings.page_size,
+            transport=settings.transport,
+            lark_cli_bin=settings.lark_cli_bin,
+            lark_cli_as=settings.lark_cli_as,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class FeishuBitableWriteResult:
@@ -142,6 +166,29 @@ class FeishuBitableClient:
             page_token = _empty_to_none(inner.get("page_token"))
             if page_token is None:
                 raise FeishuBitableError("Feishu Bitable list reported has_more without page_token")
+
+    def get_record_updated_time(self, record_id: str) -> int | None:
+        """Return one record's authoritative update time in milliseconds."""
+        if not self._ready() or self.settings.transport != "lark_cli" or not record_id.strip():
+            return None
+        args = self._base_cli_args("+record-history-list") + [
+            "--record-id",
+            record_id,
+            "--page-size",
+            "1",
+            "--format",
+            "json",
+            "--as",
+            self.settings.lark_cli_as,
+        ]
+        history = self._run_lark_cli_json(args, "record history")
+        items = history.get("data", {}).get("items") or []
+        if not items or not isinstance(items[0], dict):
+            return None
+        try:
+            return int(items[0].get("create_time")) * 1000
+        except (TypeError, ValueError):
+            return None
 
     def find_records_by_exact_field(self, field_name: str, value: str) -> list[dict[str, Any]]:
         if not self._ready():

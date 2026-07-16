@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from storage.models import CustomerTimelineEvent, Lead, LeadScreeningResult
+from storage.models import CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadScreeningResult
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,8 @@ class CustomerProgressionResult:
     timeline_event_type: str
     screening_id: int | None
     idempotent_replay: bool
+    followup_record_id: int | None = None
+    crm_sync_status: str = "not_requested"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -29,6 +31,8 @@ class CustomerProgressionResult:
             "timeline_event_type": self.timeline_event_type,
             "screening_id": self.screening_id,
             "idempotent_replay": self.idempotent_replay,
+            "followup_record_id": self.followup_record_id,
+            "crm_sync_status": self.crm_sync_status,
         }
 
 
@@ -96,6 +100,7 @@ def progress_operator_lead(
         next_action = "prepare_public_reply"
         human_status = "valid"
         qualification_decision = "qualified"
+        lead.crm_stage = customer_stage
     elif normalized_action == "defer":
         lead.status = "watch"
         lead.followup_status = "deferred"
@@ -105,6 +110,7 @@ def progress_operator_lead(
         next_action = "wait_for_reactivation"
         human_status = "watch"
         qualification_decision = "needs_review"
+        lead.crm_stage = customer_stage
     else:
         lead.status = "ignored"
         lead.followup_status = None
@@ -114,7 +120,9 @@ def progress_operator_lead(
         next_action = "none"
         human_status = "invalid"
         qualification_decision = "rejected"
+        lead.crm_stage = customer_stage
 
+    lead.crm_sync_version = (lead.crm_sync_version or 0) + 1
     lead.updated_at = now
     if screening is not None:
         screening.human_review_status = human_status
@@ -123,6 +131,22 @@ def progress_operator_lead(
         screening.qualification_human_reason = normalized_reason
         screening.qualification_decision = qualification_decision
         screening.updated_at = now
+
+    followup: CustomerFollowupRecord | None = None
+    if normalized_action == "promote":
+        followup = CustomerFollowupRecord(
+            lead_id=lead.id,
+            event_key=f"customer-followup:{event_key}:first-contact",
+            occurred_at=now,
+            action_type="待首次联系",
+            channel="xhs_public_reply",
+            result="pending",
+            next_step="准备首次公开回复",
+            source_entry="customer_progression",
+            is_completed=False,
+        )
+        session.add(followup)
+        session.flush()
 
     event = CustomerTimelineEvent(
         lead_id=lead.id,
@@ -136,6 +160,9 @@ def progress_operator_lead(
             "next_action": next_action,
             "screening_id": screening.id if screening is not None else None,
             "defer_until": defer_until.isoformat() if defer_until is not None else None,
+            "followup_record_id": followup.id if followup is not None else None,
+            "crm_sync_status": "pending",
+            "crm_sync_version": lead.crm_sync_version,
         },
         occurred_at=now,
     )
@@ -204,4 +231,8 @@ def _result_from_event(event: CustomerTimelineEvent, *, idempotent_replay: bool)
         timeline_event_type=event.event_type,
         screening_id=int(data["screening_id"]) if data.get("screening_id") is not None else None,
         idempotent_replay=idempotent_replay,
+        followup_record_id=(
+            int(data["followup_record_id"]) if data.get("followup_record_id") is not None else None
+        ),
+        crm_sync_status=str(data.get("crm_sync_status") or "not_requested"),
     )

@@ -321,6 +321,13 @@ class Lead(TimestampMixin, Base):
     operator_note: Mapped[str | None] = mapped_column(Text)
     followup_status: Mapped[str | None] = mapped_column(String(50))
     next_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    crm_stage: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="candidate", server_default="candidate"
+    )
+    customer_tags_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_contact_result: Mapped[str | None] = mapped_column(String(100))
+    crm_sync_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -328,6 +335,10 @@ class Lead(TimestampMixin, Base):
     profile: Mapped[PublicProfile] = relationship(back_populates="leads")
     evidence_items: Mapped[list[LeadEvidence]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     enrichment_tasks: Mapped[list[EnrichmentTask]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    followup_records: Mapped[list[CustomerFollowupRecord]] = relationship(
+        back_populates="lead",
+        cascade="all, delete-orphan",
+    )
 
 
 class CustomerTimelineEvent(Base):
@@ -344,6 +355,32 @@ class CustomerTimelineEvent(Base):
     actor_id: Mapped[str | None] = mapped_column(String(255))
     data_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CustomerFollowupRecord(TimestampMixin, Base):
+    __tablename__ = "customer_followup_records"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_customer_followup_records_event_key"),
+        Index("ix_customer_followup_records_lead_occurred", "lead_id", "occurred_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    channel: Mapped[str | None] = mapped_column(String(100))
+    target: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str | None] = mapped_column(Text)
+    customer_reply: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[str | None] = mapped_column(String(100))
+    next_step: Mapped[str | None] = mapped_column(Text)
+    next_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_entry: Mapped[str | None] = mapped_column(String(100))
+    platform_evidence_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    is_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
+    lead: Mapped[Lead] = relationship(back_populates="followup_records")
 
 
 class LeadEvidence(Base):
