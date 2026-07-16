@@ -117,4 +117,3 @@ after_reupgrade: draft='legacy draft', approved='legacy approved', draft_revisio
 - Base/飞书真实投影未写入，本报告只证明事务顺序、失败隔离和自动化合同。
 - 保留 legacy 同步回调/CLI 兼容路径；正式 FastAPI 飞书回调已使用两步 enqueue 命令路径。
 - 真实发送前仍必须完成专用目标 selector probe，任何唯一选择器不满足都应停止。
-
