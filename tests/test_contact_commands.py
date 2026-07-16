@@ -523,6 +523,15 @@ def test_postgres_same_send_key_concurrently_replays_first_result() -> None:
                     ContactCommandOperation.entity_id == reply_id,
                 )
             )
+            with pytest.raises(ValueError, match="idempotency_key request mismatch"):
+                send_approved_contact(
+                    session,
+                    reply_id=reply_id,
+                    draft_revision=1,
+                    confirmed=True,
+                    operator="different-request",
+                    idempotency_key="same-concurrent-send-key",
+                )
         assert operation_count == 1
     finally:
         event.remove(engine, "before_cursor_execute", synchronize_lock_reads)

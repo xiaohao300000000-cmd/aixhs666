@@ -32,18 +32,23 @@ def prepare_contact_draft(
     idempotency_key: str,
 ) -> dict[str, Any]:
     key_hash = hashlib.sha256(_required(idempotency_key, "idempotency_key").encode()).hexdigest()
-    existing = session.scalar(
-        select(ContactCommandOperation).where(
-            ContactCommandOperation.operation_scope == "prepare_contact_draft",
-            ContactCommandOperation.entity_id == customer_id,
-            ContactCommandOperation.idempotency_key_hash == key_hash,
-        )
-    )
+    request = {"customer_id": customer_id}
+    existing = _find_operation(session, "prepare_contact_draft", customer_id, key_hash)
     if existing is not None:
+        _require_operation_request(existing, request)
         return _contact_preparation_result(session, dict(existing.result_json))
-    lead = session.get(Lead, customer_id)
+    lead = session.scalar(
+        select(Lead)
+        .where(Lead.id == customer_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if lead is None or lead.status != "qualified":
         raise LookupError("qualified customer not found")
+    existing = _find_operation(session, "prepare_contact_draft", customer_id, key_hash)
+    if existing is not None:
+        _require_operation_request(existing, request)
+        return _contact_preparation_result(session, dict(existing.result_json))
     screening = session.scalar(
         select(LeadScreeningResult)
         .where(
@@ -102,7 +107,7 @@ def prepare_contact_draft(
             operation_scope="prepare_contact_draft",
             entity_id=customer_id,
             idempotency_key_hash=key_hash,
-            request_json={"customer_id": customer_id},
+            request_json=request,
             result_json=result,
         )
     )
@@ -373,22 +378,23 @@ def _operate(
     apply: Callable[[LeadCommentReply], dict[str, Any]],
 ) -> dict[str, Any]:
     key_hash = hashlib.sha256(_required(key, "idempotency_key").encode()).hexdigest()
-    existing = session.scalar(
-        select(ContactCommandOperation).where(
-            ContactCommandOperation.operation_scope == scope,
-            ContactCommandOperation.entity_id == reply_id,
-            ContactCommandOperation.idempotency_key_hash == key_hash,
-        )
-    )
+    existing = _find_operation(session, scope, reply_id, key_hash)
     if existing is not None:
-        if existing.request_json != request:
-            raise ValueError("idempotency_key request mismatch")
+        _require_operation_request(existing, request)
         return dict(existing.result_json)
+    session.flush()
     reply = session.scalar(
-        select(LeadCommentReply).where(LeadCommentReply.id == reply_id).with_for_update()
+        select(LeadCommentReply)
+        .where(LeadCommentReply.id == reply_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if reply is None:
         raise LookupError("contact attempt not found")
+    existing = _find_operation(session, scope, reply_id, key_hash)
+    if existing is not None:
+        _require_operation_request(existing, request)
+        return dict(existing.result_json)
     result = apply(reply)
     session.flush()
     session.add(
@@ -402,6 +408,26 @@ def _operate(
     )
     session.flush()
     return result
+
+
+def _find_operation(
+    session: Session,
+    scope: str,
+    entity_id: int,
+    key_hash: str,
+) -> ContactCommandOperation | None:
+    return session.scalar(
+        select(ContactCommandOperation).where(
+            ContactCommandOperation.operation_scope == scope,
+            ContactCommandOperation.entity_id == entity_id,
+            ContactCommandOperation.idempotency_key_hash == key_hash,
+        )
+    )
+
+
+def _require_operation_request(operation: ContactCommandOperation, request: dict[str, Any]) -> None:
+    if operation.request_json != request:
+        raise ValueError("idempotency_key request mismatch")
 
 
 def _timeline(session: Session, reply: LeadCommentReply, event_type: str, actor: str, data: dict[str, Any]) -> None:
