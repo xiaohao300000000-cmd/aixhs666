@@ -374,12 +374,14 @@ def test_worker_result_uses_contact_command_and_persists_customer_facts(factory:
     reply_id = _seed_pending_reply(factory, suffix=f"result-{outcome}")
     enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
     enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复", action="send"), verification_token="token")
+    with factory() as session:
+        draft_revision = session.get(LeadCommentReply, reply_id).draft_revision
     sender = FakeCommentReplySender([CommentReplySendResult(outcome=outcome, error="safe failure" if outcome != "sent" else None)])
 
     result = execute_approved_comment_reply(
         factory,
         reply_id=reply_id,
-        draft_revision=1,
+        draft_revision=draft_revision,
         update_token=None,
         card_client=FakeCardClient(),
         sender=sender,

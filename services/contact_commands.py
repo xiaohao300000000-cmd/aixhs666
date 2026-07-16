@@ -137,6 +137,8 @@ def approve_contact_draft(
         _require_revision(reply, draft_revision)
         if reply.status not in {"pending_review", "awaiting_approval", "failed", "approved"}:
             raise ValueError(f"illegal approval state: {reply.status}")
+        if reply.status == "approved" and reply.approved_revision == draft_revision and reply.approved_text == reply.draft_text:
+            return contact_attempt_dict(reply)
         reply.approved_text = reply.draft_text
         reply.approved_revision = reply.draft_revision
         reply.approved_by = operator
@@ -218,7 +220,7 @@ def record_contact_result(
     def apply(reply: LeadCommentReply) -> dict[str, Any]:
         if reply.status != "sending" or reply.attempt_count != attempt_count:
             raise ValueError("stale contact result attempt")
-        if reply.approved_revision != draft_revision:
+        if reply.draft_revision != draft_revision or reply.approved_revision != draft_revision:
             raise ValueError("stale contact result revision")
         now = datetime.now(UTC)
         reply.status = outcome
@@ -237,6 +239,8 @@ def record_contact_result(
                     lead.recommended_next_step = "等待客户公开回复"
                 elif outcome == "result_unknown":
                     lead.recommended_next_step = "人工核对小红书目标页面"
+                else:
+                    lead.recommended_next_step = "检查发送失败原因，修改后重新确认"
                 lead.crm_sync_version = (lead.crm_sync_version or 0) + 1
                 session.add(
                     CustomerFollowupRecord(

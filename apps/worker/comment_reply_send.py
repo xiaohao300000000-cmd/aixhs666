@@ -31,9 +31,17 @@ def run_comment_reply_send_task(
         return task
     payload = task.payload_json if isinstance(task.payload_json, dict) else {}
     try:
+        draft_revision = int(payload.get("draft_revision"))
+        if draft_revision < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        fail_task(session, task.id, error="comment reply send task draft_revision is invalid")
+        return task
+    try:
         result = execute_approved_comment_reply(
             session_factory,
             reply_id=reply_id,
+            draft_revision=draft_revision,
             update_token=str(payload.get("update_token") or "") or None,
             card_client=FeishuIMClient(),
             sender=_remote_comment_reply_sender(),

@@ -67,6 +67,7 @@ class CommentReplyCallbackResult:
 class _SendClaim:
     reply_id: int
     attempt_count: int
+    draft_revision: int
     platform_comment_id: str
     platform_content_id: str
     target_url: str | None
@@ -377,6 +378,7 @@ def execute_approved_comment_reply(
     session_factory: sessionmaker[Session],
     *,
     reply_id: int,
+    draft_revision: int,
     update_token: str | None,
     card_client: FeishuMessageClient,
     sender: CommentReplySender,
@@ -387,6 +389,8 @@ def execute_approved_comment_reply(
             .where(
                 LeadCommentReply.id == reply_id,
                 LeadCommentReply.status.in_(("queued", "approved_to_send")),
+                LeadCommentReply.draft_revision == draft_revision,
+                LeadCommentReply.approved_revision == draft_revision,
                 LeadCommentReply.approved_revision == LeadCommentReply.draft_revision,
             )
             .values(
@@ -407,6 +411,7 @@ def execute_approved_comment_reply(
         claim = _SendClaim(
             reply_id=reply_id,
             attempt_count=reply.attempt_count,
+            draft_revision=draft_revision,
             platform_comment_id=reply.target_platform_comment_id,
             platform_content_id=reply.target_platform_content_id,
             target_url=reply.target_url,
@@ -458,24 +463,26 @@ def _execute_send_claim(
         )
 
     completed_at = _utc_now()
+    from services.contact_commands import record_contact_result
+
     with session_factory() as session:
-        completed = session.execute(
-            update(LeadCommentReply)
-            .where(
-                LeadCommentReply.id == claim.reply_id,
-                LeadCommentReply.status == "sending",
-                LeadCommentReply.attempt_count == claim.attempt_count,
-            )
-            .values(
-                status=send_result.outcome,
+        try:
+            persisted = record_contact_result(
+                session,
+                reply_id=claim.reply_id,
+                attempt_count=claim.attempt_count,
+                draft_revision=claim.draft_revision,
+                outcome=send_result.outcome,
+                error=_sanitize_persisted_error(send_result.error),
                 platform_reply_id=send_result.platform_reply_id,
-                platform_response_json=send_result.response_json,
-                last_error=_sanitize_persisted_error(send_result.error),
-                sent_at=completed_at if send_result.outcome == "sent" else None,
+                platform_response=send_result.response_json,
+                idempotency_key=f"contact-result:{claim.reply_id}:{claim.attempt_count}:{claim.draft_revision}",
             )
-        ).rowcount == 1
-        session.commit()
-    if not completed:
+            session.commit()
+        except ValueError:
+            session.rollback()
+            persisted = None
+    if persisted is None:
         with session_factory() as session:
             current = session.get(LeadCommentReply, claim.reply_id)
             if current is None:
@@ -744,6 +751,7 @@ def _claim_send(
             .values(
                 status="sending",
                 approved_text=final_text,
+                approved_revision=LeadCommentReply.draft_revision,
                 approved_by=operator_id,
                 approved_at=_utc_now(),
                 last_attempt_at=_utc_now(),
@@ -759,6 +767,7 @@ def _claim_send(
         return _SendClaim(
             reply_id=reply_id,
             attempt_count=claimed_reply.attempt_count,
+            draft_revision=claimed_reply.draft_revision,
             platform_comment_id=claimed_reply.target_platform_comment_id,
             platform_content_id=claimed_reply.target_platform_content_id,
             target_url=claimed_reply.target_url,

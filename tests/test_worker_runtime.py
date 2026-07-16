@@ -129,7 +129,7 @@ def test_worker_processes_profile_task(tmp_path: Path) -> None:
 
 def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: Path) -> None:
     factory = _session_factory()
-    calls: list[tuple[int, str | None]] = []
+    calls: list[tuple[int, int, str | None]] = []
     monkeypatch.setenv("COMMENT_REPLY_BROWSER_MODE", "remote_cdp")
     monkeypatch.setenv("COMMENT_REPLY_CDP_URL", "http://100.124.24.8:19223")
     with factory() as session:
@@ -240,6 +240,7 @@ def test_worker_refuses_local_browser_for_comment_reply_send(monkeypatch, tmp_pa
             task_type="comment_reply_send",
             platform="xhs",
             target_id=str(reply.id),
+            payload_json={"draft_revision": 1},
             max_attempts=1,
         )
         session.commit()
@@ -290,6 +291,7 @@ def test_worker_requires_remote_cdp_url_for_comment_reply_send(monkeypatch, tmp_
             task_type="comment_reply_send",
             platform="xhs",
             target_id=str(reply.id),
+            payload_json={"draft_revision": 1},
             max_attempts=1,
         )
         session.commit()
