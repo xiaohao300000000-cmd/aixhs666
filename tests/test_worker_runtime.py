@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from apps.worker.main import WorkerConfig, WorkerRunner, build_parser
 from collectors import MockPlatformAdapter
+from integrations.feishu.comment_replies import CommentReplySendResult
 from scheduler import TaskStatus, claim_next_task, create_task
 from storage.database import Base
-from storage.models import CollectionTask, Content, DiscoveryRelation, LeadCommentReply, PublicProfile, Query, Snapshot
+from storage.models import CollectionTask, Content, CustomerFollowupRecord, CustomerTimelineEvent, DiscoveryRelation, Lead, LeadCommentReply, PublicProfile, Query, Snapshot
 
 
 def test_worker_once_processes_search_task_and_commits(tmp_path: Path) -> None:
@@ -187,6 +188,59 @@ def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: P
         reply = session.get(LeadCommentReply, 1)
         assert reply is not None
         assert reply.status == "sent"
+
+
+def test_worker_projection_failure_keeps_core_result_and_never_resends(monkeypatch, tmp_path: Path) -> None:
+    factory = _session_factory()
+    sender_calls: list[str] = []
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="projection-failure")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        session.add(lead)
+        session.flush()
+        reply = LeadCommentReply(
+            lead_id=lead.id,
+            target_platform_comment_id="comment-projection",
+            target_platform_content_id="note-projection",
+            target_url="https://www.xiaohongshu.com/explore/note-projection",
+            draft_text="最终回复",
+            approved_text="最终回复",
+            draft_revision=1,
+            approved_revision=1,
+            status="queued",
+        )
+        session.add(reply)
+        session.flush()
+        create_task(session, task_type="comment_reply_send", platform="xhs", target_id=str(reply.id), payload_json={"draft_revision": 1}, max_attempts=1)
+        session.commit()
+
+    class Sender:
+        def reply_to_comment(self, **_: str) -> CommentReplySendResult:
+            sender_calls.append("sent")
+            return CommentReplySendResult(outcome="sent", platform_reply_id="platform-projection")
+
+    monkeypatch.setattr("apps.worker.comment_reply_send._remote_comment_reply_sender", lambda: Sender())
+    monkeypatch.setattr("apps.worker.comment_reply_send.FeishuIMClient", object)
+    monkeypatch.setattr("apps.worker.comment_reply_send.push_customer_followup", lambda *args, **kwargs: None)
+    monkeypatch.setattr("apps.worker.comment_reply_send.sync_customer_crm", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("Base projection unavailable")))
+
+    runner = _runner(factory, tmp_path)
+    first = runner.run_once()
+    second = runner.run_once()
+
+    assert first is not None
+    assert second is None
+    assert sender_calls == ["sent"]
+    with factory() as session:
+        reply = session.scalar(select(LeadCommentReply).where(LeadCommentReply.target_platform_comment_id == "comment-projection"))
+        lead = session.get(Lead, reply.lead_id)
+        assert reply.status == "sent"
+        assert lead.crm_stage == "contact_sent_waiting_reply"
+        assert lead.last_contact_result == "public_reply_sent"
+        assert session.query(CustomerFollowupRecord).filter_by(lead_id=lead.id, result="sent").count() == 1
+        assert session.query(CustomerTimelineEvent).filter_by(lead_id=lead.id, event_type="contact_result_sent").count() == 1
 
 
 def test_worker_dispatches_comment_reply_prepare_without_browser_sender(monkeypatch, tmp_path: Path) -> None:
