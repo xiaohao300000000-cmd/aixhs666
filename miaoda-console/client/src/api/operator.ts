@@ -7,10 +7,16 @@ import type {
   OperatorErrorReason,
   OperatorLead,
   OperatorLeadQueue,
+  OperatorCustomerList,
+  OperatorReviewQueue,
+  OperatorRunCandidates,
+  OperatorRunReport,
   OperatorSkillRun,
   OperatorTaskCenter,
   OperatorWorkbench,
   SkillRunParameters,
+  ContinueReviewQueuePayload,
+  ContinueReviewQueueResult,
 } from '../types/operator';
 
 
@@ -58,6 +64,57 @@ export async function reviewOperatorLead(
 export async function getOperatorTasks(): Promise<OperatorTaskCenter> {
   const response = await axiosForBackend({ url: '/api/operator/tasks', method: 'GET' });
   return response.data as OperatorTaskCenter;
+}
+
+export async function getOperatorRunReport(runId: number): Promise<OperatorRunReport> {
+  const response = await axiosForBackend({
+    url: `/api/operator/tasks/runs/${runId}/report`,
+    method: 'GET',
+  });
+  return response.data as OperatorRunReport;
+}
+
+export async function getOperatorRunCandidates(runId: number, layer?: string): Promise<OperatorRunCandidates> {
+  const response = await axiosForBackend({
+    url: `/api/operator/tasks/runs/${runId}/candidates`,
+    method: 'GET',
+    params: { layer },
+  });
+  return response.data as OperatorRunCandidates;
+}
+
+export async function getOperatorReviewQueue(params: {
+  queue_date?: string;
+  layer?: string;
+  offset?: number;
+  limit?: number;
+} = {}): Promise<OperatorReviewQueue> {
+  const response = await axiosForBackend({
+    url: '/api/operator/review-queue',
+    method: 'GET',
+    params,
+  });
+  return response.data as OperatorReviewQueue;
+}
+
+export async function continueOperatorReviewQueue(
+  payload: ContinueReviewQueuePayload,
+): Promise<ContinueReviewQueueResult> {
+  const response = await axiosForBackend({
+    url: '/api/operator/review-queue/continue',
+    method: 'POST',
+    data: payload,
+  });
+  return response.data as ContinueReviewQueueResult;
+}
+
+export async function getOperatorCustomers(limit = 100): Promise<OperatorCustomerList> {
+  const response = await axiosForBackend({
+    url: '/api/operator/customers',
+    method: 'GET',
+    params: { limit },
+  });
+  return response.data as OperatorCustomerList;
 }
 
 export async function createOperatorRun(skillKey: string): Promise<OperatorSkillRun> {
@@ -128,5 +185,14 @@ export function getOperatorErrorReason(error: unknown): OperatorErrorReason {
 
 
 function isOperatorErrorReason(value: unknown): value is Exclude<OperatorErrorReason, 'unknown'> {
-  return value === 'missing_base_url' || value === 'missing_token' || value === 'backend_unreachable';
+  return [
+    'missing_base_url',
+    'missing_token',
+    'backend_unreachable',
+    'backend_unavailable',
+    'backend_unauthorized',
+    'invalid_request',
+    'resource_not_found',
+    'validation_failed',
+  ].includes(String(value));
 }

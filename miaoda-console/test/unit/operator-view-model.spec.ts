@@ -1,5 +1,7 @@
 import {
   buildAttentionItems,
+  buildRunReportView,
+  buildTodayActionModel,
   getNextLeadId,
   getRunActions,
   getRunStatusLabel,
@@ -7,7 +9,13 @@ import {
   isWorkbenchEmpty,
   leadActionRequiresReason,
 } from '../../client/src/features/operator/operator-view-model';
-import type { OperatorSkillRun, OperatorWorkbench } from '../../client/src/types/operator';
+import type {
+  OperatorCustomerList,
+  OperatorReviewQueue,
+  OperatorRunReport,
+  OperatorSkillRun,
+  OperatorWorkbench,
+} from '../../client/src/types/operator';
 
 
 const emptyWorkbench: OperatorWorkbench = {
@@ -64,5 +72,108 @@ describe('operator view model', () => {
     const run = { status: 'previewed' } as OperatorSkillRun;
     expect(getRunStatusLabel('previewed')).toBe('已预览');
     expect(getRunActions(run)).toEqual(['queue', 'cancel', 'copy']);
+  });
+
+  it('builds the primary action from blocking failures before review work', () => {
+    const queue = {
+      queue_date: '2026-07-16',
+      total: 50,
+      progress: { completed: 8, target: 50, pending: 42, quality_control: 5 },
+      items: [
+        { id: 1, layer: 'priority_review', status: 'pending' },
+        { id: 2, layer: 'uncertain_review', status: 'pending' },
+      ],
+    } as OperatorReviewQueue;
+    const customers = {
+      count: 2,
+      items: [
+        { customer_id: 147, crm_stage: 'new_customer' },
+        { customer_id: 148, crm_stage: 'contacted_waiting_reply' },
+      ],
+    } as OperatorCustomerList;
+
+    const model = buildTodayActionModel({
+      workbench: { ...emptyWorkbench, attention: { ...emptyWorkbench.attention, failed_tasks: 1 } },
+      reviewQueue: queue,
+      customers,
+      recentReport: null,
+    });
+
+    expect(model.primaryAction).toMatchObject({
+      kind: 'blocking_failure',
+      href: '/system-health',
+    });
+    expect(model.reviewProgress).toEqual({ completed: 8, target: 50, pending: 42, qualityControl: 5 });
+    expect(model.reviewLayers).toEqual({ priority: 1, standard: 0, uncertain: 1 });
+    expect(model.customerMetrics).toEqual({
+      total: 2,
+      awaitingFirstContact: 1,
+      contactedWaitingReply: 1,
+      dueFollowups: null,
+    });
+    expect(model.unavailableCapabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'approved_send', enabled: false }),
+      expect.objectContaining({ key: 'reply_check', enabled: false }),
+      expect.objectContaining({ key: 'automatic_schedule', enabled: false }),
+    ]));
+  });
+
+  it('uses a stable queue deep link for the highest pending review layer', () => {
+    const model = buildTodayActionModel({
+      workbench: emptyWorkbench,
+      reviewQueue: {
+        queue_date: '2026-07-16',
+        total: 2,
+        progress: { completed: 0, target: 2, pending: 2, quality_control: 1 },
+        items: [
+          { id: 1, layer: 'priority_review', status: 'pending' },
+          { id: 2, layer: 'uncertain_review', status: 'pending' },
+        ],
+      } as OperatorReviewQueue,
+      customers: { count: 0, items: [] },
+      recentReport: null,
+    });
+
+    expect(model.primaryAction).toMatchObject({
+      kind: 'priority_review',
+      href: '/leads?queue_date=2026-07-16&layer=priority_review',
+    });
+  });
+
+  it('maps a human run report into drillable business funnel rows', () => {
+    const report = {
+      run_id: 8,
+      conclusion: '本次分析 50 条公开内容，合并得到 49 个待审核候选。',
+      scope: { processed_count: 50, candidate_count: 50 },
+      counts: {
+        priority_review: 1,
+        standard_review: 2,
+        uncertain_review: 46,
+        automatic_exclusion: 1,
+      },
+      queue: { prepared: 50, quality_control: 5, emergency: 0 },
+      destinations: {
+        postgresql: { status: 'persisted', detail: '已保留' },
+        miaoda: { status: 'ready', href: '/leads?run_id=8' },
+        base: { status: 'synced', detail: '已同步' },
+        feishu: { status: 'summary_ready' },
+      },
+      exclusion_reasons: { 明确广告: 1 },
+      technical_details: { default_collapsed: true, references: ['checkpoint_json'] },
+    } as OperatorRunReport;
+
+    const model = buildRunReportView(report);
+
+    expect(model.conclusion).toContain('49 个待审核候选');
+    expect(model.funnel.map((item) => [item.key, item.value, item.href])).toEqual([
+      ['processed', 50, null],
+      ['priority_review', 1, '/tasks?run_id=8&layer=priority_review'],
+      ['standard_review', 2, '/tasks?run_id=8&layer=standard_review'],
+      ['uncertain_review', 46, '/tasks?run_id=8&layer=uncertain_review'],
+      ['automatic_exclusion', 1, '/tasks?run_id=8&layer=automatic_exclusion'],
+      ['review_queue', 50, '/leads?run_id=8'],
+    ]);
+    expect(model.destinations.find((item) => item.key === 'base')).toMatchObject({ status: 'synced' });
+    expect(model.technicalDetails.references).toEqual(['checkpoint_json']);
   });
 });
