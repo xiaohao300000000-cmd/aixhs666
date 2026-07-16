@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, inspect
@@ -77,3 +78,13 @@ def test_customer_followup_record_has_unique_event_key_and_customer_time_index()
 
     indexes = {item["name"] for item in inspect(factory.kw["bind"]).get_indexes("customer_followup_records")}
     assert "ix_customer_followup_records_lead_occurred" in indexes
+
+
+def test_customer_crm_migration_uses_official_stage_and_backfills_customer_fact() -> None:
+    migration = (
+        Path(__file__).parents[1] / "alembic" / "versions" / "0018_customer_crm.py"
+    ).read_text(encoding="utf-8")
+
+    assert "WHEN status = 'qualified' THEN 'new_customer'" in migration
+    assert "WHEN status = 'qualified' THEN 'qualified'" not in migration
+    assert "crm-migration-customer:" in migration

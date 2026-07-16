@@ -127,7 +127,7 @@ def test_operator_customer_views_include_migrated_qualified_customer_at_sync_ver
             platform="xhs",
             public_profile_id=profile.id,
             status="qualified",
-            crm_stage="qualified",
+            crm_stage="new_customer",
             crm_sync_version=0,
         )
         session.add(lead)

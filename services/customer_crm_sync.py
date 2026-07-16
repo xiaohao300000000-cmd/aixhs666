@@ -28,15 +28,18 @@ CUSTOMER_ENTITY_TYPE = "customer_crm"
 FOLLOWUP_ENTITY_TYPE = "customer_followup_record"
 HUMAN_FIELDS = frozenset({"CRM阶段", "下次跟进时间", "跟进备注", "联系结果", "客户标签"})
 CRM_STAGE_LABELS = {
-    "candidate": "候选客户",
+    "new_customer": "新客户",
     "awaiting_first_contact": "待首次联系",
-    "contacted_waiting_reply": "已联系等待回复",
-    "customer_replied": "客户有新回复",
-    "deferred": "暂缓客户",
-    "won": "已成交",
-    "lost": "已流失",
-    "invalid": "无效客户",
-    "qualified": "已确认客户",
+    "contact_approved": "话术已确认",
+    "awaiting_send": "等待发送",
+    "contact_sent_waiting_reply": "已联系待回复",
+    "customer_replied": "客户已回复",
+    "in_conversation": "沟通中",
+    "high_intent": "有明确意向",
+    "converted": "已转化",
+    "deferred": "暂缓",
+    "temporarily_unreachable": "暂时失联",
+    "invalid": "无效",
 }
 CRM_STAGE_VALUES = {label: value for value, label in CRM_STAGE_LABELS.items()}
 

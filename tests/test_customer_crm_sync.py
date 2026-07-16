@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from integrations.feishu.bitable import FeishuBitableClient, FeishuBitableSettings, FeishuBitableWriteResult
-from services.customer_crm_sync import pull_customer_crm_edits, sync_customer_crm
+from services.customer_crm_sync import CRM_STAGE_LABELS, pull_customer_crm_edits, sync_customer_crm
 from storage.database import Base
 from storage.models import (
     CustomerFollowupRecord,
@@ -92,6 +92,23 @@ def _factory() -> sessionmaker[Session]:
     )
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def test_customer_crm_stage_contract_matches_unified_spec() -> None:
+    assert CRM_STAGE_LABELS == {
+        "new_customer": "新客户",
+        "awaiting_first_contact": "待首次联系",
+        "contact_approved": "话术已确认",
+        "awaiting_send": "等待发送",
+        "contact_sent_waiting_reply": "已联系待回复",
+        "customer_replied": "客户已回复",
+        "in_conversation": "沟通中",
+        "high_intent": "有明确意向",
+        "converted": "已转化",
+        "deferred": "暂缓",
+        "temporarily_unreachable": "暂时失联",
+        "invalid": "无效",
+    }
 
 
 def _seed_customer(factory: sessionmaker[Session], *, suffix: str = "1") -> tuple[int, int]:
@@ -238,7 +255,7 @@ def test_default_sync_includes_migrated_customer_at_sync_version_zero() -> None:
     with factory() as session:
         lead = session.get(Lead, lead_id)
         assert lead is not None
-        lead.crm_stage = "qualified"
+        lead.crm_stage = "new_customer"
         lead.crm_sync_version = 0
         session.commit()
     customer_client = FakeBitableClient(table_id="customer-table")
@@ -362,7 +379,7 @@ def test_pull_accepts_only_whitelisted_fields_and_creates_stage_audit_once() -> 
             "fields": {
                 "后端客户 ID": str(lead_id),
                 "同步版本": 1,
-                "CRM阶段": "已联系等待回复",
+                "CRM阶段": "已联系待回复",
                 "下次跟进时间": "2026-07-20 10:00:00",
                 "跟进备注": "周一再联系",
                 "联系结果": "已公开回复",
@@ -381,7 +398,7 @@ def test_pull_accepts_only_whitelisted_fields_and_creates_stage_audit_once() -> 
     with factory() as session:
         lead = session.get(Lead, lead_id)
         assert lead is not None
-        assert lead.crm_stage == "contacted_waiting_reply"
+        assert lead.crm_stage == "contact_sent_waiting_reply"
         assert lead.next_followup_at is not None
         assert lead.operator_note == "周一再联系"
         assert lead.last_contact_result == "已公开回复"

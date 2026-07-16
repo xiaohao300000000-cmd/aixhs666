@@ -36,7 +36,7 @@ def upgrade() -> None:
         UPDATE leads
         SET crm_stage = CASE
             WHEN status = 'qualified' AND followup_status = 'pending' THEN 'awaiting_first_contact'
-            WHEN status = 'qualified' THEN 'qualified'
+            WHEN status = 'qualified' THEN 'new_customer'
             WHEN status = 'watch' OR followup_status = 'deferred' THEN 'deferred'
             WHEN status = 'ignored' THEN 'invalid'
             ELSE 'candidate'
@@ -71,6 +71,32 @@ def upgrade() -> None:
         "ix_customer_followup_records_lead_occurred",
         "customer_followup_records",
         ["lead_id", "occurred_at"],
+    )
+    op.execute(
+        """
+        INSERT INTO customer_followup_records (
+            lead_id,
+            event_key,
+            occurred_at,
+            action_type,
+            result,
+            next_step,
+            source_entry,
+            is_completed
+        )
+        SELECT
+            id,
+            'crm-migration-customer:' || id::text,
+            COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+            CASE WHEN followup_status = 'pending' THEN '待首次联系' ELSE '新客户' END,
+            CASE WHEN followup_status = 'pending' THEN 'pending' ELSE 'completed' END,
+            recommended_next_step,
+            '0018_customer_crm',
+            CASE WHEN followup_status = 'pending' THEN FALSE ELSE TRUE END
+        FROM leads
+        WHERE status = 'qualified'
+        ON CONFLICT (event_key) DO NOTHING
+        """
     )
 
 
