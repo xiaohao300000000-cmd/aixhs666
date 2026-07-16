@@ -172,6 +172,55 @@ def test_operator_customer_routes_and_sync_require_idempotency_key(
     assert sync_calls == [[151]]
 
 
+def test_operator_contact_routes_preserve_two_step_contract(
+    operator_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = {"Authorization": "Bearer operator-secret"}
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.get_operator_contact_attempt",
+        lambda _session, customer_id: {"attempt_id": 41, "customer_id": customer_id, "status": "awaiting_approval"},
+    )
+    monkeypatch.setattr(
+        "apps.api.routes.operator_api.require_operator_contact_attempt",
+        lambda _session, **_kwargs: object(),
+    )
+
+    def command(name: str):
+        def invoke(_session, **kwargs):
+            calls.append((name, kwargs))
+            return {"attempt_id": kwargs.get("reply_id"), "status": "approved" if name == "approve" else "queued"}
+        return invoke
+
+    monkeypatch.setattr("apps.api.routes.operator_api.edit_contact_draft", command("edit"))
+    monkeypatch.setattr("apps.api.routes.operator_api.approve_contact_draft", command("approve"))
+    monkeypatch.setattr("apps.api.routes.operator_api.send_approved_contact", command("send"))
+
+    read = operator_client.get("/operator/api/customers/151/contact-attempt", headers=headers)
+    edited = operator_client.put(
+        "/operator/api/customers/151/contact-attempt/41/draft",
+        headers=headers,
+        json={"draft_revision": 1, "text": "修改草稿", "operator": "op", "idempotency_key": "edit-1"},
+    )
+    approved = operator_client.post(
+        "/operator/api/customers/151/contact-attempt/41/approve",
+        headers=headers,
+        json={"draft_revision": 2, "operator": "op", "idempotency_key": "approve-1"},
+    )
+    sent = operator_client.post(
+        "/operator/api/customers/151/contact-attempt/41/send",
+        headers=headers,
+        json={"draft_revision": 2, "confirmed": True, "operator": "op", "idempotency_key": "send-1"},
+    )
+
+    assert read.status_code == 200 and read.json()["status"] == "awaiting_approval"
+    assert edited.status_code == 200
+    assert approved.status_code == 200 and approved.json()["status"] == "approved"
+    assert sent.status_code == 200 and sent.json()["status"] == "queued"
+    assert [name for name, _ in calls] == ["edit", "approve", "send"]
+
+
 def test_operator_run_report_candidate_and_review_queue_routes_require_stable_contracts(
     operator_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

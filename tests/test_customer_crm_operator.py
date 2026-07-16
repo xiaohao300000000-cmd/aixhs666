@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from services.operator_customers import (
     get_operator_customer,
     get_operator_customer_timeline,
+    get_operator_contact_attempt,
     list_operator_customers,
 )
 from storage.database import Base
@@ -17,6 +18,7 @@ from storage.models import (
     FeishuBitableRecord,
     Lead,
     PublicProfile,
+    LeadCommentReply,
 )
 
 
@@ -97,6 +99,30 @@ def test_operator_customer_views_use_stable_customer_id_and_deep_links() -> None
         assert detail["base_record_url"].endswith("?table=customer-table&record=rec-customer")
         assert detail["miaoda_detail_url"] == f"https://miaoda.example/app/customers/{lead.id}"
         assert [item["kind"] for item in timeline["items"]] == ["timeline_event", "followup_record"]
+
+
+def test_operator_contact_attempt_uses_normalized_public_state() -> None:
+    factory = _factory()
+    with factory() as session:
+        lead = _seed(session)
+        reply = LeadCommentReply(
+            lead_id=lead.id,
+            target_platform_comment_id="platform-comment",
+            target_platform_content_id="platform-content",
+            target_url="https://www.xiaohongshu.com/explore/platform-content",
+            draft_text="公开回复草稿",
+            status="pending_review",
+        )
+        session.add(reply)
+        session.commit()
+
+        result = get_operator_contact_attempt(session, lead.id)
+
+        assert result["attempt_id"] == reply.id
+        assert result["customer_id"] == lead.id
+        assert result["channel"] == "xiaohongshu_public_reply"
+        assert result["status"] == "awaiting_approval"
+        assert result["target"]["comment_id"] == "platform-comment"
 
 
 def test_operator_customer_detail_rejects_candidate_only_lead() -> None:
