@@ -182,6 +182,37 @@ def test_stale_approval_and_terminal_sent_are_rejected(factory: sessionmaker[Ses
             edit_contact_draft(session, reply_id=reply.id, draft_revision=2, text="v3", operator="op", idempotency_key="edit-2")
 
 
+@pytest.mark.parametrize("status", ["queued", "approved_to_send", "sending", "result_unknown", "sent", "cancelled"])
+def test_draft_edit_rejects_every_send_fenced_state(factory: sessionmaker[Session], status: str) -> None:
+    from services.contact_commands import edit_contact_draft
+
+    with factory() as session:
+        reply = _reply(session, status=status)
+        original_revision = reply.draft_revision
+        with pytest.raises(ValueError, match="cannot be edited"):
+            edit_contact_draft(session, reply_id=reply.id, draft_revision=original_revision, text="不能覆盖发送版本", operator="op", idempotency_key=f"edit-{status}")
+        assert reply.draft_revision == original_revision
+        assert reply.status == status
+
+
+def test_sending_revision_cannot_change_and_its_original_result_remains_fenced(factory: sessionmaker[Session]) -> None:
+    from services.contact_commands import edit_contact_draft, record_contact_result, send_approved_contact
+
+    with factory() as session:
+        reply = _reply(session, status="sending")
+        reply.approved_text = reply.draft_text
+        reply.approved_revision = 1
+        reply.attempt_count = 1
+        with pytest.raises(ValueError, match="cannot be edited"):
+            edit_contact_draft(session, reply_id=reply.id, draft_revision=1, text="恶意新版本", operator="op", idempotency_key="edit-during-send")
+
+        result = record_contact_result(session, reply_id=reply.id, attempt_count=1, draft_revision=1, outcome="sent", platform_reply_id="platform-1", idempotency_key="result-1")
+        assert result["status"] == "sent"
+        with pytest.raises(ValueError):
+            send_approved_contact(session, reply_id=reply.id, draft_revision=1, confirmed=True, operator="op", idempotency_key="send-again")
+        assert session.query(CollectionTask).filter_by(task_type="comment_reply_send").count() == 0
+
+
 def test_result_unknown_requires_manual_not_sent_confirmation(factory: sessionmaker[Session]) -> None:
     from services.contact_commands import confirm_contact_not_sent, record_contact_result
 

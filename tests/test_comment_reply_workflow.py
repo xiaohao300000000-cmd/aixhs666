@@ -30,6 +30,8 @@ from integrations.feishu.comment_replies import (
     is_comment_reply_callback,
     reconcile_stale_comment_reply,
 )
+import integrations.feishu.comment_replies as comment_reply_module
+import integrations.feishu as feishu_package
 from services.comment_reply_generation import CommentReplyDraft
 from storage.database import Base
 from storage.models import CollectionTask, Comment, ContactCommandOperation, Content, CustomerFollowupRecord, CustomerTimelineEvent, Lead, LeadCommentReply, LeadScreeningResult, PublicProfile
@@ -180,6 +182,35 @@ def test_comment_reply_callback_approves_then_enqueues_one_persistent_send_task(
     assert reply.status == "queued"
     assert len(tasks) == 1
     assert tasks[0].target_id == str(reply_id)
+    assert tasks[0].payload_json == {"draft_revision": 2, "update_token": "update-token"}
+
+
+def test_card_2_callback_shape_and_exact_button_protocol(factory: sessionmaker[Session]) -> None:
+    reply_id = _seed_pending_reply(factory, suffix="card2")
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        screening = session.get(LeadScreeningResult, reply.screening_result_id)
+        approval = build_comment_reply_approval_card(reply, screening)
+        approval_button = approval["body"]["elements"][-1]["elements"][-1]
+        assert approval_button["behaviors"] == [{"type": "callback", "value": {"action": f"confirm_comment_reply_{reply_id}"}}]
+        assert approval_button["form_action_type"] == "submit"
+        assert "action_type" not in approval_button
+
+    payload = _payload(reply_id, "最终回复")
+    payload["event"]["action"].pop("name")
+    payload["event"]["action"]["value"] = {"action": f"confirm_comment_reply_{reply_id}"}
+    assert is_comment_reply_callback(payload) is True
+    confirmed = enqueue_comment_reply_callback(factory, payload, verification_token="token")
+    assert confirmed.status == "approved"
+    send_button = confirmed.card["body"]["elements"][-1]
+    assert send_button["behaviors"] == [{"type": "callback", "value": {"action": f"send_comment_reply_{reply_id}"}}]
+    assert "action_type" not in send_button
+    assert "form_action_type" not in send_button
+
+
+def test_comment_reply_callback_module_exposes_no_sender_entrypoint() -> None:
+    assert not hasattr(comment_reply_module, "apply_comment_reply_callback")
+    assert not hasattr(feishu_package, "apply_comment_reply_callback")
 
 
 def test_creation_requires_accepted_valid_comment_with_actual_rows(factory: sessionmaker[Session]) -> None:
@@ -378,16 +409,18 @@ def test_worker_result_uses_contact_command_and_persists_customer_facts(factory:
         draft_revision = session.get(LeadCommentReply, reply_id).draft_revision
     sender = FakeCommentReplySender([CommentReplySendResult(outcome=outcome, error="safe failure" if outcome != "sent" else None)])
 
+    card_client = FakeCardClient()
     result = execute_approved_comment_reply(
         factory,
         reply_id=reply_id,
         draft_revision=draft_revision,
-        update_token=None,
-        card_client=FakeCardClient(),
+        update_token=f"callback-{outcome}",
+        card_client=card_client,
         sender=sender,
     )
 
     assert result.status == outcome
+    assert card_client.updated_cards[0]["token"] == f"callback-{outcome}"
     with factory() as session:
         reply = session.get(LeadCommentReply, reply_id)
         assert reply.status == outcome
