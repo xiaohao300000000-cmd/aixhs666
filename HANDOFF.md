@@ -496,3 +496,12 @@ python -m apps.cli --json run-control-panel-once
 - 验收全过程未点击继续审核、审核动作、Base 深链或任何发送动作，未写 PostgreSQL、Base、飞书或小红书。
 - 已知风险：Run `#8` 的 50 个候选中 27 个缺少 `lead_id`；12 个客户中仅 `#147` 已有 Base 映射；系统健康页尚无独立 Base/飞书探针。这些不阻断 V19-04，但必须在后续真实闭环验收中继续追踪。
 - 下一步按顺序进入 V19-05：公开回复草稿、编辑后确认失效、两步确认、真实发送、三端状态与 `result_unknown` 人工恢复。真实公开回复只能在用户对具体目标和最终文本逐条明确批准后发送，主控或执行对话不得用测试自动化绕过该门槛。
+
+## 2026-07-17 V19-05 独立执行对话已派发
+
+- 主控已提交自包含简报 `orchestration/briefs/V19-05.md` 和逐步计划 `docs/superpowers/plans/2026-07-17-v19-05-public-reply-two-step.md`；计划复用现有 `LeadCommentReply`、持久 Worker 和远程 CDP，不另建第二套外联系统。
+- 真实 PostgreSQL 派单前只读基线为 0 条 `lead_comment_replies`，因此任务不仅要拆分确认/发送，还必须实现“推进合格评论客户后持久排队，由 Worker 生成第一份真实草稿”的前置闭环；执行对话必须现场重查该基线。
+- 全新独立执行对话：`019f6be2-1325-7691-9774-477f7d95f212`；worktree：`/Users/xiaohao30000/.codex/worktrees/f09f/aixhs666`；目标分支：`codex/v19-05-public-reply`；推理强度为 `medium`。
+- 执行范围包含版本化草稿/确认、持久请求幂等、草稿准备 Worker、飞书两步动作、唯一发送任务、平台结果先落库、Base/飞书/客户事实同步、Operator/BFF/妙搭客户详情与 `result_unknown` 人工恢复；V19-06 调度与回复检查被明确禁止。
+- 执行对话不得推送、合并、发布妙搭或修改外部发布工作区；自动化和真实 PostgreSQL 验收不得触发小红书发送、真实 Base 写入或真实飞书卡。
+- 即使代码和只读 selector probe 通过，真实公开回复仍必须停在用户逐条最终批准门槛：具体目标、最终文本、发送账号、远程 CDP、probe 结果缺一不可。主控只在代码验收后把候选和最终文本交给用户确认。
