@@ -1,4 +1,10 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import type { HttpService } from '@nestjs/axios';
 import { of, throwError } from 'rxjs';
 
@@ -75,5 +81,96 @@ describe('OperatorService', () => {
       url: 'https://backend.example.com/operator/api/tasks/runs/8/preview',
       data: { parameters: { limit: 10 } },
     }));
+  });
+
+  it('proxies V19 read resources with their filters and the server-only token', async () => {
+    const request = jest.fn().mockReturnValue(of({ data: { ok: true } }));
+    const service = new OperatorService({ request } as unknown as HttpService);
+
+    await service.getLead(214);
+    await service.getReviewQueue('2026-07-16', 'priority_review', 5, 20);
+    await service.getRunReport(8);
+    await service.getRunCandidates(8, 'uncertain_review');
+    await service.getCustomers(25);
+    await service.getCustomer(147);
+    await service.getCustomerTimeline(147);
+
+    expect(request).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      method: 'GET',
+      url: 'https://backend.example.com/operator/api/leads/214',
+      headers: { Authorization: 'Bearer server-only-secret' },
+    }));
+    expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      method: 'GET',
+      url: 'https://backend.example.com/operator/api/review-queue',
+      params: { queue_date: '2026-07-16', layer: 'priority_review', offset: 5, limit: 20 },
+      headers: { Authorization: 'Bearer server-only-secret' },
+    }));
+    expect(request).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      url: 'https://backend.example.com/operator/api/tasks/runs/8/report',
+    }));
+    expect(request).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      url: 'https://backend.example.com/operator/api/tasks/runs/8/candidates',
+      params: { layer: 'uncertain_review' },
+    }));
+    expect(request).toHaveBeenNthCalledWith(5, expect.objectContaining({
+      url: 'https://backend.example.com/operator/api/customers',
+      params: { limit: 25 },
+    }));
+    expect(request).toHaveBeenNthCalledWith(6, expect.objectContaining({
+      url: 'https://backend.example.com/operator/api/customers/147',
+    }));
+    expect(request).toHaveBeenNthCalledWith(7, expect.objectContaining({
+      url: 'https://backend.example.com/operator/api/customers/147/timeline',
+    }));
+  });
+
+  it('preserves the caller idempotency key when continuing a review queue', async () => {
+    const request = jest.fn().mockReturnValue(of({ data: { created: 20 } }));
+    const service = new OperatorService({ request } as unknown as HttpService);
+    const payload = {
+      queue_date: '2026-07-16',
+      additional: 20,
+      priority_only: true,
+      idempotency_key: 'continue-stable-key',
+    };
+
+    await service.continueReviewQueue(payload);
+
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({
+      method: 'POST',
+      url: 'https://backend.example.com/operator/api/review-queue/continue',
+      data: payload,
+    }));
+  });
+
+  it.each([
+    [400, BadRequestException],
+    [401, UnauthorizedException],
+    [404, NotFoundException],
+    [422, UnprocessableEntityException],
+    [503, ServiceUnavailableException],
+  ])('translates backend %s into a safe actionable error', async (status, expectedType) => {
+    const request = jest.fn().mockReturnValue(throwError(() => ({
+      response: {
+        status,
+        data: {
+          detail: `unsafe backend detail https://internal.example.com token=server-only-secret`,
+        },
+      },
+      stack: 'private stack server-only-secret',
+    })));
+    const service = new OperatorService({ request } as unknown as HttpService);
+
+    await expect(service.getCustomer(999)).rejects.toBeInstanceOf(expectedType);
+    try {
+      await service.getCustomer(999);
+    } catch (error) {
+      expect(JSON.stringify(error)).not.toContain('server-only-secret');
+      expect(JSON.stringify(error)).not.toContain('internal.example.com');
+      expect(error).toMatchObject({
+        response: expect.objectContaining({ statusCode: status }),
+      });
+    }
   });
 });
