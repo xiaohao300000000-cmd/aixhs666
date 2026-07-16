@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from services.skill_run_report import build_candidates_from_screenings
+from services.skill_run_report import build_candidates_from_screenings, candidate_key
 from storage.models import LeadScreeningResult, ReviewQueueItem, SkillRun
 
 
@@ -279,6 +279,14 @@ def _eligible_candidates(
     *,
     source_run_id: int | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    reviewed_candidate_keys = {
+        candidate_key(screening)
+        for screening in session.scalars(
+            select(LeadScreeningResult).where(
+                LeadScreeningResult.human_review_status.is_not(None)
+            )
+        ).all()
+    }
     statement = select(LeadScreeningResult).where(LeadScreeningResult.human_review_status.is_(None))
     if source_run_id is not None:
         run = session.get(SkillRun, source_run_id)
@@ -292,7 +300,11 @@ def _eligible_candidates(
         if not screening_ids:
             return [], []
         statement = statement.where(LeadScreeningResult.id.in_(screening_ids))
-    screenings = list(session.scalars(statement).all())
+    screenings = [
+        screening
+        for screening in session.scalars(statement).all()
+        if candidate_key(screening) not in reviewed_candidate_keys
+    ]
     errors: list[dict[str, str]] = []
     candidates = build_candidates_from_screenings(
         session,

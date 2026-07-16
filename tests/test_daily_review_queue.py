@@ -169,6 +169,72 @@ def test_same_profile_merges_and_reviewed_candidate_does_not_reenter_pending() -
         assert items[0].screening_ids_json == [1, 2]
 
 
+def test_global_queue_excludes_profile_when_any_screening_was_reviewed() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="partly-reviewed-global")
+        session.add(profile)
+        session.flush()
+        session.add_all(
+            [
+                _screening(1, "priority", public_profile_id=profile.id, human_review_status="valid"),
+                _screening(2, "priority", public_profile_id=profile.id),
+                _screening(3, "standard", human_review_status="invalid"),
+                _screening(4, "standard"),
+            ]
+        )
+        session.flush()
+
+        result = prepare_daily_review_queue(session, queue_date=date(2026, 7, 16))
+        session.commit()
+
+        items = session.scalars(select(ReviewQueueItem)).all()
+        assert result["created"] == 1
+        assert [item.candidate_key for item in items] == ["source:comment:4"]
+        assert f"profile:{profile.id}" not in result["candidate_keys"]
+
+
+def test_run_queue_excludes_reviewed_profile_even_when_reviewed_row_is_outside_checkpoint() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="partly-reviewed-run")
+        session.add(profile)
+        session.flush()
+        reviewed = _screening(
+            1,
+            "priority",
+            public_profile_id=profile.id,
+            human_review_status="watch",
+        )
+        pending_same_profile = _screening(2, "priority", public_profile_id=profile.id)
+        pending_other_source = _screening(3, "standard")
+        session.add_all([reviewed, pending_same_profile, pending_other_source])
+        session.flush()
+        run = SkillRun(
+            skill_key="screen_historical_leads",
+            skill_version=1,
+            status="succeeded",
+            checkpoint_json={
+                "screening_ids": [pending_same_profile.id, pending_other_source.id]
+            },
+            result_summary_json={"processed_count": 2},
+        )
+        session.add(run)
+        session.flush()
+
+        result = prepare_daily_review_queue(
+            session,
+            queue_date=date(2026, 7, 16),
+            source_run_id=run.id,
+        )
+        session.commit()
+
+        items = session.scalars(select(ReviewQueueItem)).all()
+        assert result["created"] == 1
+        assert [item.candidate_key for item in items] == ["source:comment:3"]
+        assert f"profile:{profile.id}" not in result["candidate_keys"]
+
+
 def test_rebuild_is_stable_and_continue_20_never_duplicates() -> None:
     factory = _factory()
     business_day = date(2026, 7, 16)
