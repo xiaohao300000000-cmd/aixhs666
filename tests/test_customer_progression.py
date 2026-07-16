@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from services.customer_progression import progress_operator_lead
+from storage.database import Base
+from storage.models import CustomerTimelineEvent, Lead, LeadScreeningResult, PublicProfile
+
+
+def _factory() -> sessionmaker[Session]:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def _seed(session: Session) -> Lead:
+    profile = PublicProfile(platform="xhs", platform_user_id="progression-user", display_name="PET 家长")
+    session.add(profile)
+    session.flush()
+    lead = Lead(platform="xhs", public_profile_id=profile.id, status="needs_enrichment")
+    session.add(lead)
+    session.flush()
+    session.add(
+        LeadScreeningResult(
+            platform="xhs",
+            source_entity_type="comment",
+            source_entity_id=501,
+            public_profile_id=profile.id,
+            review_status="needs_review",
+            qualification_decision="needs_review",
+        )
+    )
+    session.commit()
+    return lead
+
+
+def test_promote_sets_customer_facts_and_timeline() -> None:
+    factory = _factory()
+    with factory() as session:
+        lead = _seed(session)
+
+        result = progress_operator_lead(
+            session,
+            lead.id,
+            action="promote",
+            reason="需求明确",
+            reviewer_id="operator-1",
+            idempotency_key="review-1",
+        )
+        session.commit()
+
+        assert result.customer_id == lead.id
+        assert result.customer_stage == "awaiting_first_contact"
+        assert result.next_action == "prepare_public_reply"
+        assert result.timeline_event_type == "candidate_promoted"
+        assert lead.status == "qualified"
+        assert lead.followup_status == "pending"
+        assert lead.recommended_next_step == "准备首次公开回复"
+        event = session.scalar(select(CustomerTimelineEvent))
+        assert event is not None
+        assert event.event_key == "customer-progression:review-1"
+
+
+def test_duplicate_progression_reuses_timeline_event() -> None:
+    factory = _factory()
+    with factory() as session:
+        lead = _seed(session)
+        first = progress_operator_lead(
+            session,
+            lead.id,
+            action="promote",
+            reason="需求明确",
+            reviewer_id="operator-1",
+            idempotency_key="review-1",
+        )
+        session.commit()
+        second = progress_operator_lead(
+            session,
+            lead.id,
+            action="promote",
+            reason="需求明确",
+            reviewer_id="operator-1",
+            idempotency_key="review-1",
+        )
+
+        assert second.timeline_event_id == first.timeline_event_id
+        assert second.idempotent_replay is True
+        assert len(session.scalars(select(CustomerTimelineEvent)).all()) == 1
+
+
+def test_defer_requires_reason_and_future_time() -> None:
+    factory = _factory()
+    with factory() as session:
+        lead = _seed(session)
+        with pytest.raises(ValueError, match="reason is required"):
+            progress_operator_lead(session, lead.id, action="defer", idempotency_key="defer-1")
+        with pytest.raises(ValueError, match="defer_until is required"):
+            progress_operator_lead(
+                session,
+                lead.id,
+                action="defer",
+                reason="等待新证据",
+                idempotency_key="defer-2",
+            )
+
+        defer_until = datetime.now(UTC) + timedelta(days=3)
+        result = progress_operator_lead(
+            session,
+            lead.id,
+            action="defer",
+            reason="等待新证据",
+            idempotency_key="defer-3",
+            defer_until=defer_until,
+        )
+        assert result.customer_stage == "deferred"
+        assert lead.next_followup_at == defer_until

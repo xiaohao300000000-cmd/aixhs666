@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from services.customer_progression import progress_operator_lead
 from storage.models import Lead, LeadEvidence, LeadScreeningResult
 
 
 PENDING_STATUSES = ("new", "needs_enrichment", "watch", "information_insufficient")
-ACTION_STATUS = {
-    "valid": ("qualified", "valid"),
-    "invalid": ("ignored", "invalid"),
-    "watch": ("watch", "watch"),
-    "needs_information": ("information_insufficient", "needs_information"),
-    "follow_up": ("qualified", "valid"),
+LEGACY_ACTIONS = {
+    "valid": "promote",
+    "follow_up": "promote",
+    "watch": "defer",
+    "needs_information": "defer",
+    "invalid": "reject",
 }
-REASON_REQUIRED_ACTIONS = {"invalid", "watch", "needs_information"}
 
 
 def list_operator_leads(
@@ -59,39 +59,21 @@ def review_operator_lead(
     owner_name: str | None = None,
     reviewer_id: str | None = None,
 ) -> dict[str, Any]:
-    if action not in ACTION_STATUS:
+    normalized_action = LEGACY_ACTIONS.get(action, action)
+    if normalized_action not in {"promote", "defer", "reject"}:
         raise ValueError(f"unsupported lead review action: {action}")
-    normalized_reason = (reason or "").strip() or None
-    if action in REASON_REQUIRED_ACTIONS and normalized_reason is None:
-        raise ValueError(f"reason is required for {action}")
-    lead = session.get(Lead, lead_id)
-    if lead is None:
-        raise LookupError("lead not found")
-
-    lead_status, human_status = ACTION_STATUS[action]
-    lead.status = lead_status
-    lead.operator_note = normalized_reason or lead.operator_note
-    if owner_name is not None:
-        lead.owner_name = owner_name.strip() or None
-    if action == "follow_up":
-        lead.followup_status = "pending"
-        lead.recommended_next_step = "进入人工跟进"
-    lead.updated_at = datetime.now(UTC)
-
-    screening = _latest_screening(session, lead)
-    if screening is not None:
-        screening.human_review_status = human_status
-        screening.human_reviewer_id = reviewer_id
-        screening.human_reviewed_at = datetime.now(UTC)
-        screening.qualification_human_reason = normalized_reason
-        if action == "valid" or action == "follow_up":
-            screening.qualification_decision = "qualified"
-        elif action == "invalid":
-            screening.qualification_decision = "rejected"
-        else:
-            screening.qualification_decision = "needs_review"
-    session.flush()
-    return _lead_view(session, lead)
+    defer_until = datetime.now(UTC) + timedelta(days=3) if normalized_action == "defer" else None
+    progress_operator_lead(
+        session,
+        lead_id,
+        action=normalized_action,
+        reason=reason,
+        reviewer_id=reviewer_id,
+        owner_name=owner_name,
+        defer_until=defer_until,
+        idempotency_key=f"legacy-review:{lead_id}:{action}:{datetime.now(UTC).isoformat()}",
+    )
+    return get_operator_lead(session, lead_id)
 
 
 def _lead_view(session: Session, lead: Lead) -> dict[str, Any]:
@@ -178,4 +160,3 @@ def _iso(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat()
-
