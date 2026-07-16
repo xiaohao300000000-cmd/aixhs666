@@ -365,7 +365,7 @@ export function selectReviewCandidate(batch: ReviewBatchView, currentKey: string
 }
 
 export function reviewQueueWritesEnabled(batch: ReviewBatchView): boolean {
-  return batch.state === 'ready';
+  return ['ready', 'empty', 'complete'].includes(batch.state);
 }
 
 export type StableRequestIdentity = { signature: string; key: string };
