@@ -1,6 +1,6 @@
 # V19-04 妙搭运营体验验收报告
 
-验收日期：2026-07-16
+验收日期：2026-07-17（返工收口）
 
 ## 结论
 
@@ -30,15 +30,24 @@ V19-04 已在 `miaoda-console/**` 内完成。妙搭本地页面使用真实 Ope
 6. `311cc0a fix: translate live customer timeline facts`
 7. `99e8042 fix: close real review and privacy gaps`
 8. `2cf9aa0 fix: route system failures to operator actions`
-9. 本报告与 README 所在的 `docs: verify V19-04 Miaoda experience` 提交
+9. `0594120 docs: verify V19-04 Miaoda experience`
+10. `479dd98 fix: close V19-04 review safety gaps`
+11. 本轮报告更新提交
 
 真实浏览额外发现并修复三处自动化前未暴露的问题：中文 `action_type=新客户` 的业务翻译、缺失的单条线索详情 BFF GET、系统健康中的本机路径/Traceback 泄漏；同时把异常动作链接收敛到任务中心。
+
+2026-07-17 返工收口保留并复验五项已有修复：成功 Run 在报告加载、404、401、503 和 unknown 状态下不冒充业务结论；客户 `sync_error` 只显示脱敏摘要；下一 pending 到队尾后从队首回绕；Run 候选与日队列在加载/错误时绝不串线且不保留 selected/lead；文件清单使用实际的 `TaskCenterPage.tsx`。
+
+最后两项审查按 RED→GREEN 完成：
+
+- RED：`Authorization: Bearer secret-token` 的旧脱敏结果仍残留 `secret-token`；GREEN：先整体识别 Authorization Bearer 值，再执行通用 token 脱敏，定向测试转绿。
+- RED：旧日队列 data 在后台刷新或请求错误时，没有可供页面约束 continue 写动作的纯状态合同；GREEN：新增 `reviewQueueWritesEnabled`，只有 `ReviewBatchView.state === ready` 才允许“继续审核 20 条/只看高优先级”，页面同时受 mutation busy 与该合同约束。
 
 ## 自动化结果
 
 | 检查 | 结果 |
 |---|---|
-| `npm test -- --runInBand` | 2 suites、27 tests 全部通过 |
+| `npm test -- --runInBand` | 2 suites、38 tests 全部通过 |
 | `npm run type:check` | server/client 均通过 |
 | `npm run lint` | eslint、type check、stylelint 全部通过 |
 | `npm run build` | 生产构建成功，API/页面路由与 server/client 产物生成成功 |
@@ -47,7 +56,7 @@ V19-04 已在 `miaoda-console/**` 内完成。妙搭本地页面使用真实 Ope
 | 全量 `pytest -q` | 594 passed、7 skipped、1 个既有弃用 warning |
 | `git diff --check` | 通过 |
 
-Jest 锁定 BFF 路径/参数/请求体/服务端 Bearer、400/401/404/422/503 安全翻译、主动作、Run 漏斗、URL 恢复、下一条、审核后果、幂等键复用、客户/时间线/Base 状态、缺字段、系统异常分层、脱敏和未启用能力边界。
+Jest 锁定 BFF 路径/参数/请求体/服务端 Bearer、400/401/404/422/503 安全翻译、主动作、Run 漏斗、URL 恢复、下一条回绕、审核后果、幂等键复用、客户/时间线/Base 状态、缺字段、系统异常分层、完整 Bearer 脱敏、旧日队列加载/错误态禁写和未启用能力边界。
 
 ## 真实只读数据验收
 
