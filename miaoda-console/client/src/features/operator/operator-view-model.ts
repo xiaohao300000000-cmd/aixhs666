@@ -149,17 +149,20 @@ export function buildTodayActionModel({
   const priority = layerCount('priority_review');
   const standard = layerCount('standard_review');
   const uncertain = layerCount('uncertain_review');
+  const health = buildSystemHealthModel(workbench);
+  const hasUnknownFailures = workbench.attention.failed_tasks > 0 && workbench.task_failures.length === 0;
   let primaryAction = {
     kind: 'none',
     title: '今天的业务动作已处理完',
     description: '可以查看最近任务结果或客户状态。',
     href: '/tasks',
   };
-  if (workbench.attention.failed_tasks > 0) {
+  if (hasUnknownFailures || health.blockingFailures.length > 0) {
+    const blockingCount = health.blockingFailures.length || workbench.attention.failed_tasks;
     primaryAction = {
       kind: 'blocking_failure',
       title: '先确认阻塞业务的异常',
-      description: `${workbench.attention.failed_tasks} 个失败任务需要确认影响与恢复方式。`,
+      description: `${blockingCount} 个失败任务需要确认影响与恢复方式。`,
       href: '/system-health',
     };
   } else if (priority > 0) {
@@ -336,4 +339,47 @@ export function buildCustomerTimelineView(timeline: OperatorCustomerTimeline) {
     const description = item.next_step || item.result || item.content || '跟进事实已保留';
     return { id: `${item.kind}-${item.id}`, title, description, occurredAt: item.occurred_at, raw: item };
   });
+}
+
+export function buildSystemHealthModel(workbench: OperatorWorkbench) {
+  const blockingTypes = new Set(['skill_run_execute', 'comment_reply_send', 'outreach_send']);
+  const failures = workbench.task_failures.map((failure) => ({
+    id: failure.id,
+    blocking: blockingTypes.has(failure.task_type),
+    title: blockingTypes.has(failure.task_type) ? '业务任务执行失败' : '非阻塞后台任务失败',
+    summary: sanitizeFailureSummary(failure.last_error),
+    attempts: `${failure.attempt_count} / ${failure.max_attempts}`,
+    updatedAt: failure.updated_at,
+    href: blockingTypes.has(failure.task_type) ? '/tasks' : '/system-health',
+  }));
+  return {
+    connection: {
+      status: 'connected',
+      label: 'Operator 后端已连接',
+      lastSuccessAt: workbench.generated_at,
+    },
+    workers: workbench.workers.map((worker) => ({
+      id: worker.worker_id,
+      label: worker.health === 'stale' ? '需要恢复' : '运行正常',
+      currentTask: worker.current_task_id ? `任务 #${worker.current_task_id}` : '当前无任务',
+      lastHeartbeatAt: worker.last_heartbeat_at,
+      completed: worker.completed_task_count,
+      failed: worker.failed_task_count,
+    })),
+    blockingFailures: failures.filter((failure) => failure.blocking),
+    nonBlockingFailures: failures.filter((failure) => !failure.blocking),
+    integrations: [
+      { key: 'base', label: 'Base CRM', status: '未提供状态' },
+      { key: 'feishu', label: '飞书提醒', status: '未提供状态' },
+    ],
+  };
+}
+
+function sanitizeFailureSummary(value: string | null): string {
+  if (!value) return '后端未提供安全错误摘要';
+  return value
+    .split('\n')[0]
+    .replace(/https?:\/\/\S+/gi, '[内部地址已隐藏]')
+    .replace(/(token|secret|authorization|password)\s*[=:]\s*\S+/gi, '$1=[敏感信息已隐藏]')
+    .slice(0, 180);
 }

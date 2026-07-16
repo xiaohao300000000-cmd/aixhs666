@@ -18,7 +18,7 @@ const navigation = [
   { to: '/tasks', label: '任务中心', icon: CheckSquare2 },
   { to: '/customers', label: '客户中心', icon: UsersRound },
   { to: '/campaigns', label: 'Campaign 中心', icon: BriefcaseBusiness },
-  { to: '/health', label: '系统健康', icon: HeartPulse },
+  { to: '/system-health', label: '系统健康', icon: HeartPulse },
 ];
 
 

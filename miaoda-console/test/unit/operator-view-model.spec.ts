@@ -6,6 +6,7 @@ import {
   buildReviewOutcome,
   buildCustomerSummaryView,
   buildCustomerTimelineView,
+  buildSystemHealthModel,
   getNextLeadId,
   getNextPendingQueueCandidateKey,
   getRunActions,
@@ -292,5 +293,56 @@ describe('operator view model', () => {
     expect(model[0].description).toContain('需求明确');
     expect(model[1].description).toContain('准备公开回复');
     expect(model[0].raw).toMatchObject({ event_type: 'candidate_promoted' });
+  });
+
+  it('separates blocking and non-blocking failures and sanitizes technical errors', () => {
+    const model = buildSystemHealthModel({
+      ...emptyWorkbench,
+      attention: { ...emptyWorkbench.attention, failed_tasks: 2, stale_workers: 1 },
+      task_failures: [
+        {
+          id: 1,
+          task_type: 'skill_run_execute',
+          platform: 'internal',
+          target_id: '8',
+          attempt_count: 2,
+          max_attempts: 3,
+          last_error: 'POST https://internal.example.com token=server-only-secret\nprivate stack',
+          finished_at: null,
+          updated_at: '2026-07-16T08:00:00Z',
+        },
+        {
+          id: 2,
+          task_type: 'search',
+          platform: 'xhs',
+          target_id: null,
+          attempt_count: 1,
+          max_attempts: 3,
+          last_error: 'timeout',
+          finished_at: null,
+          updated_at: '2026-07-16T08:00:00Z',
+        },
+      ],
+      workers: [{
+        worker_id: 'worker-1',
+        status: 'idle',
+        health: 'stale',
+        current_task_id: null,
+        completed_task_count: 3,
+        failed_task_count: 1,
+        last_error: null,
+        last_heartbeat_at: '2026-07-16T07:00:00Z',
+      }],
+    });
+
+    expect(model.blockingFailures).toHaveLength(1);
+    expect(model.nonBlockingFailures).toHaveLength(1);
+    expect(model.blockingFailures[0].summary).not.toContain('internal.example.com');
+    expect(model.blockingFailures[0].summary).not.toContain('server-only-secret');
+    expect(model.workers).toEqual([expect.objectContaining({ label: '需要恢复', currentTask: '当前无任务' })]);
+    expect(model.integrations).toEqual([
+      { key: 'base', label: 'Base CRM', status: '未提供状态' },
+      { key: 'feishu', label: '飞书提醒', status: '未提供状态' },
+    ]);
   });
 });
