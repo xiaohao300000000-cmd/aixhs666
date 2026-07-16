@@ -181,7 +181,7 @@ def test_stale_approval_and_terminal_sent_are_rejected(factory: sessionmaker[Ses
         with pytest.raises(ValueError, match="stale|approved"):
             send_approved_contact(session, reply_id=reply.id, draft_revision=1, confirmed=True, operator="op", idempotency_key="send")
         reply.status = "sent"
-        with pytest.raises(ValueError, match="terminal"):
+        with pytest.raises(ValueError, match="cannot be edited"):
             edit_contact_draft(session, reply_id=reply.id, draft_revision=2, text="v3", operator="op", idempotency_key="edit-2")
 
 
