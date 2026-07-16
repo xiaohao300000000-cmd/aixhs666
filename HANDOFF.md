@@ -448,3 +448,13 @@ python -m apps.cli --json run-control-panel-once
 - Worktree：`/Users/xiaohao30000/.codex/worktrees/e671/aixhs666`；目标分支：`codex/v19-02-base-crm`。
 - V19-02 只允许实现 Base 客户 CRM、跟进记录、五类人工字段双向同步、Operator 客户 API 和稳定深链；不得提前实现 V19-03 以后内容或触发小红书外部动作。
 - 主控下一步只做过程监督、范围审计、自动化/真实 Base 证据验收、返工或合并，不在主控工作区补写子任务代码。
+
+## 2026-07-16 V19-02 Base CRM 已验收合并
+
+- 独立执行分支 `codex/v19-02-base-crm` 已由主控完成两轮代码与证据复验，并合并到 `main`，合并提交为 `ae32d5e`。
+- 主控 fresh verification：简报指定测试 `62 passed`；全量 `558 passed, 7 skipped`；`git diff --check` 通过。
+- 真实 PostgreSQL 为 `0018_customer_crm (head)`；共 12 个正式客户和 12 条初始化跟进事实。客户 `147` 为 `new_customer`、同步版本 2、备注已恢复为空。
+- 真实 Base 当前有 5 张表；`客户跟进表` 32 字段、4 视图、11 行，`跟进记录` 15 字段、3 视图、1 行。客户 `147` 映射 `recvpxkvVZRcv6`，跟进事实 `4` 映射 `recvpxpCIVE6CC`，精确查询均为单行。
+- Base 白名单回写已完成 `跟进备注` 可逆验收并恢复；候选劫持回归已补齐，非 `qualified` Lead 在创建 mapping 前直接跳过，不能由 Base pull 改写或生成审计事实。
+- 已知非阻断风险：同步 API 要求非空幂等键但请求级幂等键尚未单独落账；实体层继续由精确业务键和持久映射保证幂等。妙搭客户中心与完整页面仍属于 V19-04。
+- 下一步按顺序创建 V19-03 自包含任务包，并新开全新独立执行对话；不得复用 V19-02 对话上下文。
