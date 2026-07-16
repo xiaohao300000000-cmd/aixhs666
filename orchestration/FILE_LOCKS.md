@@ -4,7 +4,7 @@
 
 | 任务 | Worker | 锁定路径 | 模式 | 开始时间 | 释放条件 |
 |---|---|---|---|---|---|
-| V19-04-H1 | W1 | `miaoda-console/client/src/features/operator/operator-view-model.ts`; `miaoda-console/client/src/pages/LeadReviewPage.tsx`; `miaoda-console/test/unit/operator-view-model.spec.ts`; `docs/reports/V19_04_MIAODA_EXPERIENCE_VERIFICATION.md`; `orchestration/reports/V19-04-H1.md` | WRITE | 2026-07-17 | 主控验收、合并、重新发布并完成线上空/完成态复验后释放 |
+| - | - | - | - | - | 当前无活动文件锁 |
 
 模式：
 
