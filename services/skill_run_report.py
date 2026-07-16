@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -41,6 +42,12 @@ _LAYER_PRIORITY = {
     "uncertain_review": 200,
     "automatic_exclusion": 100,
 }
+_INTENT_PRIORITY = {
+    "high": 3,
+    "medium": 2,
+    "low": 1,
+}
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -123,15 +130,7 @@ def build_candidates_from_screenings(
             if errors is None:
                 raise
             errors.append({"candidate_key": key, "error": str(exc)[:240]})
-    return sorted(
-        items,
-        key=lambda item: (
-            -int(item["priority_rank"]),
-            -int(item["confidence"] or 0),
-            -int(item["representative_screening_id"]),
-            str(item["candidate_key"]),
-        ),
-    )
+    return sorted(items, key=_candidate_sort_key)
 
 
 def rebuild_skill_run_report(session: Session, run_id: int) -> dict[str, Any]:
@@ -222,6 +221,10 @@ def _group_view(
         ),
     )
     ordered_screenings = sorted(screenings, key=lambda item: item.id or 0)
+    candidate_updated_at = max(
+        (_as_utc(item.updated_at) for item in ordered_screenings),
+        default=_EPOCH,
+    )
     lead = None
     if representative.public_profile_id is not None:
         lead = session.scalar(
@@ -248,12 +251,35 @@ def _group_view(
         "hard_exclusion_reason": classification.hard_exclusion_reason,
         "intent_strength": representative.intent_strength,
         "confidence": representative.confidence,
+        "updated_at": candidate_updated_at.isoformat(),
         "priority_rank": classification.priority_rank,
         "evidence": evidence[:5],
         "status": "reviewed" if representative.human_review_status else "pending",
         "miaoda_href": f"/leads?candidate_key={key}",
         "next_action": "人工审核" if classification.layer != "automatic_exclusion" else "排除抽检",
     }
+
+
+def _candidate_sort_key(item: dict[str, Any]) -> tuple[int, int, int, float, int, str]:
+    layer = str(item["layer"])
+    intent = str(item.get("intent_strength") or "").lower()
+    updated_at = _as_utc(datetime.fromisoformat(str(item["updated_at"])))
+    return (
+        -_LAYER_PRIORITY.get(layer, 0),
+        -_INTENT_PRIORITY.get(intent, 0),
+        -int(item.get("confidence") or 0),
+        -updated_at.timestamp(),
+        -int(item["representative_screening_id"]),
+        str(item["candidate_key"]),
+    )
+
+
+def _as_utc(value: datetime | None) -> datetime:
+    if value is None:
+        return _EPOCH
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _sync_destination(sync: dict[str, Any]) -> dict[str, Any]:

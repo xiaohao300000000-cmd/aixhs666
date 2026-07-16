@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from services.skill_run_report import classify_screening, rebuild_skill_run_report
+from services.skill_run_report import (
+    build_candidates_from_screenings,
+    classify_screening,
+    rebuild_skill_run_report,
+)
 from storage.database import Base
 from storage.models import Lead, LeadScreeningResult, PublicProfile, SkillRun
 
@@ -158,3 +164,122 @@ def test_report_explains_when_run_has_no_candidates() -> None:
         assert report["conclusion"] == "本次运行已完成，但没有发现需要进入人工审核的候选。"
         assert report["queue"]["prepared"] == 0
         assert report["next_action"]["label"] == "查看运行详情"
+
+
+def test_candidate_sort_prefers_stronger_intent_before_confidence_ties() -> None:
+    factory = _factory()
+    now = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
+    with factory() as session:
+        stronger_but_older = _screening(
+            10,
+            intent_strength="high",
+            confidence=90,
+            updated_at=now,
+        )
+        weaker_but_newer = _screening(
+            20,
+            intent_strength="medium",
+            confidence=90,
+            updated_at=now + timedelta(hours=1),
+        )
+        session.add_all([stronger_but_older, weaker_but_newer])
+        session.flush()
+
+        candidates = build_candidates_from_screenings(
+            session,
+            [weaker_but_newer, stronger_but_older],
+        )
+
+        assert [item["candidate_key"] for item in candidates] == [
+            "source:comment:10",
+            "source:comment:20",
+        ]
+
+
+def test_candidate_sort_prefers_newer_update_before_stable_id_ties() -> None:
+    factory = _factory()
+    now = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
+    with factory() as session:
+        newer_with_smaller_id = _screening(
+            10,
+            intent_strength="medium",
+            confidence=90,
+            updated_at=now + timedelta(hours=1),
+        )
+        older_with_larger_id = _screening(
+            20,
+            intent_strength="medium",
+            confidence=90,
+            updated_at=now,
+        )
+        session.add_all([newer_with_smaller_id, older_with_larger_id])
+        session.flush()
+
+        candidates = build_candidates_from_screenings(
+            session,
+            [older_with_larger_id, newer_with_smaller_id],
+        )
+
+        assert [item["candidate_key"] for item in candidates] == [
+            "source:comment:10",
+            "source:comment:20",
+        ]
+        assert candidates[0]["updated_at"] == "2026-07-16T09:00:00+00:00"
+
+
+def test_candidate_sort_uses_stable_id_and_key_as_repeatable_final_fallback() -> None:
+    factory = _factory()
+    updated_at = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
+    with factory() as session:
+        first_inserted = _screening(
+            30,
+            intent_strength="medium",
+            confidence=90,
+            updated_at=updated_at,
+        )
+        second_inserted = _screening(
+            10,
+            intent_strength="medium",
+            confidence=90,
+            updated_at=updated_at,
+        )
+        session.add_all([first_inserted, second_inserted])
+        session.flush()
+
+        first = build_candidates_from_screenings(
+            session,
+            [first_inserted, second_inserted],
+        )
+        second = build_candidates_from_screenings(
+            session,
+            [second_inserted, first_inserted],
+        )
+
+        assert [item["candidate_key"] for item in first] == [
+            "source:comment:10",
+            "source:comment:30",
+        ]
+        assert [item["candidate_key"] for item in second] == [
+            item["candidate_key"] for item in first
+        ]
+
+
+def _screening(
+    source_id: int,
+    *,
+    intent_strength: str,
+    confidence: int,
+    updated_at: datetime,
+) -> LeadScreeningResult:
+    return LeadScreeningResult(
+        platform="xhs",
+        source_entity_type="comment",
+        source_entity_id=source_id,
+        valuable=True,
+        review_status="accepted",
+        intent_strength=intent_strength,
+        confidence=confidence,
+        judgment_evidence_json=[f"evidence-{source_id}"],
+        qualification_decision="qualified",
+        updated_at=updated_at,
+    )
