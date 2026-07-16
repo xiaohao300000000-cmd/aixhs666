@@ -139,24 +139,44 @@ def test_valid_comment_screening_creates_one_card(factory: sessionmaker[Session]
     assert first.status == "pending_review"
     assert generator.calls == 1
     assert len(card_client.sent_cards) == 1
-    assert "确认回复" in str(card_client.sent_cards[0]["card"])
+    assert "确认话术（不会发送）" in str(card_client.sent_cards[0]["card"])
 
 
-def test_comment_reply_callback_enqueues_one_persistent_send_task(factory: sessionmaker[Session]) -> None:
+def test_comment_reply_callback_approves_then_enqueues_one_persistent_send_task(factory: sessionmaker[Session]) -> None:
     reply_id = _seed_pending_reply(factory)
 
     first = enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
     duplicate = enqueue_comment_reply_callback(factory, _payload(reply_id, "最终回复"), verification_token="token")
 
-    assert first.status == "approved_to_send"
+    assert first.status == "approved"
+    assert "发送公开回复" in str(first.card)
+    assert "最终回复" in str(first.card)
     assert first.applied is True
     assert duplicate.duplicate is True
     with factory() as session:
         reply = session.get(LeadCommentReply, reply_id)
         tasks = list(session.scalars(select(CollectionTask).where(CollectionTask.task_type == "comment_reply_send")))
     assert reply is not None
-    assert reply.status == "approved_to_send"
+    assert reply.status == "approved"
     assert reply.attempt_count == 0
+    assert len(tasks) == 0
+
+    queued = enqueue_comment_reply_callback(
+        factory,
+        _payload(reply_id, "最终回复", action="send"),
+        verification_token="token",
+    )
+    duplicate_send = enqueue_comment_reply_callback(
+        factory,
+        _payload(reply_id, "最终回复", action="send"),
+        verification_token="token",
+    )
+    assert queued.status == "queued"
+    assert duplicate_send.duplicate is True
+    with factory() as session:
+        reply = session.get(LeadCommentReply, reply_id)
+        tasks = list(session.scalars(select(CollectionTask).where(CollectionTask.task_type == "comment_reply_send")))
+    assert reply.status == "queued"
     assert len(tasks) == 1
     assert tasks[0].target_id == str(reply_id)
 
