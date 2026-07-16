@@ -74,7 +74,7 @@ function ContactAttemptCard({ customerId }: { customerId: number }) {
         queryClient.invalidateQueries({ queryKey: ['operator-customer-timeline', customerId] }),
       ]);
     },
-    onError: (error) => setFeedback(getOperatorErrorReason(error) === 'state_conflict' ? '联系状态已变化，请刷新后重新确认。' : '操作失败；重试会沿用同一幂等键。'),
+    onError: () => setFeedback('操作未完成；若状态已变化请先刷新，直接重试会沿用同一幂等键。'),
   });
   const run = (command: ContactCommand) => mutation.mutate(command);
   return <Card className="shadow-none"><CardHeader><CardTitle>公开回复联系</CardTitle></CardHeader><CardContent className="space-y-4">

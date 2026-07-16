@@ -79,7 +79,6 @@ export type OperatorErrorReason =
   | 'backend_unauthorized'
   | 'invalid_request'
   | 'resource_not_found'
-  | 'state_conflict'
   | 'validation_failed'
   | 'unknown';
 

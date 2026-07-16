@@ -250,7 +250,6 @@ function isOperatorErrorReason(value: unknown): value is Exclude<OperatorErrorRe
     'backend_unauthorized',
     'invalid_request',
     'resource_not_found',
-    'state_conflict',
     'validation_failed',
   ].includes(String(value));
 }
