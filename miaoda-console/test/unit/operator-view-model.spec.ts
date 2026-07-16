@@ -6,6 +6,8 @@ import {
   buildReviewOutcome,
   buildCustomerSummaryView,
   buildCustomerTimelineView,
+  buildRunReportAvailability,
+  resolveReviewBatch,
   buildSystemHealthModel,
   getNextLeadId,
   getNextPendingQueueCandidateKey,
@@ -15,6 +17,9 @@ import {
   isWorkbenchEmpty,
   leadActionRequiresReason,
   reuseIdempotencyKey,
+  reviewQueueWritesEnabled,
+  sanitizeOperatorErrorSummary,
+  selectReviewCandidate,
 } from '../../client/src/features/operator/operator-view-model';
 import type {
   OperatorCustomerList,
@@ -184,6 +189,110 @@ describe('operator view model', () => {
     expect(model.technicalDetails.references).toEqual(['checkpoint_json']);
   });
 
+  it('never treats a succeeded run without a loaded report as a business conclusion', () => {
+    expect(buildRunReportAvailability({
+      runStatus: 'succeeded',
+      hasReport: false,
+      isLoading: true,
+      isError: false,
+      errorReason: null,
+    })).toMatchObject({ kind: 'loading', title: '正在加载业务报告' });
+    expect(buildRunReportAvailability({
+      runStatus: 'succeeded',
+      hasReport: false,
+      isLoading: false,
+      isError: true,
+      errorReason: 'resource_not_found',
+    })).toMatchObject({ kind: 'missing', title: '历史业务报告不存在' });
+    expect(buildRunReportAvailability({
+      runStatus: 'succeeded',
+      hasReport: false,
+      isLoading: false,
+      isError: true,
+      errorReason: 'backend_unauthorized',
+    })).toMatchObject({ kind: 'credentials', title: '业务报告凭证需要检查' });
+    expect(buildRunReportAvailability({
+      runStatus: 'succeeded',
+      hasReport: false,
+      isLoading: false,
+      isError: true,
+      errorReason: 'backend_unavailable',
+    })).toMatchObject({ kind: 'unavailable', title: '业务报告暂时不可达' });
+    expect(buildRunReportAvailability({
+      runStatus: 'succeeded',
+      hasReport: false,
+      isLoading: false,
+      isError: true,
+      errorReason: 'unknown',
+    })).toMatchObject({ kind: 'unavailable', title: '业务报告暂时不可达' });
+  });
+
+  it('keeps run candidates isolated from the daily queue during loading and errors', () => {
+    const dailyItems = [{ candidate_key: 'daily:1', status: 'pending' }] as OperatorReviewQueue['items'];
+
+    expect(resolveReviewBatch({
+      runId: 8,
+      runItems: undefined,
+      dailyItems,
+      runLoading: true,
+      runErrorReason: null,
+      dailyLoading: false,
+      dailyErrorReason: null,
+    })).toMatchObject({ state: 'run_loading', items: [], title: '正在加载本次任务候选' });
+    expect(resolveReviewBatch({
+      runId: 8,
+      runItems: undefined,
+      dailyItems,
+      runLoading: false,
+      runErrorReason: 'backend_unavailable',
+      dailyLoading: false,
+      dailyErrorReason: null,
+    })).toMatchObject({ state: 'run_unavailable', items: [], title: '本次任务候选暂时不可达' });
+  });
+
+  it('does not retain a selected candidate outside a ready batch', () => {
+    const staleItem = { candidate_key: 'daily:stale', status: 'pending' } as OperatorReviewQueue['items'][number];
+
+    expect(selectReviewCandidate({
+      state: 'run_loading',
+      items: [staleItem],
+      title: '正在加载本次任务候选',
+      description: '请稍候',
+    }, staleItem.candidate_key)).toBeNull();
+    expect(selectReviewCandidate({
+      state: 'ready',
+      items: [staleItem],
+      title: null,
+      description: null,
+    }, staleItem.candidate_key)).toBe(staleItem);
+  });
+
+  it('distinguishes daily loading, missing, unavailable, empty, complete, and ready queues', () => {
+    const pendingItems = [{ candidate_key: 'daily:1', status: 'pending' }] as OperatorReviewQueue['items'];
+    const completedItems = [{ candidate_key: 'daily:2', status: 'completed' }] as OperatorReviewQueue['items'];
+    const common = { runId: null, runItems: undefined, dailyItems: undefined, runLoading: false, runErrorReason: null };
+
+    expect(resolveReviewBatch({ ...common, dailyLoading: true, dailyErrorReason: null })).toMatchObject({ state: 'daily_loading', items: [], title: '正在加载今日审核队列' });
+    expect(resolveReviewBatch({ ...common, dailyLoading: false, dailyErrorReason: 'resource_not_found' })).toMatchObject({ state: 'daily_missing', items: [], title: '今日审核队列尚未生成' });
+    expect(resolveReviewBatch({ ...common, dailyLoading: false, dailyErrorReason: 'backend_unavailable' })).toMatchObject({ state: 'daily_unavailable', items: [], title: '审核队列暂时不可达' });
+    expect(resolveReviewBatch({ ...common, dailyItems: [], dailyLoading: false, dailyErrorReason: null })).toMatchObject({ state: 'empty', items: [], title: '今日审核队列为空' });
+    expect(resolveReviewBatch({ ...common, dailyItems: completedItems, dailyLoading: false, dailyErrorReason: null })).toMatchObject({ state: 'complete', title: '今日队列已全部完成' });
+    expect(resolveReviewBatch({ ...common, dailyItems: pendingItems, dailyLoading: false, dailyErrorReason: null })).toMatchObject({ state: 'ready', items: pendingItems });
+  });
+
+  it('disables daily queue writes while stale data is refreshing or an error is active', () => {
+    const staleItems = [{ candidate_key: 'daily:stale', status: 'pending' }] as OperatorReviewQueue['items'];
+    const common = { runId: null, runItems: undefined, dailyItems: staleItems, runLoading: false, runErrorReason: null };
+
+    const refreshing = resolveReviewBatch({ ...common, dailyLoading: true, dailyErrorReason: null });
+    const errored = resolveReviewBatch({ ...common, dailyLoading: false, dailyErrorReason: 'backend_unavailable' });
+    const ready = resolveReviewBatch({ ...common, dailyLoading: false, dailyErrorReason: null });
+
+    expect(reviewQueueWritesEnabled(refreshing)).toBe(false);
+    expect(reviewQueueWritesEnabled(errored)).toBe(false);
+    expect(reviewQueueWritesEnabled(ready)).toBe(true);
+  });
+
   it('preserves the review batch and current candidate in the URL', () => {
     expect(buildReviewLocation({
       queueDate: '2026-07-16',
@@ -194,7 +303,7 @@ describe('operator view model', () => {
     })).toBe('/leads?queue_date=2026-07-16&run_id=8&layer=uncertain_review&candidate_key=profile%3A147&position=12');
   });
 
-  it('advances only to the next pending queue item', () => {
+  it('advances forward then wraps to the first other pending queue item', () => {
     const items = [
       { candidate_key: 'profile:1', status: 'completed' },
       { candidate_key: 'profile:2', status: 'pending' },
@@ -203,7 +312,11 @@ describe('operator view model', () => {
     ];
 
     expect(getNextPendingQueueCandidateKey(items, 'profile:2')).toBe('profile:4');
-    expect(getNextPendingQueueCandidateKey(items, 'profile:4')).toBeNull();
+    expect(getNextPendingQueueCandidateKey(items, 'profile:4')).toBe('profile:2');
+    expect(getNextPendingQueueCandidateKey([
+      { candidate_key: 'profile:1', status: 'completed' },
+      { candidate_key: 'profile:2', status: 'pending' },
+    ], 'profile:2')).toBeNull();
   });
 
   it('reuses an idempotency key for the same failed submission signature', () => {
@@ -366,5 +479,25 @@ describe('operator view model', () => {
       { key: 'base', label: 'Base CRM', status: '未提供状态' },
       { key: 'feishu', label: '飞书提醒', status: '未提供状态' },
     ]);
+  });
+
+  it.each([
+    ['token', 'mapping failed token=server-only-secret', 'server-only-secret'],
+    ['internal URL', 'POST https://internal.example.com/base/records failed', 'internal.example.com'],
+    ['Users path', 'mapping failed at /Users/example/aixhs666/runtime/file.json', '/Users/'],
+    ['third_party path', 'mapping failed command=third_party/connector/bin/python', 'third_party/'],
+    ['Traceback', 'mapping failed stderr=Traceback (most recent call last):', 'Traceback'],
+  ])('sanitizes customer sync errors containing %s', (_label, value, secret) => {
+    const summary = sanitizeOperatorErrorSummary(value);
+
+    expect(summary).not.toContain(secret);
+    expect(summary.length).toBeGreaterThan(0);
+  });
+
+  it('does not leak the credential tail from an Authorization Bearer header', () => {
+    const summary = sanitizeOperatorErrorSummary('request failed Authorization: Bearer secret-token');
+
+    expect(summary).not.toContain('secret-token');
+    expect(summary).not.toContain('Bearer');
   });
 });

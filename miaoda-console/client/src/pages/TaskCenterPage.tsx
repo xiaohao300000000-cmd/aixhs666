@@ -20,7 +20,7 @@ import { TaskTemplatePanel } from '@/components/operator/TaskTemplatePanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { getRunActions, getRunStatusLabel } from '@/features/operator/operator-view-model';
+import { buildRunReportAvailability, getRunActions, getRunStatusLabel } from '@/features/operator/operator-view-model';
 import type { OperatorSkillRun, ReviewLayer, SkillRunParameters } from '@/types/operator';
 
 
@@ -39,6 +39,13 @@ export default function TaskCenterPage() {
   const selectedRun = useMemo(() => draftRun && draftRun.id === selectedRunId ? draftRun : runs.find((run) => run.id === selectedRunId) ?? runs[0] ?? draftRun, [draftRun, runs, selectedRunId]);
   const reportQuery = useQuery({ queryKey: ['operator-run-report', selectedRun?.id], queryFn: () => getOperatorRunReport(selectedRun!.id), enabled: selectedRun?.status === 'succeeded', retry: false });
   const candidatesQuery = useQuery({ queryKey: ['operator-run-candidates', selectedRun?.id, layer], queryFn: () => getOperatorRunCandidates(selectedRun!.id, layer || undefined), enabled: Boolean(selectedRun && layer), retry: false });
+  const reportAvailability = selectedRun ? buildRunReportAvailability({
+    runStatus: selectedRun.status,
+    hasReport: Boolean(reportQuery.data),
+    isLoading: reportQuery.isLoading,
+    isError: reportQuery.isError,
+    errorReason: reportQuery.isError ? getOperatorErrorReason(reportQuery.error) : null,
+  }) : null;
 
   useEffect(() => { if (template) setParameters((current) => current.campaign_id ? current : template.defaults); }, [template]);
   useEffect(() => {
@@ -88,7 +95,7 @@ export default function TaskCenterPage() {
         <div className="grid gap-5 xl:grid-cols-[300px_360px_minmax(0,1fr)]">
           <div className="space-y-4">{template && <TaskTemplatePanel template={template} />}<Button className="w-full" onClick={() => mutation.mutate('create')} disabled={mutation.isPending || !template}>创建任务草稿</Button><Card className="shadow-none"><CardHeader><CardTitle className="text-base">运行历史</CardTitle></CardHeader><CardContent className="space-y-2">{runs.map((run) => <button key={run.id} type="button" onClick={() => selectRun(run)} className={`w-full rounded-lg border p-3 text-left ${selectedRun?.id === run.id ? 'border-sky-500 bg-sky-50' : 'border-slate-200'}`}><div className="flex justify-between"><span className="font-medium">任务 #{run.id}</span><span className="text-xs text-slate-500">{getRunStatusLabel(run.status)}</span></div><p className="mt-1 text-xs text-slate-400">{run.updated_at ? new Date(run.updated_at).toLocaleString('zh-CN') : '暂无时间'}</p></button>)}</CardContent></Card></div>
           <Card className="h-fit shadow-none"><CardHeader><CardTitle className="text-base">范围与运行预览</CardTitle></CardHeader><CardContent className="space-y-4"><label className="block text-sm font-medium">数据范围<select value={parameters.data_range} onChange={(event) => setParameters({ ...parameters, data_range: event.target.value as SkillRunParameters['data_range'] })} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3"><option value="all">全部历史</option><option value="last_30_days">最近 30 天</option><option value="last_90_days">最近 90 天</option></select></label><label className="block text-sm font-medium">来源类型<select value={parameters.source_types} onChange={(event) => setParameters({ ...parameters, source_types: event.target.value as SkillRunParameters['source_types'] })} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3"><option value="content_and_comment">内容 + 评论</option><option value="content_only">仅内容</option><option value="comment_only">仅评论</option></select></label><label className="block text-sm font-medium">Campaign<select value={parameters.campaign_id} onChange={(event) => setParameters({ ...parameters, campaign_id: event.target.value })} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3">{query.data?.campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.location_summary}</option>)}</select></label><label className="block text-sm font-medium">分析数量<Input type="number" min={1} max={500} value={parameters.limit} onChange={(event) => setParameters({ ...parameters, limit: Number(event.target.value) })} className="mt-2" /></label><div className="rounded-xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">本任务只读取 PostgreSQL 历史数据；不访问小红书，不自动联系客户。确认执行后会写入业务报告和既有审核投影。</div><div className="flex flex-wrap gap-2">{selectedRun && availableActions.includes('preview') && <Button onClick={() => mutation.mutate('preview')}><Eye className="size-4" />生成预览</Button>}{selectedRun && availableActions.includes('queue') && <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => mutation.mutate('queue')}><Play className="size-4" />确认执行</Button>}{selectedRun && availableActions.includes('cancel') && <Button variant="outline" onClick={() => mutation.mutate('cancel')}><Square className="size-4" />取消</Button>}{selectedRun && availableActions.includes('retry') && <Button onClick={() => mutation.mutate('retry')}><RotateCcw className="size-4" />重试</Button>}{selectedRun && availableActions.includes('copy') && <Button variant="outline" onClick={() => mutation.mutate('copy')}><Copy className="size-4" />复制任务</Button>}</div>{feedback && <p className="text-sm text-slate-600">{feedback}</p>}</CardContent></Card>
-          <div>{selectedRun ? <TaskRunPanel run={selectedRun} report={reportQuery.data} reportMissing={selectedRun.status === 'succeeded' && reportQuery.isError && getOperatorErrorReason(reportQuery.error) === 'resource_not_found'} candidates={candidatesQuery.data} /> : <div className="rounded-xl border border-dashed border-slate-300 p-16 text-center text-slate-500">创建任务后在这里查看预览、业务结果与数据去向</div>}</div>
+          <div>{selectedRun && reportAvailability ? <TaskRunPanel run={selectedRun} report={reportQuery.data} reportAvailability={reportAvailability} candidates={candidatesQuery.data} /> : <div className="rounded-xl border border-dashed border-slate-300 p-16 text-center text-slate-500">创建任务后在这里查看预览、业务结果与数据去向</div>}</div>
         </div>
       )}
     </main>

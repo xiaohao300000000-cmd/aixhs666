@@ -5,19 +5,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { buildRunReportView, getRunStatusLabel } from '@/features/operator/operator-view-model';
+import { buildRunReportView, getRunStatusLabel, type RunReportAvailability } from '@/features/operator/operator-view-model';
 import type { OperatorRunCandidates, OperatorRunReport, OperatorSkillRun } from '@/types/operator';
 
 
 export function TaskRunPanel({
   run,
   report,
-  reportMissing,
+  reportAvailability,
   candidates,
 }: {
   run: OperatorSkillRun;
   report?: OperatorRunReport;
-  reportMissing?: boolean;
+  reportAvailability: RunReportAvailability;
   candidates?: OperatorRunCandidates;
 }) {
   const model = report ? buildRunReportView(report) : null;
@@ -27,7 +27,7 @@ export function TaskRunPanel({
       <Card className="shadow-none">
         <CardHeader className="border-b border-slate-100">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">任务 #{run.id}</p><CardTitle className="mt-2">{model?.conclusion || getRunStatusLabel(run.status)}</CardTitle></div>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">任务 #{run.id}</p><CardTitle className="mt-2">{model?.conclusion ?? reportAvailability.title}</CardTitle></div>
             <Badge variant={run.status === 'failed' ? 'destructive' : 'secondary'}>{getRunStatusLabel(run.status)}</Badge>
           </div>
         </CardHeader>
@@ -49,7 +49,7 @@ export function TaskRunPanel({
               <Button asChild><Link to={`/leads?run_id=${run.id}`}>审核本次候选<ChevronRight /></Link></Button>
             </>
           )}
-          {reportMissing && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">该历史任务尚未生成业务报告。原始成功状态不会替代业务结论。</div>}
+          {reportAvailability.description && <div className={`rounded-xl border p-4 text-sm ${reportAvailability.kind === 'loading' ? 'border-sky-200 bg-sky-50 text-sky-900' : reportAvailability.kind === 'credentials' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{reportAvailability.description}</div>}
           {candidates && <div className="rounded-xl border border-slate-200 p-4"><p className="font-semibold">候选明细 · {layerLabel(candidates.layer)}</p>{candidates.items.length ? <div className="mt-3 space-y-2">{candidates.items.map((candidate) => <Link key={candidate.candidate_key} to={`/leads?run_id=${run.id}&layer=${candidate.layer}&candidate_key=${encodeURIComponent(candidate.candidate_key)}`} className="block rounded-lg bg-slate-50 p-3 text-sm hover:bg-sky-50"><div className="flex justify-between gap-3"><span className="font-medium">{candidate.reason}</span><span className="text-slate-500">置信度 {candidate.confidence ?? '未知'}</span></div><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{candidate.evidence[0] || '暂无证据摘要'}</p></Link>)}</div> : <p className="mt-2 text-sm text-slate-500">该分层没有候选。</p>}</div>}
         </CardContent>
       </Card>

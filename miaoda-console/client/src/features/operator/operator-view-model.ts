@@ -4,7 +4,9 @@ import type {
   OperatorCustomerList,
   OperatorCustomerSummary,
   OperatorCustomerTimeline,
+  OperatorErrorReason,
   CustomerProgression,
+  OperatorReviewQueueItem,
   OperatorReviewQueue,
   OperatorRunReport,
   OperatorSkillRun,
@@ -224,6 +226,43 @@ export function buildRunReportView(report: OperatorRunReport) {
   };
 }
 
+export type RunReportAvailability = {
+  kind: 'not_expected' | 'loading' | 'available' | 'missing' | 'credentials' | 'unavailable';
+  title: string;
+  description: string | null;
+};
+
+export function buildRunReportAvailability({
+  runStatus,
+  hasReport,
+  isLoading,
+  isError,
+  errorReason,
+}: {
+  runStatus: string;
+  hasReport: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  errorReason: OperatorErrorReason | null;
+}): RunReportAvailability {
+  if (runStatus !== 'succeeded') {
+    return { kind: 'not_expected', title: getRunStatusLabel(runStatus), description: null };
+  }
+  if (hasReport) {
+    return { kind: 'available', title: '业务报告已生成', description: null };
+  }
+  if (isLoading || !isError) {
+    return { kind: 'loading', title: '正在加载业务报告', description: '正在读取本次任务的业务结论，请稍候。' };
+  }
+  if (errorReason === 'resource_not_found') {
+    return { kind: 'missing', title: '历史业务报告不存在', description: '该历史任务尚未生成业务报告。原始成功状态不会替代业务结论。' };
+  }
+  if (errorReason === 'backend_unauthorized' || errorReason === 'missing_token') {
+    return { kind: 'credentials', title: '业务报告凭证需要检查', description: '当前无法读取业务报告，请检查服务端访问凭证后重试。' };
+  }
+  return { kind: 'unavailable', title: '业务报告暂时不可达', description: '当前无法确认本次任务的业务结论，请稍后重试。' };
+}
+
 export function buildReviewLocation({
   queueDate,
   runId,
@@ -252,7 +291,81 @@ export function getNextPendingQueueCandidateKey(
   currentKey: string,
 ): string | null {
   const currentIndex = items.findIndex((item) => item.candidate_key === currentKey);
-  return items.slice(Math.max(0, currentIndex + 1)).find((item) => item.status === 'pending')?.candidate_key ?? null;
+  const forward = items.slice(Math.max(0, currentIndex + 1)).find((item) => item.status === 'pending' && item.candidate_key !== currentKey);
+  if (forward) return forward.candidate_key;
+  const wrapLimit = currentIndex < 0 ? items.length : currentIndex;
+  return items.slice(0, wrapLimit).find((item) => item.status === 'pending' && item.candidate_key !== currentKey)?.candidate_key ?? null;
+}
+
+export type ReviewBatchView = {
+  state: 'run_loading' | 'run_unavailable' | 'daily_loading' | 'daily_missing' | 'daily_unavailable' | 'empty' | 'complete' | 'ready';
+  items: OperatorReviewQueueItem[];
+  title: string | null;
+  description: string | null;
+};
+
+export function resolveReviewBatch({
+  runId,
+  runItems,
+  dailyItems,
+  runLoading,
+  runErrorReason,
+  dailyLoading,
+  dailyErrorReason,
+}: {
+  runId: number | null;
+  runItems?: OperatorReviewQueueItem[];
+  dailyItems?: OperatorReviewQueueItem[];
+  runLoading: boolean;
+  runErrorReason: OperatorErrorReason | null;
+  dailyLoading: boolean;
+  dailyErrorReason: OperatorErrorReason | null;
+}): ReviewBatchView {
+  const isRunBatch = runId !== null;
+  if (isRunBatch && runErrorReason) {
+    return { state: 'run_unavailable', items: [], title: '本次任务候选暂时不可达', description: '无法读取该 Run 的候选；页面不会回退到今日队列。请稍后重试。' };
+  }
+  if (isRunBatch && (runLoading || runItems === undefined)) {
+    return { state: 'run_loading', items: [], title: '正在加载本次任务候选', description: '正在读取该 Run 的候选，加载完成前不会开放审核动作。' };
+  }
+  if (!isRunBatch && dailyErrorReason === 'resource_not_found') {
+    return { state: 'daily_missing', items: [], title: '今日审核队列尚未生成', description: '当前业务日没有已生成的审核队列。' };
+  }
+  if (!isRunBatch && dailyErrorReason) {
+    return { state: 'daily_unavailable', items: [], title: '审核队列暂时不可达', description: '请确认运营后端在线后重试；页面不会使用演示候选。' };
+  }
+  if (!isRunBatch && (dailyLoading || dailyItems === undefined)) {
+    return { state: 'daily_loading', items: [], title: '正在加载今日审核队列', description: '正在读取真实审核队列，请稍候。' };
+  }
+  const items = (isRunBatch ? runItems : dailyItems) ?? [];
+  if (items.length === 0) {
+    return {
+      state: 'empty',
+      items,
+      title: isRunBatch ? '本次任务没有可显示候选' : '今日审核队列为空',
+      description: isRunBatch ? '返回任务结果查看分层与排除原因。' : '如已完成今日目标，可以选择继续审核 20 条。',
+    };
+  }
+  if (!items.some((item) => item.status === 'pending')) {
+    return {
+      state: 'complete',
+      items,
+      title: isRunBatch ? '本次任务候选已全部完成' : '今日队列已全部完成',
+      description: isRunBatch ? '返回任务结果选择其他批次。' : '可以继续审核 20 条，或回到工作台处理客户行动。',
+    };
+  }
+  return { state: 'ready', items, title: null, description: null };
+}
+
+export function selectReviewCandidate(batch: ReviewBatchView, currentKey: string | null): OperatorReviewQueueItem | null {
+  if (batch.state !== 'ready') return null;
+  return batch.items.find((item) => item.candidate_key === currentKey)
+    ?? batch.items.find((item) => item.status === 'pending')
+    ?? null;
+}
+
+export function reviewQueueWritesEnabled(batch: ReviewBatchView): boolean {
+  return batch.state === 'ready';
 }
 
 export type StableRequestIdentity = { signature: string; key: string };
@@ -348,7 +461,7 @@ export function buildSystemHealthModel(workbench: OperatorWorkbench) {
     id: failure.id,
     blocking: blockingTypes.has(failure.task_type),
     title: blockingTypes.has(failure.task_type) ? '业务任务执行失败' : '非阻塞后台任务失败',
-    summary: sanitizeFailureSummary(failure.last_error),
+    summary: sanitizeOperatorErrorSummary(failure.last_error),
     attempts: `${failure.attempt_count} / ${failure.max_attempts}`,
     updatedAt: failure.updated_at,
     href: '/tasks',
@@ -376,12 +489,14 @@ export function buildSystemHealthModel(workbench: OperatorWorkbench) {
   };
 }
 
-function sanitizeFailureSummary(value: string | null): string {
+export function sanitizeOperatorErrorSummary(value: string | null): string {
   if (!value) return '后端未提供安全错误摘要';
   return value
     .split('\n')[0]
+    .replace(/authorization\s*[=:]\s*bearer\s+\S+/gi, 'Authorization=[敏感信息已隐藏]')
     .replace(/https?:\/\/\S+/gi, '[内部地址已隐藏]')
     .replace(/(?:\/Users|\/home|\/var|\/tmp)\/[^;\s]+/g, '[本机路径已隐藏]')
+    .replace(/\b(?:\.{0,2}\/)?third_party\/[^;\s'\"]+/gi, '[本机路径已隐藏]')
     .replace(/(['"])(?:\.{0,2}\/)?(?:[\w.-]+\/)+[\w./-]+\1/g, "'[本机路径已隐藏]'")
     .replace(/(?:stderr=)?Traceback\b.*$/gi, '[错误堆栈已隐藏]')
     .replace(/(token|secret|authorization|password)\s*[=:]\s*\S+/gi, '$1=[敏感信息已隐藏]')

@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import {
   continueOperatorReviewQueue,
+  getOperatorErrorReason,
   getOperatorLead,
   getOperatorReviewQueue,
   getOperatorRunCandidates,
@@ -21,7 +22,10 @@ import {
   buildReviewOutcome,
   getNextPendingQueueCandidateKey,
   leadActionRequiresReason,
+  resolveReviewBatch,
   reuseIdempotencyKey,
+  reviewQueueWritesEnabled,
+  selectReviewCandidate,
   type StableRequestIdentity,
 } from '@/features/operator/operator-view-model';
 import type { LeadReviewAction, OperatorReviewQueueItem, ReviewLayer } from '@/types/operator';
@@ -59,17 +63,20 @@ export default function LeadReviewPage() {
   const queueQuery = useQuery({
     queryKey: ['operator-review-queue', queueDate, layer],
     queryFn: () => getOperatorReviewQueue({ queue_date: queueDate, layer: layer || undefined, limit: 200 }),
+    enabled: runId === null,
+    retry: false,
   });
   const runCandidatesQuery = useQuery({
     queryKey: ['operator-run-candidates', runId, layer],
     queryFn: () => getOperatorRunCandidates(runId!, layer || undefined),
     enabled: runId !== null,
+    retry: false,
   });
-  const items = useMemo<OperatorReviewQueueItem[]>(() => {
-    if (runId && runCandidatesQuery.data) {
+  const runItems = useMemo<OperatorReviewQueueItem[] | undefined>(() => {
+    if (runId !== null && runCandidatesQuery.data) {
       return runCandidatesQuery.data.items.map((candidate, index) => ({
         id: candidate.representative_screening_id,
-        queue_date: queueQuery.data?.queue_date || queueDate || '',
+        queue_date: queueDate || '',
         run_id: runId,
         candidate_key: candidate.candidate_key,
         lead_id: candidate.lead_id,
@@ -87,9 +94,19 @@ export default function LeadReviewPage() {
         next_action: candidate.next_action,
       }));
     }
-    return queueQuery.data?.items ?? [];
-  }, [queueDate, queueQuery.data, runCandidatesQuery.data, runId]);
-  const selected = items.find((item) => item.candidate_key === currentKey) ?? items.find((item) => item.status === 'pending') ?? items[0] ?? null;
+    return undefined;
+  }, [queueDate, runCandidatesQuery.data, runId]);
+  const batch = resolveReviewBatch({
+    runId,
+    runItems,
+    dailyItems: queueQuery.data?.items,
+    runLoading: runCandidatesQuery.isFetching,
+    runErrorReason: runCandidatesQuery.isError ? getOperatorErrorReason(runCandidatesQuery.error) : null,
+    dailyLoading: queueQuery.isFetching,
+    dailyErrorReason: queueQuery.isError ? getOperatorErrorReason(queueQuery.error) : null,
+  });
+  const items = batch.items;
+  const selected = selectReviewCandidate(batch, currentKey);
   const leadQuery = useQuery({
     queryKey: ['operator-lead', selected?.lead_id],
     queryFn: () => getOperatorLead(selected!.lead_id!),
@@ -173,14 +190,15 @@ export default function LeadReviewPage() {
     continueIdentity.current = identity;
     continueMutation.mutate({ priorityOnly, key: identity.key });
   };
-  const progress = queueQuery.data?.progress;
+  const progress = runId === null ? queueQuery.data?.progress : undefined;
   const busy = reviewMutation.isPending || continueMutation.isPending;
+  const queueWritesDisabled = busy || !reviewQueueWritesEnabled(batch);
 
   return (
     <main className="mx-auto max-w-[1650px] p-4 pb-[26rem] md:p-8 md:pb-40 xl:pb-32">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Continuous review</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">连续审核</h1><p className="mt-2 text-sm text-slate-500">稳定队列、完整证据、明确后果；处理后自动进入下一条。</p></div><Button variant="outline" onClick={() => queueQuery.refetch()} disabled={queueQuery.isFetching}><RefreshCcw className="size-4" />刷新</Button></header>
-      {progress && <Card className="mb-5 shadow-none"><CardContent className="grid gap-4 p-4 sm:grid-cols-[auto_minmax(200px,1fr)_auto] sm:items-center"><div><p className="text-xs text-slate-500">今日审核</p><p className="text-xl font-semibold">{progress.completed} / {progress.target}</p></div><div><Progress value={progress.target ? progress.completed / progress.target * 100 : 0} /><p className="mt-2 text-xs text-slate-500">待处理 {progress.pending} · 质量控制 {progress.quality_control}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => continueQueue(false)} disabled={busy}>继续审核 20 条</Button><Button variant="outline" onClick={() => continueQueue(true)} disabled={busy}>只看高优先级</Button></div></CardContent></Card>}
-      {queueQuery.isError ? <StateCard title="审核队列暂时不可达" description="请确认运营后端在线后重试；页面不会使用演示候选。" /> : !items.length ? <StateCard title={runId ? '本次任务没有可显示候选' : '今日审核队列为空'} description={runId ? '返回任务结果查看分层与排除原因。' : '如已完成今日目标，可以选择继续审核 20 条。'} /> : progress?.pending === 0 && !runId ? <StateCard title="今日队列已全部完成" description="可以继续审核 20 条，或回到工作台处理客户行动。" /> : (
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Continuous review</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">连续审核</h1><p className="mt-2 text-sm text-slate-500">稳定队列、完整证据、明确后果；处理后自动进入下一条。</p></div><Button variant="outline" onClick={() => runId !== null ? runCandidatesQuery.refetch() : queueQuery.refetch()} disabled={runId !== null ? runCandidatesQuery.isFetching : queueQuery.isFetching}><RefreshCcw className="size-4" />刷新</Button></header>
+      {progress && <Card className="mb-5 shadow-none"><CardContent className="grid gap-4 p-4 sm:grid-cols-[auto_minmax(200px,1fr)_auto] sm:items-center"><div><p className="text-xs text-slate-500">今日审核</p><p className="text-xl font-semibold">{progress.completed} / {progress.target}</p></div><div><Progress value={progress.target ? progress.completed / progress.target * 100 : 0} /><p className="mt-2 text-xs text-slate-500">待处理 {progress.pending} · 质量控制 {progress.quality_control}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => continueQueue(false)} disabled={queueWritesDisabled}>继续审核 20 条</Button><Button variant="outline" onClick={() => continueQueue(true)} disabled={queueWritesDisabled}>只看高优先级</Button></div></CardContent></Card>}
+      {batch.state !== 'ready' ? <StateCard title={batch.title!} description={batch.description!} /> : (
         <div className="grid min-w-0 gap-5 xl:grid-cols-[330px_minmax(0,1fr)_300px]">
           <QueueList items={items} selectedKey={selected?.candidate_key ?? null} onSelect={selectItem} />
           <div className="min-w-0">{selected?.lead_id ? leadQuery.isLoading ? <StateCard title="正在加载证据" description="请稍候。" /> : leadQuery.data ? <LeadEvidencePanel lead={leadQuery.data} /> : <StateCard title="线索详情加载失败" description="候选仍保留在队列中，请稍后重试。" /> : <StateCard title="该候选当前不可审核" description="缺少 lead_id，系统不会把动作提交到错误目标。请展开技术详情并交给管理员处理。" />}</div>
