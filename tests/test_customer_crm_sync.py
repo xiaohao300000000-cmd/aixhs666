@@ -163,7 +163,17 @@ def test_sync_projects_one_customer_and_one_row_per_followup_idempotently() -> N
     assert customer_fields["CRM阶段"] == "待首次联系"
     assert customer_fields["同步版本"] == 1
     assert customer_fields["妙搭详情链接"] == f"https://miaoda.example/app/customers/{lead_id}"
+    assert customer_fields["客户"] == "PET 家长 1"
+    assert customer_fields["意向程度"] == "高"
+    assert customer_fields["课程/考试"] == "PET"
+    assert customer_fields["下一步"] == "准备首次公开回复"
+    assert customer_fields["下次跟进时间"] is None
+    assert customer_fields["最近联系时间"] is None
+    assert "客户名称" not in customer_fields
+    assert "课程或考试" not in customer_fields
+    assert "当前下一步" not in customer_fields
     assert followup_client.upserts[0][1]["跟进记录 ID"] == str(followup_id)
+    assert followup_client.upserts[0][1]["下次跟进时间"] is None
     with factory() as session:
         mappings = session.scalars(select(FeishuBitableRecord)).all()
         assert {(item.local_entity_type, item.local_entity_id) for item in mappings} == {

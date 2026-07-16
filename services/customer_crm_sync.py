@@ -299,15 +299,15 @@ def _customer_fields(
     now = datetime.now(UTC)
     return {
         "后端客户 ID": str(lead.id),
-        "客户名称": profile.display_name or f"客户 #{lead.id}",
+        "客户": profile.display_name or f"客户 #{lead.id}",
         "平台用户 ID": profile.platform_user_id,
         "主页链接": profile.profile_url or "",
         "地区": lead.region_text or profile.region_text or "",
         "需求摘要": evidence[0].evidence_text if evidence else lead.demand_type or "",
-        "课程或考试": lead.product or lead.demand_type or "",
-        "意向程度": lead.intent_stage or str(lead.intent_score),
+        "课程/考试": lead.product or lead.demand_type or "",
+        "意向程度": _intent_label(lead.intent_stage, lead.intent_score),
         "CRM阶段": CRM_STAGE_LABELS.get(lead.crm_stage, lead.crm_stage),
-        "当前下一步": lead.recommended_next_step or "",
+        "下一步": lead.recommended_next_step or "",
         "下次跟进时间": _format_datetime(lead.next_followup_at, transport=transport),
         "最近联系时间": _format_datetime(lead.last_contact_at, transport=transport),
         "联系结果": lead.last_contact_result or "",
@@ -550,9 +550,9 @@ def _parse_datetime(value: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _format_datetime(value: datetime | None, *, transport: str) -> int | str:
+def _format_datetime(value: datetime | None, *, transport: str) -> int | str | None:
     if value is None:
-        return ""
+        return None
     aware = _aware_utc(value)
     if transport == "lark_cli":
         timezone = ZoneInfo(os.getenv("FEISHU_CUSTOMER_CRM_TIMEZONE", "Asia/Shanghai"))
@@ -587,6 +587,15 @@ def _evidence_text(value: dict[str, Any] | None) -> str:
     if not value:
         return ""
     return "; ".join(f"{key}={item}" for key, item in sorted(value.items()))
+
+
+def _intent_label(intent_stage: str | None, intent_score: int) -> str:
+    normalized = (intent_stage or "").strip().casefold()
+    if normalized in {"高", "high"} or intent_score >= 80:
+        return "高"
+    if normalized in {"中", "medium"} or intent_score >= 50:
+        return "中"
+    return "低"
 
 
 def _text(value: Any) -> str:
