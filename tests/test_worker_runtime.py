@@ -189,6 +189,34 @@ def test_worker_dispatches_comment_reply_send_task_once(monkeypatch, tmp_path: P
         assert reply.status == "sent"
 
 
+def test_worker_dispatches_comment_reply_prepare_without_browser_sender(monkeypatch, tmp_path: Path) -> None:
+    factory = _session_factory()
+    calls: list[int] = []
+    with factory() as session:
+        create_task(
+            session,
+            task_type="comment_reply_prepare",
+            platform="xhs",
+            target_id="7",
+            payload_json={"screening_id": 9, "chat_id": "oc_test"},
+            max_attempts=3,
+        )
+        session.commit()
+
+    def prepare(session_factory, *, screening_id, chat_id):
+        del session_factory, chat_id
+        calls.append(screening_id)
+
+    monkeypatch.setattr("apps.worker.comment_reply_prepare.prepare_comment_reply", prepare)
+    runner = _runner(factory, tmp_path)
+    result = runner.run_once()
+
+    assert result is not None
+    assert calls == [9]
+    with factory() as session:
+        assert session.get(CollectionTask, result.id).status == TaskStatus.COMPLETED.value
+
+
 def test_worker_refuses_local_browser_for_comment_reply_send(monkeypatch, tmp_path: Path) -> None:
     factory = _session_factory()
     calls: list[int] = []
