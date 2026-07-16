@@ -79,6 +79,7 @@ export type OperatorErrorReason =
   | 'backend_unauthorized'
   | 'invalid_request'
   | 'resource_not_found'
+  | 'state_conflict'
   | 'validation_failed'
   | 'unknown';
 
@@ -411,4 +412,11 @@ export type OperatorContactAttempt = {
   safe_to_send: boolean;
   safe_to_retry: boolean;
   next_action: string;
+};
+
+export type ContactPreparationResult = {
+  status: 'queued' | 'target_unavailable';
+  customer_id: number;
+  screening_id: number | null;
+  task_id: number | null;
 };

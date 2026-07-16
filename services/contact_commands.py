@@ -58,7 +58,7 @@ def prepare_contact_draft(
         .limit(1)
     )
     if screening is None:
-        result = {"status": "target_unavailable", "customer_id": customer_id, "task_id": None}
+        result = {"status": "target_unavailable", "customer_id": customer_id, "screening_id": None, "task_id": None}
     else:
         task = session.scalar(
             select(CollectionTask).where(

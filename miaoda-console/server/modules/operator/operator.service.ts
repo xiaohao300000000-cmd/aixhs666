@@ -94,19 +94,26 @@ export class OperatorService {
   }
 
   async editContactAttempt(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
-    return this.request('PUT', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/draft`, payload);
+    return this.request('PUT', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/draft`, this.contactPayload(payload));
   }
 
   async approveContactAttempt(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
-    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/approve`, payload);
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/approve`, this.contactPayload(payload));
   }
 
   async sendContactAttempt(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
-    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/send`, payload);
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/send`, this.contactPayload(payload));
   }
 
   async confirmContactNotSent(customerId: number, attemptId: number, payload: unknown): Promise<unknown> {
-    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/confirm-not-sent`, payload);
+    return this.request('POST', `/operator/api/customers/${customerId}/contact-attempt/${attemptId}/confirm-not-sent`, this.contactPayload(payload));
+  }
+
+  private contactPayload(payload: unknown): Record<string, unknown> {
+    const fields = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : {};
+    return { ...fields, operator: 'miaoda-operator' };
   }
 
   async createRun(payload: unknown): Promise<unknown> {

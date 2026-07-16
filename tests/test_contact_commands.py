@@ -91,6 +91,27 @@ def test_contact_operation_scope_entity_and_key_hash_are_unique(factory: session
             session.commit()
 
 
+def test_prepare_target_unavailable_has_stable_result_shape(factory: sessionmaker[Session]) -> None:
+    from services.contact_commands import prepare_contact_draft
+
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="prepare-no-target")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        session.add(lead)
+        session.commit()
+
+        result = prepare_contact_draft(session, customer_id=lead.id, idempotency_key="prepare-no-target")
+
+        assert result == {
+            "status": "target_unavailable",
+            "customer_id": lead.id,
+            "screening_id": None,
+            "task_id": None,
+        }
+
+
 def test_edit_invalidates_approval_and_increments_revision(factory: sessionmaker[Session]) -> None:
     from services.contact_commands import approve_contact_draft, edit_contact_draft
 

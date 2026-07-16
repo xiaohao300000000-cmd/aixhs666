@@ -165,7 +165,7 @@ describe('OperatorService', () => {
 
     await service.getContactAttempt(147);
     await service.prepareContactAttempt(147, { idempotency_key: key });
-    await service.editContactAttempt(147, 41, { draft_revision: 1, text: '新的公开回复', idempotency_key: key });
+    await service.editContactAttempt(147, 41, { draft_revision: 1, text: '新的公开回复', idempotency_key: key, operator: 'browser-forged-admin' });
     await service.approveContactAttempt(147, 41, { draft_revision: 2, idempotency_key: key });
     await service.sendContactAttempt(147, 41, { draft_revision: 2, confirmed: true, idempotency_key: key });
     await service.confirmContactNotSent(147, 41, { reason: '人工核验平台未发送', idempotency_key: key });

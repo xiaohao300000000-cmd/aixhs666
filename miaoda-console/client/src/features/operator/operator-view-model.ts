@@ -5,6 +5,7 @@ import type {
   OperatorCustomerSummary,
   OperatorCustomerTimeline,
   OperatorContactAttempt,
+  ContactPreparationResult,
   OperatorErrorReason,
   CustomerProgression,
   OperatorReviewQueueItem,
@@ -470,6 +471,13 @@ export function buildContactAttemptView(attempt: OperatorContactAttempt) {
     canRecover: attempt.status === 'result_unknown',
     directMessageAvailable: false,
   };
+}
+
+export function buildContactPreparationView(result: ContactPreparationResult) {
+  if (result.status === 'queued') {
+    return { polling: true, message: '草稿生成任务已排队', detail: '正在等待 Worker 生成并持久草稿。' };
+  }
+  return { polling: false, message: '没有可用的合格公开评论目标', detail: '请先确认该客户来自已接受且人工判定有效的公开评论。' };
 }
 
 export function buildSystemHealthModel(workbench: OperatorWorkbench) {

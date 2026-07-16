@@ -3,14 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bot, CalendarClock, Database, ExternalLink, RefreshCcw } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
-import { approveOperatorContactAttempt, confirmOperatorContactNotSent, editOperatorContactAttempt, getOperatorContactAttempt, getOperatorCustomer, getOperatorCustomerTimeline, getOperatorErrorReason, prepareOperatorContactAttempt, sendOperatorContactAttempt } from '@/api/operator';
+import { approveOperatorContactAttempt, confirmOperatorContactNotSent, editOperatorContactAttempt, getOperatorContactAttempt, getOperatorContactErrorReason, getOperatorCustomer, getOperatorCustomerTimeline, getOperatorErrorReason, prepareOperatorContactAttempt, sendOperatorContactAttempt } from '@/api/operator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { buildContactAttemptView, buildCustomerSummaryView, buildCustomerTimelineView, sanitizeOperatorErrorSummary } from '@/features/operator/operator-view-model';
-import type { OperatorContactAttempt } from '@/types/operator';
+import { buildContactAttemptView, buildContactPreparationView, buildCustomerSummaryView, buildCustomerTimelineView, sanitizeOperatorErrorSummary } from '@/features/operator/operator-view-model';
+import type { ContactPreparationResult, OperatorContactAttempt } from '@/types/operator';
 
 
 export default function CustomerDetailPage() {
@@ -48,15 +48,31 @@ type ContactCommand = { signature: string; execute: (key: string) => Promise<Ope
 function ContactAttemptCard({ customerId }: { customerId: number }) {
   const queryClient = useQueryClient();
   const keys = useRef<Record<string, string>>({});
+  const prepareKey = useRef<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sendConfirmed, setSendConfirmed] = useState(false);
   const [recoveryReason, setRecoveryReason] = useState('');
   const [feedback, setFeedback] = useState('');
-  const query = useQuery({ queryKey: ['operator-contact-attempt', customerId], queryFn: () => getOperatorContactAttempt(customerId), retry: false });
+  const [preparation, setPreparation] = useState<ContactPreparationResult | null>(null);
+  const query = useQuery({ queryKey: ['operator-contact-attempt', customerId], queryFn: () => getOperatorContactAttempt(customerId), retry: false, refetchInterval: preparation?.status === 'queued' ? 2000 : false });
   const attempt = query.data;
   const view = attempt ? buildContactAttemptView(attempt) : null;
   const missing = query.isError && getOperatorErrorReason(query.error) === 'resource_not_found';
-  useEffect(() => { if (attempt) setDraft(attempt.draft_text); }, [attempt]);
+  useEffect(() => { if (attempt) { setDraft(attempt.draft_text); setPreparation(null); } }, [attempt]);
+  const preparationMutation = useMutation({
+    mutationFn: () => {
+      prepareKey.current ||= crypto.randomUUID();
+      return prepareOperatorContactAttempt(customerId, prepareKey.current);
+    },
+    onSuccess: async (result) => {
+      prepareKey.current = null;
+      setPreparation(result);
+      const view = buildContactPreparationView(result);
+      setFeedback(`${view.message}。${view.detail}`);
+      if (view.polling) await query.refetch();
+    },
+    onError: () => setFeedback('草稿生成任务排队失败；重试会沿用同一幂等键。'),
+  });
   const mutation = useMutation({
     mutationFn: ({ signature, execute }: ContactCommand) => {
       keys.current[signature] ||= crypto.randomUUID();
@@ -74,18 +90,18 @@ function ContactAttemptCard({ customerId }: { customerId: number }) {
         queryClient.invalidateQueries({ queryKey: ['operator-customer-timeline', customerId] }),
       ]);
     },
-    onError: () => setFeedback('操作未完成；若状态已变化请先刷新，直接重试会沿用同一幂等键。'),
+    onError: (error) => setFeedback(getOperatorContactErrorReason(error) === 'state_conflict' ? '联系状态已变化，请刷新后按当前版本重新确认。' : '操作未完成；直接重试会沿用同一幂等键。'),
   });
   const run = (command: ContactCommand) => mutation.mutate(command);
   return <Card className="shadow-none"><CardHeader><CardTitle>公开回复联系</CardTitle></CardHeader><CardContent className="space-y-4">
     {query.isLoading && <p className="text-sm text-slate-500">正在加载持久联系事实…</p>}
-    {missing && <div className="space-y-3"><p className="text-sm text-slate-600">尚无持久草稿。仅会为已有的合格公开评论目标排队生成，不会在本地虚构文本。</p><Button onClick={() => run({ signature: `prepare:${customerId}`, execute: (key) => prepareOperatorContactAttempt(customerId, key) })} disabled={mutation.isPending}>生成公开回复草稿</Button></div>}
+    {missing && <div className="space-y-3"><p className="text-sm text-slate-600">尚无持久草稿。仅会为已有的合格公开评论目标排队生成，不会在本地虚构文本。</p>{preparation && <p className={preparation.status === 'queued' ? 'text-sm text-sky-700' : 'text-sm text-amber-700'}>{buildContactPreparationView(preparation).message}。{buildContactPreparationView(preparation).detail}</p>}<Button onClick={() => preparationMutation.mutate()} disabled={preparationMutation.isPending || preparation?.status === 'queued'}>{preparation?.status === 'queued' ? '等待草稿生成' : '生成公开回复草稿'}</Button></div>}
     {query.isError && !missing && <p className="text-sm text-rose-700">联系事实暂时不可达，请检查运营后端后重试。</p>}
     {attempt && view && <>
       <div className="flex flex-wrap items-center gap-2"><Badge>{view.statusLabel}</Badge><Badge variant="outline">版本 {attempt.draft_revision}</Badge><Badge variant="outline">小红书公开回复</Badge></div>
       <div className="rounded-xl bg-slate-50 p-3 text-sm"><p>目标评论：{attempt.target.comment_id}</p>{attempt.target.url ? <a className="mt-1 block text-sky-700 underline" href={attempt.target.url} target="_blank" rel="noreferrer">打开公开目标</a> : <p className="mt-1 text-amber-700">目标链接缺失，禁止发送。</p>}</div>
       <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!view.canEdit || mutation.isPending} rows={5} aria-label="公开回复草稿" />
-      {view.canEdit && draft.trim() !== attempt.draft_text && <Button variant="outline" onClick={() => run({ signature: `edit:${attempt.attempt_id}:${attempt.draft_revision}:${draft.trim()}`, execute: (key) => editOperatorContactAttempt(customerId, attempt.attempt_id, draft, key) })} disabled={!draft.trim() || mutation.isPending}>保存修改（将生成新版本）</Button>}
+      {view.canEdit && draft.trim() !== attempt.draft_text && <Button variant="outline" onClick={() => run({ signature: `edit:${attempt.attempt_id}:${attempt.draft_revision}:${draft.trim()}`, execute: (key) => editOperatorContactAttempt(customerId, attempt, draft, key) })} disabled={!draft.trim() || mutation.isPending}>保存修改（将生成新版本）</Button>}
       {view.canApprove && draft === attempt.draft_text && <Button onClick={() => run({ signature: `approve:${attempt.attempt_id}:${attempt.draft_revision}`, execute: (key) => approveOperatorContactAttempt(customerId, attempt, key) })} disabled={mutation.isPending}>确认话术（不会发送）</Button>}
       {view.canSend && <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><p className="font-semibold text-amber-950">最终发送确认</p><p className="text-sm leading-6 text-amber-900">将向评论 {attempt.target.comment_id} 公开发送版本 {attempt.draft_revision} 的完整文本：</p><blockquote className="border-l-2 border-amber-400 pl-3 text-sm">{attempt.draft_text}</blockquote><label className="flex items-start gap-2 text-sm"><Checkbox checked={sendConfirmed} onCheckedChange={(value) => setSendConfirmed(value === true)} />我已逐字核对目标、渠道和最终文本，确认创建唯一发送任务。</label><Button variant="destructive" disabled={!sendConfirmed || mutation.isPending || !attempt.target.url} onClick={() => run({ signature: `send:${attempt.attempt_id}:${attempt.draft_revision}`, execute: (key) => sendOperatorContactAttempt(customerId, attempt, key) })}>发送公开回复</Button></div>}
       {view.canRecover && <div className="space-y-3 rounded-xl border border-rose-300 bg-rose-50 p-4"><p className="text-sm font-semibold text-rose-900">结果未知：禁止自动重试</p><Textarea value={recoveryReason} onChange={(event) => setRecoveryReason(event.target.value)} placeholder="填写人工打开目标页面后的核验依据" /><Button variant="outline" disabled={!recoveryReason.trim() || mutation.isPending} onClick={() => run({ signature: `not-sent:${attempt.attempt_id}:${recoveryReason.trim()}`, execute: (key) => confirmOperatorContactNotSent(customerId, attempt.attempt_id, recoveryReason, key) })}>确认平台未发送</Button></div>}
