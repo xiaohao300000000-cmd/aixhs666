@@ -215,7 +215,7 @@ def pull_customer_crm_edits(
                         raise ValueError("record fields must be an object")
                     customer_id = _int_value(fields.get("后端客户 ID"))
                     lead = session.get(Lead, customer_id) if customer_id is not None else None
-                    if lead is None:
+                    if lead is None or lead.status != "qualified":
                         skipped += 1
                         continue
                     mapping = _get_or_create_mapping(session, client, CUSTOMER_ENTITY_TYPE, lead.id)
@@ -264,7 +264,17 @@ def pull_customer_crm_edits(
                 errors.append(f"record {index}: {exc}")
         session.commit()
 
-    status = "partial" if failed and synced else "failed" if failed else "conflict" if conflicted and not synced else "synced"
+    status = (
+        "partial"
+        if failed and synced
+        else "failed"
+        if failed
+        else "conflict"
+        if conflicted and not synced
+        else "skipped"
+        if skipped and not synced
+        else "synced"
+    )
     return CustomerCrmSyncResult(
         status=status,
         customers_synced=synced,

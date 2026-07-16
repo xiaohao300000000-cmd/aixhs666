@@ -436,6 +436,61 @@ def test_pull_accepts_only_whitelisted_fields_and_creates_stage_audit_once() -> 
         assert len(stage_events) == len(stage_followups) == 1
 
 
+def test_pull_skips_deferred_candidate_before_mapping_or_whitelist_changes() -> None:
+    factory = _factory()
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="pull-deferred-candidate")
+        session.add(profile)
+        session.flush()
+        lead = Lead(
+            platform="xhs",
+            public_profile_id=profile.id,
+            status="watch",
+            crm_stage="deferred",
+            crm_sync_version=4,
+            operator_note="候选原值",
+            customer_tags_json=["候选"],
+        )
+        session.add(lead)
+        session.commit()
+        lead_id = lead.id
+
+    client = FakeBitableClient(table_id="customer-table")
+    client.remote_records = [
+        {
+            "record_id": "rec-candidate-hijack",
+            "updated_time": int((datetime.now(UTC) + timedelta(minutes=1)).timestamp() * 1000),
+            "fields": {
+                "后端客户 ID": str(lead_id),
+                "同步版本": 4,
+                "CRM阶段": "已转化",
+                "跟进备注": "Base 劫持候选",
+                "联系结果": "错误联系结果",
+                "客户标签": ["错误标签"],
+            },
+        }
+    ]
+
+    result = pull_customer_crm_edits(factory, client=client)
+
+    assert result.status == "skipped"
+    assert result.skipped == 1
+    assert result.synced == 0
+    assert result.conflicted == 0
+    with factory() as session:
+        lead = session.get(Lead, lead_id)
+        assert lead is not None
+        assert lead.status == "watch"
+        assert lead.crm_stage == "deferred"
+        assert lead.crm_sync_version == 4
+        assert lead.operator_note == "候选原值"
+        assert lead.last_contact_result is None
+        assert lead.customer_tags_json == ["候选"]
+        assert session.scalars(select(FeishuBitableRecord)).all() == []
+        assert session.scalars(select(CustomerTimelineEvent)).all() == []
+        assert session.scalars(select(CustomerFollowupRecord)).all() == []
+
+
 def test_pull_rejects_remote_sync_version_that_does_not_match_backend() -> None:
     factory = _factory()
     lead_id, _ = _seed_customer(factory)
