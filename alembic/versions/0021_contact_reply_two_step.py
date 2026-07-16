@@ -29,6 +29,13 @@ def upgrade() -> None:
         "lead_comment_replies",
         sa.Column("queued_at", sa.DateTime(timezone=True), nullable=True),
     )
+    op.execute(
+        sa.text(
+            "UPDATE lead_comment_replies "
+            "SET approved_revision = draft_revision "
+            "WHERE approved_text IS NOT NULL AND approved_revision IS NULL"
+        )
+    )
     op.create_table(
         "contact_command_operations",
         sa.Column("id", sa.Integer(), nullable=False),
