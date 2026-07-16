@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import os
 from threading import Barrier, Lock
 
@@ -13,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from storage.database import Base
 from storage import models
-from storage.models import CollectionTask, CustomerTimelineEvent, Lead, LeadCommentReply, PublicProfile
+from storage.models import CollectionTask, ContactCommandOperation, CustomerTimelineEvent, Lead, LeadCommentReply, PublicProfile
 
 
 def _reply(session: Session, *, status: str = "pending_review") -> LeadCommentReply:
@@ -112,7 +113,55 @@ def test_prepare_target_unavailable_has_stable_result_shape(factory: sessionmake
             "customer_id": lead.id,
             "screening_id": None,
             "task_id": None,
+            "task_status": None,
+            "failure_reason": None,
         }
+
+
+@pytest.mark.parametrize(
+    ("stored_status", "expected_status"),
+    [("pending", "pending"), ("running", "running"), ("retry", "retry"), ("failed", "failed"), ("completed", "completed")],
+)
+def test_prepare_replay_observes_persistent_task_without_exposing_worker_secrets(
+    factory: sessionmaker[Session],
+    stored_status: str,
+    expected_status: str,
+) -> None:
+    from services.contact_commands import prepare_contact_draft
+
+    key = f"prepare-observe-{stored_status}"
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id=f"prepare-{stored_status}")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        task = CollectionTask(
+            task_type="comment_reply_prepare",
+            platform="xhs",
+            target_id="pending",
+            status=stored_status,
+            last_error="Traceback token=secret CDP cookie=xhs_cookie at /private/path",
+        )
+        session.add_all([lead, task])
+        session.flush()
+        task.target_id = str(lead.id)
+        session.add(
+            ContactCommandOperation(
+                operation_scope="prepare_contact_draft",
+                entity_id=lead.id,
+                idempotency_key_hash=hashlib.sha256(key.encode()).hexdigest(),
+                request_json={"customer_id": lead.id},
+                result_json={"status": "queued", "customer_id": lead.id, "screening_id": 9, "task_id": task.id},
+            )
+        )
+        session.commit()
+
+        result = prepare_contact_draft(session, customer_id=lead.id, idempotency_key=key)
+
+        assert result["task_status"] == expected_status
+        assert result["failure_reason"] == ("草稿生成失败，请检查任务中心后重新生成。" if stored_status == "failed" else None)
+        assert "secret" not in str(result)
+        assert "cookie" not in str(result).lower()
 
 
 def test_edit_invalidates_approval_and_increments_revision(factory: sessionmaker[Session]) -> None:

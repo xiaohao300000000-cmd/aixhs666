@@ -56,8 +56,15 @@ const emptyWorkbench: OperatorWorkbench = {
 
 describe('operator view model', () => {
   it('distinguishes queued preparation from an unavailable public target', () => {
-    expect(buildContactPreparationView({ status: 'queued', customer_id: 147, screening_id: 9, task_id: 22 })).toMatchObject({ polling: true, message: '草稿生成任务已排队' });
-    expect(buildContactPreparationView({ status: 'target_unavailable', customer_id: 147, screening_id: null, task_id: null })).toMatchObject({ polling: false, message: '没有可用的合格公开评论目标' });
+    expect(buildContactPreparationView({ status: 'queued', customer_id: 147, screening_id: 9, task_id: 22, task_status: 'pending', failure_reason: null }, false)).toMatchObject({ pollingTask: true, pollingAttempt: true, canRetry: false, message: '草稿生成任务已排队' });
+    expect(buildContactPreparationView({ status: 'target_unavailable', customer_id: 147, screening_id: null, task_id: null, task_status: null, failure_reason: null }, false)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: false, message: '没有可用的合格公开评论目标' });
+  });
+  it('moves preparation from queued to actionable failure or a persisted attempt', () => {
+    const failed = { status: 'queued', customer_id: 147, screening_id: 9, task_id: 22, task_status: 'failed', failure_reason: '草稿生成失败，请检查任务中心后重新生成。' } as const;
+    expect(buildContactPreparationView(failed, false)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: true, buttonLabel: '重新生成公开回复草稿' });
+    const completed = { ...failed, task_status: 'completed', failure_reason: null } as const;
+    expect(buildContactPreparationView(completed, false)).toMatchObject({ pollingTask: false, pollingAttempt: true, canRetry: false });
+    expect(buildContactPreparationView(completed, true)).toMatchObject({ pollingTask: false, pollingAttempt: false, canRetry: false, complete: true });
   });
   it.each([
     ['awaiting_approval', null, false, true, false, false],

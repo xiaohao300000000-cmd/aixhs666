@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import hashlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from apps.api.main import create_app
 from services.customer_progression import CustomerProgressionResult
 from services.customer_crm_sync import CustomerCrmSyncResult
 from storage.database import Base, get_session
-from storage.models import Lead, LeadCommentReply, PublicProfile
+from storage.models import CollectionTask, ContactCommandOperation, Lead, LeadCommentReply, PublicProfile
 
 
 @pytest.fixture()
@@ -281,6 +282,53 @@ def test_miaoda_bff_contact_json_is_accepted_by_real_fastapi_commands(operator_c
     assert approved.json()["status"] == "approved"
     assert sent.json()["status"] == "queued"
     assert recovered.json()["status"] == "failed"
+
+
+def test_prepare_api_replay_reports_sanitized_worker_failure(operator_client: TestClient) -> None:
+    factory = operator_client.app.state.operator_test_session_factory
+    key = "prepare-api-failed"
+    with factory() as session:
+        profile = PublicProfile(platform="xhs", platform_user_id="prepare-api-failed")
+        session.add(profile)
+        session.flush()
+        lead = Lead(platform="xhs", public_profile_id=profile.id, status="qualified")
+        task = CollectionTask(
+            task_type="comment_reply_prepare",
+            platform="xhs",
+            target_id="pending",
+            status="failed",
+            last_error="Traceback bearer=secret CDP cookie=session at /private/path",
+        )
+        session.add_all([lead, task])
+        session.flush()
+        task.target_id = str(lead.id)
+        session.add(
+            ContactCommandOperation(
+                operation_scope="prepare_contact_draft",
+                entity_id=lead.id,
+                idempotency_key_hash=hashlib.sha256(key.encode()).hexdigest(),
+                request_json={"customer_id": lead.id},
+                result_json={"status": "queued", "customer_id": lead.id, "screening_id": 9, "task_id": task.id},
+            )
+        )
+        session.commit()
+        customer_id = lead.id
+
+    response = operator_client.post(
+        f"/operator/api/customers/{customer_id}/contact-attempt/prepare",
+        headers={"Authorization": "Bearer operator-secret"},
+        json={"idempotency_key": key},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "queued",
+        "customer_id": customer_id,
+        "screening_id": 9,
+        "task_id": task.id,
+        "task_status": "failed",
+        "failure_reason": "草稿生成失败，请检查任务中心后重新生成。",
+    }
 
 
 def test_operator_run_report_candidate_and_review_queue_routes_require_stable_contracts(

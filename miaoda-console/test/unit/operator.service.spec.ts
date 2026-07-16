@@ -16,6 +16,7 @@ import {
   confirmOperatorContactNotSent,
   editOperatorContactAttempt,
   getOperatorContactErrorReason,
+  prepareOperatorContactAttempt,
   sendOperatorContactAttempt,
 } from '../../client/src/api/operator';
 import type { OperatorContactAttempt } from '../../client/src/types/operator';
@@ -187,14 +188,19 @@ describe('OperatorService', () => {
       draft_revision: 2,
       draft_text: '新的公开回复',
     } as OperatorContactAttempt;
-    jest.mocked(axiosForBackend).mockResolvedValue({ data: attempt } as never);
+    const preparation = { status: 'queued', customer_id: 147, screening_id: 9, task_id: 22, task_status: 'failed', failure_reason: '草稿生成失败，请检查任务中心后重新生成。' } as const;
+    jest.mocked(axiosForBackend)
+      .mockResolvedValueOnce({ data: preparation } as never)
+      .mockResolvedValue({ data: attempt } as never);
 
+    expect(await prepareOperatorContactAttempt(147, 'prepare-key')).toEqual(preparation);
     await editOperatorContactAttempt(147, attempt, '修改文本', 'edit-key');
     await approveOperatorContactAttempt(147, attempt, 'approve-key');
     await sendOperatorContactAttempt(147, attempt, 'send-key');
     await confirmOperatorContactNotSent(147, attempt.attempt_id, '人工核验未发送', 'recover-key');
 
     expect(jest.mocked(axiosForBackend).mock.calls.map(([input]) => input.data)).toEqual([
+      { idempotency_key: 'prepare-key' },
       { draft_revision: 2, text: '修改文本', idempotency_key: 'edit-key' },
       { draft_revision: 2, idempotency_key: 'approve-key' },
       { draft_revision: 2, confirmed: true, idempotency_key: 'send-key' },
