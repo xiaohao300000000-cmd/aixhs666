@@ -360,6 +360,7 @@ describe('operator view model', () => {
     expect(model.nonBlockingFailures[0].summary).not.toContain('/Users/');
     expect(model.nonBlockingFailures[0].summary).not.toContain('third_party/');
     expect(model.nonBlockingFailures[0].summary).not.toContain('Traceback');
+    expect(model.nonBlockingFailures[0].href).toBe('/tasks');
     expect(model.workers).toEqual([expect.objectContaining({ label: '需要恢复', currentTask: '当前无任务' })]);
     expect(model.integrations).toEqual([
       { key: 'base', label: 'Base CRM', status: '未提供状态' },

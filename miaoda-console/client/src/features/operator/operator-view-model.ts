@@ -351,7 +351,7 @@ export function buildSystemHealthModel(workbench: OperatorWorkbench) {
     summary: sanitizeFailureSummary(failure.last_error),
     attempts: `${failure.attempt_count} / ${failure.max_attempts}`,
     updatedAt: failure.updated_at,
-    href: blockingTypes.has(failure.task_type) ? '/tasks' : '/system-health',
+    href: '/tasks',
   }));
   return {
     connection: {
